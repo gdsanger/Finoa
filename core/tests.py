@@ -3,7 +3,7 @@ from decimal import Decimal
 from datetime import date
 from dateutil.relativedelta import relativedelta
 
-from .models import Account, Category, Booking, RecurringBooking, Payee, KIGateConfig, OpenAIConfig
+from .models import Account, Category, Booking, RecurringBooking, Payee, KIGateConfig, OpenAIConfig, DocumentUpload
 from .services import (
     calculate_actual_balance,
     calculate_forecast_balance,
@@ -780,3 +780,164 @@ class OpenAIClientTest(TestCase):
         response = call_openai_chat(messages)
         self.assertFalse(response.success)
         self.assertIn("No active OpenAI configuration", response.error)
+
+
+class DocumentUploadModelTest(TestCase):
+    """Test cases for DocumentUpload model"""
+    
+    def setUp(self):
+        self.account = Account.objects.create(
+            name='Test Account',
+            type='checking',
+            initial_balance=Decimal('1000.00')
+        )
+        self.payee = Payee.objects.create(name='Test Payee')
+        self.category = Category.objects.create(name='Test Category')
+    
+    def test_document_upload_creation(self):
+        """Test basic document upload creation"""
+        from .models import DocumentUpload
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        
+        file_content = b'test file content'
+        uploaded_file = SimpleUploadedFile('test.pdf', file_content, content_type='application/pdf')
+        
+        doc = DocumentUpload.objects.create(
+            file=uploaded_file,
+            original_filename='test.pdf',
+            mime_type='application/pdf',
+            file_size=len(file_content),
+            source='web',
+            status='UPLOADED'
+        )
+        
+        self.assertEqual(doc.original_filename, 'test.pdf')
+        self.assertEqual(doc.status, 'UPLOADED')
+        self.assertEqual(doc.source, 'web')
+        self.assertIsNotNone(doc.file)
+    
+    def test_document_upload_with_suggestions(self):
+        """Test document upload with AI suggestions"""
+        from .models import DocumentUpload
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        
+        file_content = b'test file content'
+        uploaded_file = SimpleUploadedFile('invoice.pdf', file_content, content_type='application/pdf')
+        
+        doc = DocumentUpload.objects.create(
+            file=uploaded_file,
+            original_filename='invoice.pdf',
+            mime_type='application/pdf',
+            file_size=len(file_content),
+            status='REVIEW_PENDING',
+            suggested_account=self.account,
+            suggested_payee=self.payee,
+            suggested_category=self.category,
+            suggested_amount=Decimal('99.99'),
+            suggested_currency='EUR',
+            suggested_date=date.today(),
+            suggested_description='Test invoice',
+            suggestion_confidence=0.95
+        )
+        
+        self.assertEqual(doc.suggested_account, self.account)
+        self.assertEqual(doc.suggested_payee, self.payee)
+        self.assertEqual(doc.suggested_category, self.category)
+        self.assertEqual(doc.suggested_amount, Decimal('99.99'))
+        self.assertEqual(doc.suggestion_confidence, 0.95)
+
+
+class DocumentProcessorTest(TestCase):
+    """Test cases for document processor service"""
+    
+    def test_get_mime_type(self):
+        """Test MIME type detection from filename"""
+        from .services.document_processor import get_mime_type
+        
+        self.assertEqual(get_mime_type('test.pdf'), 'application/pdf')
+        self.assertEqual(get_mime_type('test.jpg'), 'image/jpeg')
+        self.assertEqual(get_mime_type('test.jpeg'), 'image/jpeg')
+        self.assertEqual(get_mime_type('test.png'), 'image/png')
+    
+    def test_map_to_database_objects_basic(self):
+        """Test mapping extracted data to database objects"""
+        from .services.document_processor import map_to_database_objects
+        
+        account = Account.objects.create(name='Girokonto', type='checking')
+        payee = Payee.objects.create(name='REWE', is_active=True)
+        category = Category.objects.create(name='Lebensmittel')
+        
+        extracted_data = {
+            'payee_name': 'REWE',
+            'account_name': 'Girokonto',
+            'category_name': 'Lebensmittel',
+            'amount': 42.50,
+            'currency': 'EUR',
+            'date': '2024-01-15',
+            'description': 'Grocery shopping',
+            'is_recurring': False,
+            'confidence': 0.9,
+            'extracted_text': 'Some text'
+        }
+        
+        result = map_to_database_objects(extracted_data)
+        
+        self.assertEqual(result['suggested_account'], account)
+        self.assertEqual(result['suggested_payee'], payee)
+        self.assertEqual(result['suggested_category'], category)
+        self.assertEqual(result['suggested_amount'], Decimal('42.50'))
+
+
+class DocumentViewTest(TestCase):
+    """Test cases for document views"""
+    
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.user = User.objects.create_user(username='testuser', password='testpass')
+        self.client.login(username='testuser', password='testpass')
+        
+        self.account = Account.objects.create(
+            name='Test Account',
+            type='checking',
+            initial_balance=Decimal('1000.00')
+        )
+    
+    def test_document_list_view_get(self):
+        """Test document list view GET request"""
+        response = self.client.get('/documents/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Dokumente')
+    
+    def test_document_list_view_requires_login(self):
+        """Test that document list requires login"""
+        self.client.logout()
+        response = self.client.get('/documents/')
+        self.assertEqual(response.status_code, 302)
+    
+    def test_document_review_detail_create_booking(self):
+        """Test creating a booking from document review"""
+        from .models import DocumentUpload
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        
+        file_content = b'test'
+        uploaded_file = SimpleUploadedFile('test.pdf', file_content)
+        
+        doc = DocumentUpload.objects.create(
+            file=uploaded_file,
+            original_filename='test.pdf',
+            status='REVIEW_PENDING',
+            suggested_amount=Decimal('99.99'),
+            suggested_date=date.today()
+        )
+        
+        response = self.client.post(f'/documents/review/{doc.id}/', {
+            'account': self.account.id,
+            'amount': '99.99',
+            'booking_date': date.today().isoformat(),
+            'description': 'Test booking'
+        })
+        
+        self.assertEqual(response.status_code, 302)
+        doc.refresh_from_db()
+        self.assertEqual(doc.status, 'BOOKED')
+        self.assertIsNotNone(doc.booking)

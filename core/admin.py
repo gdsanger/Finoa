@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Account, Category, Booking, RecurringBooking, Payee, KIGateConfig, OpenAIConfig
+from .models import Account, Category, Booking, RecurringBooking, Payee, KIGateConfig, OpenAIConfig, DocumentUpload
 
 
 @admin.register(Payee)
@@ -80,5 +80,33 @@ class OpenAIConfigAdmin(admin.ModelAdmin):
         ('Timestamps', {
             'fields': ('created_at', 'updated_at'),
             'classes': ('collapse',)
+        }),
+    )
+
+
+@admin.register(DocumentUpload)
+class DocumentUploadAdmin(admin.ModelAdmin):
+    list_display = ['original_filename', 'status', 'suggested_amount', 'suggested_payee', 'uploaded_at']
+    list_filter = ['status', 'source', 'uploaded_at']
+    search_fields = ['original_filename', 'extracted_text', 'suggested_description']
+    readonly_fields = ['uploaded_at', 'file_size', 'mime_type', 'ai_result_openai', 'ai_result_kigate']
+    fieldsets = (
+        ('File Information', {
+            'fields': ('file', 'original_filename', 'mime_type', 'file_size', 'uploaded_at', 'source')
+        }),
+        ('Status', {
+            'fields': ('status', 'error_message')
+        }),
+        ('AI Results', {
+            'fields': ('ai_result_openai', 'ai_result_kigate', 'extracted_text', 'suggestion_confidence'),
+            'classes': ('collapse',)
+        }),
+        ('Suggestions', {
+            'fields': ('suggested_account', 'suggested_payee', 'suggested_category', 
+                       'suggested_amount', 'suggested_currency', 'suggested_date', 
+                       'suggested_description', 'suggested_is_recurring')
+        }),
+        ('Booking', {
+            'fields': ('booking',)
         }),
     )

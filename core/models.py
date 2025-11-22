@@ -274,3 +274,117 @@ class OpenAIConfig(models.Model):
     def __str__(self):
         status = '✓' if self.is_active else '✗'
         return f"{status} {self.name}"
+
+
+class DocumentUpload(models.Model):
+    """
+    Represents an uploaded document (receipt/invoice) for AI-powered booking suggestion.
+    """
+    class Status(models.TextChoices):
+        UPLOADED = "UPLOADED", "Hochgeladen"
+        AI_PROCESSING = "AI_PROCESSING", "In Verarbeitung"
+        AI_DONE = "AI_DONE", "Analyse abgeschlossen"
+        REVIEW_PENDING = "REVIEW_PENDING", "Zur Prüfung"
+        BOOKED = "BOOKED", "Verbucht"
+        ERROR = "ERROR", "Fehler"
+
+    file = models.FileField(upload_to="finoa_uploads/")
+    original_filename = models.CharField(max_length=255, blank=True)
+    mime_type = models.CharField(max_length=100, blank=True)
+    file_size = models.PositiveIntegerField(null=True, blank=True)
+
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    status = models.CharField(
+        max_length=32,
+        choices=Status.choices,
+        default=Status.UPLOADED,
+    )
+
+    source = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="z.B. 'web', 'mobile', 'api'.",
+    )
+
+    ai_result_openai = models.JSONField(null=True, blank=True)
+    ai_result_kigate = models.JSONField(null=True, blank=True)
+
+    extracted_text = models.TextField(blank=True)
+
+    suggested_account = models.ForeignKey(
+        "Account",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="document_suggested_account",
+    )
+
+    suggested_payee = models.ForeignKey(
+        "Payee",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="document_suggested_payee",
+    )
+
+    suggested_category = models.ForeignKey(
+        "Category",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="document_suggested_category",
+    )
+
+    suggested_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
+
+    suggested_currency = models.CharField(
+        max_length=8,
+        blank=True,
+        default="EUR",
+    )
+
+    suggested_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Beleg-/Buchungsdatum aus der Analyse.",
+    )
+
+    suggested_description = models.CharField(
+        max_length=255,
+        blank=True,
+    )
+
+    suggested_is_recurring = models.BooleanField(
+        default=False,
+        help_text="Wird in der KI-Antwort vorgeschlagen als wiederkehrende Zahlung.",
+    )
+
+    suggestion_confidence = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Gesamteinschätzung der KI (0–1).",
+    )
+
+    booking = models.ForeignKey(
+        "Booking",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="source_document",
+    )
+
+    error_message = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['-uploaded_at']
+        verbose_name = 'Document Upload'
+        verbose_name_plural = 'Document Uploads'
+
+    def __str__(self):
+        return f"{self.original_filename} - {self.get_status_display()}"

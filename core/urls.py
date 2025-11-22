@@ -8,4 +8,7 @@ urlpatterns = [
     path('monthly/', views.monthly_view, name='monthly_view'),
     path('analytics/categories/', views.category_analytics, name='category_analytics'),
     path('payees/', views.payees, name='payees'),
+    path('documents/', views.document_list, name='document_list'),
+    path('documents/review/', views.document_review_list, name='document_review_list'),
+    path('documents/review/<int:document_id>/', views.document_review_detail, name='document_review_detail'),
 ]

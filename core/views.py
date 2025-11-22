@@ -2,13 +2,15 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.contrib.auth.decorators import login_required
+from django.contrib import messages
 from django.db.models import Count
 from datetime import date
 from dateutil.relativedelta import relativedelta
 from decimal import Decimal
 import json
+import os
 
-from .models import Account, Booking, Category, RecurringBooking, Payee
+from .models import Account, Booking, Category, RecurringBooking, Payee, DocumentUpload
 from .services import (
     calculate_actual_balance,
     calculate_forecast_balance,
@@ -20,6 +22,7 @@ from .services import (
     get_category_analysis,
     get_top_categories,
 )
+from .services.document_processor import get_mime_type
 
 
 def _build_total_liquidity_timeline(months=6, liquidity_relevant_only=False):
@@ -419,3 +422,167 @@ def payees(request):
     }
     
     return render(request, 'core/payees.html', context)
+
+
+@login_required
+def document_list(request):
+    """
+    Document upload and listing view.
+    Allows users to upload documents and see the list of recent uploads.
+    """
+    if request.method == 'POST' and request.FILES.get('document'):
+        # Handle file upload
+        uploaded_file = request.FILES['document']
+        
+        # Validate file type using file extension
+        allowed_extensions = ['.pdf', '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']
+        # Get file extension safely
+        _, file_ext = os.path.splitext(uploaded_file.name.lower())
+        
+        if not file_ext or file_ext not in allowed_extensions:
+            messages.error(request, 'Ungültiger Dateityp. Erlaubt sind: PDF, JPG, JPEG, PNG, GIF, BMP, WEBP')
+        else:
+            # Validate file size (max 10MB)
+            max_size = 10 * 1024 * 1024  # 10MB
+            if uploaded_file.size > max_size:
+                messages.error(request, 'Datei zu groß. Maximale Größe: 10 MB')
+            else:
+                # Create DocumentUpload
+                document = DocumentUpload.objects.create(
+                    file=uploaded_file,
+                    original_filename=uploaded_file.name,
+                    mime_type=get_mime_type(uploaded_file.name),
+                    file_size=uploaded_file.size,
+                    source='web',
+                    status=DocumentUpload.Status.UPLOADED
+                )
+                messages.success(request, f'Dokument "{uploaded_file.name}" erfolgreich hochgeladen!')
+                return redirect('document_list')
+    
+    # Get all documents ordered by upload date
+    documents = DocumentUpload.objects.all().order_by('-uploaded_at')
+    
+    # Count by status
+    status_counts = {
+        'uploaded': documents.filter(status=DocumentUpload.Status.UPLOADED).count(),
+        'processing': documents.filter(status=DocumentUpload.Status.AI_PROCESSING).count(),
+        'review': documents.filter(status=DocumentUpload.Status.REVIEW_PENDING).count(),
+        'booked': documents.filter(status=DocumentUpload.Status.BOOKED).count(),
+        'error': documents.filter(status=DocumentUpload.Status.ERROR).count(),
+    }
+    
+    context = {
+        'documents': documents,
+        'status_counts': status_counts,
+    }
+    
+    return render(request, 'core/document_list.html', context)
+
+
+@login_required
+def document_review_list(request):
+    """
+    List all documents pending review (status = REVIEW_PENDING).
+    """
+    documents = DocumentUpload.objects.filter(
+        status=DocumentUpload.Status.REVIEW_PENDING
+    ).order_by('-uploaded_at')
+    
+    context = {
+        'documents': documents,
+    }
+    
+    return render(request, 'core/document_review_list.html', context)
+
+
+@login_required
+def document_review_detail(request, document_id):
+    """
+    Detail view for reviewing a document and creating a booking.
+    """
+    document = get_object_or_404(DocumentUpload, id=document_id)
+    
+    if request.method == 'POST':
+        # Handle booking creation
+        try:
+            account_id = request.POST.get('account')
+            amount = request.POST.get('amount')
+            booking_date = request.POST.get('booking_date')
+            description = request.POST.get('description', '')
+            category_id = request.POST.get('category')
+            payee_id = request.POST.get('payee')
+            create_recurring = request.POST.get('create_recurring') == 'on'
+            
+            # Validate required fields
+            if not account_id or not amount or not booking_date:
+                messages.error(request, 'Konto, Betrag und Datum sind erforderlich.')
+                return redirect('document_review_detail', document_id=document_id)
+            
+            # Get account
+            account = get_object_or_404(Account, id=account_id, is_active=True)
+            
+            # Get category and payee (optional)
+            category = None
+            if category_id:
+                category = get_object_or_404(Category, id=category_id)
+            
+            payee = None
+            if payee_id:
+                payee = get_object_or_404(Payee, id=payee_id, is_active=True)
+            
+            # Create booking
+            booking = Booking.objects.create(
+                account=account,
+                amount=Decimal(amount),
+                booking_date=booking_date,
+                description=description,
+                category=category,
+                payee=payee,
+                status='POSTED'
+            )
+            
+            # Update document
+            document.booking = booking
+            document.status = DocumentUpload.Status.BOOKED
+            document.save()
+            
+            # Create recurring booking if requested
+            if create_recurring and document.suggested_is_recurring:
+                # Create recurring booking
+                recurring = RecurringBooking.objects.create(
+                    account=account,
+                    amount=Decimal(amount),
+                    description=description,
+                    category=category,
+                    payee=payee,
+                    start_date=booking_date,
+                    frequency='MONTHLY',
+                    interval=1,
+                    day_of_month=booking.booking_date.day,
+                    is_active=True,
+                    source='AI',
+                    is_confirmed=False
+                )
+                messages.success(request, f'Buchung und wiederkehrende Buchung erstellt!')
+            else:
+                messages.success(request, 'Buchung erfolgreich erstellt!')
+            
+            return redirect('document_review_list')
+            
+        except Exception as e:
+            messages.error(request, f'Fehler beim Erstellen der Buchung: {str(e)}')
+            return redirect('document_review_detail', document_id=document_id)
+    
+    # Get all accounts, categories, and payees for form
+    accounts = Account.objects.filter(is_active=True).order_by('name')
+    categories = Category.objects.all().order_by('name')
+    payees = Payee.objects.filter(is_active=True).order_by('name')
+    
+    context = {
+        'document': document,
+        'accounts': accounts,
+        'categories': categories,
+        'payees': payees,
+    }
+    
+    return render(request, 'core/document_review_detail.html', context)
