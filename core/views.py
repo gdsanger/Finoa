@@ -13,8 +13,8 @@ from .services import (
     create_transfer,
     generate_virtual_bookings,
     get_virtual_bookings_for_month,
+    get_total_liquidity,
 )
-from .services.finance_engine import get_total_liquidity
 
 
 def dashboard(request):
