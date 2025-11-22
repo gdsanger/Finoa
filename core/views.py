@@ -21,6 +21,39 @@ from .services import (
 )
 
 
+def _build_total_liquidity_timeline(months=6, liquidity_relevant_only=False):
+    """
+    Helper function to build timeline data for total liquidity or assets.
+    
+    Args:
+        months: Number of months to project
+        liquidity_relevant_only: Whether to include only liquidity-relevant accounts
+    
+    Returns:
+        dict: Timeline data with months, actual, and forecast arrays
+    """
+    timeline_months = []
+    timeline_actual = []
+    timeline_forecast = []
+    
+    for month_offset in range(months):
+        target_date = date.today() + relativedelta(months=month_offset)
+        end_of_month = (target_date.replace(day=1) + relativedelta(months=1)) - relativedelta(days=1)
+        
+        actual = get_total_liquidity(as_of_date=end_of_month, include_forecast=False, liquidity_relevant_only=liquidity_relevant_only)
+        forecast = get_total_liquidity(as_of_date=end_of_month, include_forecast=True, liquidity_relevant_only=liquidity_relevant_only)
+        
+        timeline_months.append(end_of_month.strftime('%b %Y'))
+        timeline_actual.append(float(actual))
+        timeline_forecast.append(float(forecast))
+    
+    return {
+        'months': timeline_months,
+        'actual': timeline_actual,
+        'forecast': timeline_forecast,
+    }
+
+
 def dashboard(request):
     """
     Dashboard view showing:
@@ -59,50 +92,12 @@ def dashboard(request):
     # Build timeline for liquidity chart (6 months)
     liquidity_timeline_data = None
     if accounts.exists():
-        timeline_months = []
-        timeline_actual = []
-        timeline_forecast = []
-        
-        for month_offset in range(6):
-            target_date = date.today() + relativedelta(months=month_offset)
-            end_of_month = (target_date.replace(day=1) + relativedelta(months=1)) - relativedelta(days=1)
-            
-            actual = get_total_liquidity(as_of_date=end_of_month, include_forecast=False, liquidity_relevant_only=True)
-            forecast = get_total_liquidity(as_of_date=end_of_month, include_forecast=True, liquidity_relevant_only=True)
-            
-            timeline_months.append(end_of_month.strftime('%b %Y'))
-            timeline_actual.append(float(actual))
-            timeline_forecast.append(float(forecast))
-        
-        liquidity_timeline_data = {
-            'months': timeline_months,
-            'actual': timeline_actual,
-            'forecast': timeline_forecast,
-        }
+        liquidity_timeline_data = _build_total_liquidity_timeline(months=6, liquidity_relevant_only=True)
     
     # Build timeline for assets chart (6 months)
     assets_timeline_data = None
     if accounts.exists():
-        timeline_months = []
-        timeline_actual = []
-        timeline_forecast = []
-        
-        for month_offset in range(6):
-            target_date = date.today() + relativedelta(months=month_offset)
-            end_of_month = (target_date.replace(day=1) + relativedelta(months=1)) - relativedelta(days=1)
-            
-            actual = get_total_liquidity(as_of_date=end_of_month, include_forecast=False, liquidity_relevant_only=False)
-            forecast = get_total_liquidity(as_of_date=end_of_month, include_forecast=True, liquidity_relevant_only=False)
-            
-            timeline_months.append(end_of_month.strftime('%b %Y'))
-            timeline_actual.append(float(actual))
-            timeline_forecast.append(float(forecast))
-        
-        assets_timeline_data = {
-            'months': timeline_months,
-            'actual': timeline_actual,
-            'forecast': timeline_forecast,
-        }
+        assets_timeline_data = _build_total_liquidity_timeline(months=6, liquidity_relevant_only=False)
     
     context = {
         'liquidity_actual': liquidity_actual,
@@ -144,10 +139,14 @@ def accounts(request):
 def account_detail(request, account_id):
     """
     Account detail view showing:
-    - Account summary
+    - Account summary with booking counts
+    - Current and forecast balances
     - 6-month forecast chart
-    - Bookings for current month
-    - CRUD operations for bookings and recurring bookings
+    - Bookings for selected month (posted, planned, and virtual from recurring)
+    - Recurring bookings management (links to admin interface for CRUD)
+    
+    Note: Full CRUD operations within this view are planned for future implementation with HTMX.
+    Currently provides read access and links to admin interface for create/update/delete operations.
     """
     account = get_object_or_404(Account, id=account_id, is_active=True)
     
