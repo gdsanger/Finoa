@@ -8,43 +8,85 @@
         <i class="bi bi-speedometer2"></i> Dashboard
     </h1>
 
-    <!-- Total Liquidity Summary -->
+    <!-- Liquidity & Assets Summary -->
     <div class="row mb-4">
-        <div class="col-md-6">
+        <div class="col-md-3">
             <div class="card card-finoa summary-card">
                 <div class="card-body">
-                    <div class="label">Gesamtliquidität (Ist)</div>
-                    <div class="value {% if total_actual >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
-                        {{ total_actual|floatformat:2 }} €
+                    <div class="label">Liquidität (Ist)</div>
+                    <div class="value {% if liquidity_actual >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
+                        {{ liquidity_actual|floatformat:2 }} €
                     </div>
+                    <small class="text-muted">Nur liquiditätsrelevant</small>
                 </div>
             </div>
         </div>
-        <div class="col-md-6">
+        <div class="col-md-3">
             <div class="card card-finoa summary-card">
                 <div class="card-body">
-                    <div class="label">Gesamtliquidität (Forecast)</div>
-                    <div class="value {% if total_forecast >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
-                        {{ total_forecast|floatformat:2 }} €
+                    <div class="label">Liquidität (Forecast)</div>
+                    <div class="value {% if liquidity_forecast >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
+                        {{ liquidity_forecast|floatformat:2 }} €
                     </div>
+                    <small class="text-muted">Nur liquiditätsrelevant</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card card-finoa summary-card">
+                <div class="card-body">
+                    <div class="label">Gesamt-Vermögen (Ist)</div>
+                    <div class="value {% if assets_actual >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
+                        {{ assets_actual|floatformat:2 }} €
+                    </div>
+                    <small class="text-muted">Alle Konten</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card card-finoa summary-card">
+                <div class="card-body">
+                    <div class="label">Gesamt-Vermögen (Forecast)</div>
+                    <div class="value {% if assets_forecast >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
+                        {{ assets_forecast|floatformat:2 }} €
+                    </div>
+                    <small class="text-muted">Alle Konten</small>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- 6-Month Forecast Chart -->
-    {% if timeline_data %}
-    <div class="card card-finoa">
-        <div class="card-header">
-            <h5 class="mb-0">6-Monats Forecast</h5>
-        </div>
-        <div class="card-body">
-            <div class="chart-container">
-                <canvas id="forecastChart"></canvas>
+    <!-- 6-Month Forecast Charts -->
+    <div class="row mb-4">
+        <div class="col-lg-6">
+            {% if liquidity_timeline_data %}
+            <div class="card card-finoa">
+                <div class="card-header">
+                    <h5 class="mb-0">Liquiditäts-Forecast (6 Monate)</h5>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="liquidityForecastChart"></canvas>
+                    </div>
+                </div>
             </div>
+            {% endif %}
+        </div>
+        <div class="col-lg-6">
+            {% if assets_timeline_data %}
+            <div class="card card-finoa">
+                <div class="card-header">
+                    <h5 class="mb-0">Vermögens-Forecast (6 Monate)</h5>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="assetsForecastChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
         </div>
     </div>
-    {% endif %}
 
     <!-- Account Summaries -->
     <div class="card card-finoa mt-4">
@@ -59,24 +101,35 @@
                             <th>Konto</th>
                             <th>Typ</th>
                             <th class="text-end">Ist-Saldo</th>
-                            <th class="text-end">Forecast-Saldo</th>
+                            <th class="text-end">Forecast-Saldo (Monatsende)</th>
+                            <th class="text-center">Aktionen</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for item in account_summaries %}
                         <tr class="account-{{ item.account.type }}">
-                            <td><strong>{{ item.account.name }}</strong></td>
+                            <td>
+                                <a href="{% url 'account_detail' item.account.id %}" class="text-decoration-none">
+                                    <strong>{{ item.account.name }}</strong>
+                                </a>
+                            </td>
                             <td>{{ item.account.get_type_display }}</td>
                             <td class="text-end {% if item.actual_balance >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
                                 {{ item.actual_balance|floatformat:2 }} €
                             </td>
-                            <td class="text-end {% if item.forecast_balance >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
-                                {{ item.forecast_balance|floatformat:2 }} €
+                            <td class="text-end {% if item.forecast_balance_eom >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
+                                {{ item.forecast_balance_eom|floatformat:2 }} €
+                                <small class="text-muted">({{ item.forecast_balance_today|floatformat:2 }} €)</small>
+                            </td>
+                            <td class="text-center">
+                                <a href="{% url 'account_detail' item.account.id %}" class="btn btn-sm btn-finoa-secondary">
+                                    <i class="bi bi-eye"></i> Details
+                                </a>
                             </td>
                         </tr>
                         {% empty %}
                         <tr>
-                            <td colspan="4" class="text-center text-muted">
+                            <td colspan="5" class="text-center text-muted">
                                 Keine aktiven Konten vorhanden
                             </td>
                         </tr>
@@ -90,17 +143,17 @@
 {% endblock %}
 
 {% block extra_js %}
-{% if timeline_data %}
+{% if liquidity_timeline_data %}
 <script>
-    const ctx = document.getElementById('forecastChart').getContext('2d');
-    const forecastChart = new Chart(ctx, {
+    const liquidityCtx = document.getElementById('liquidityForecastChart').getContext('2d');
+    const liquidityForecastChart = new Chart(liquidityCtx, {
         type: 'line',
         data: {
-            labels: {{ timeline_data.months|safe }},
+            labels: {{ liquidity_timeline_data.months|safe }},
             datasets: [
                 {
                     label: 'Ist-Saldo',
-                    data: {{ timeline_data.actual|safe }},
+                    data: {{ liquidity_timeline_data.actual|safe }},
                     borderColor: '#3A6EA5',
                     backgroundColor: 'rgba(58, 110, 165, 0.1)',
                     tension: 0.4,
@@ -108,7 +161,66 @@
                 },
                 {
                     label: 'Forecast-Saldo',
-                    data: {{ timeline_data.forecast|safe }},
+                    data: {{ liquidity_timeline_data.forecast|safe }},
+                    borderColor: '#39A77B',
+                    backgroundColor: 'rgba(57, 167, 123, 0.1)',
+                    tension: 0.4,
+                    fill: true,
+                    borderDash: [5, 5]
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return context.dataset.label + ': ' + 
+                                   context.parsed.y.toFixed(2) + ' €';
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: false,
+                    ticks: {
+                        callback: function(value) {
+                            return value.toFixed(0) + ' €';
+                        }
+                    }
+                }
+            }
+        }
+    });
+</script>
+{% endif %}
+
+{% if assets_timeline_data %}
+<script>
+    const assetsCtx = document.getElementById('assetsForecastChart').getContext('2d');
+    const assetsForecastChart = new Chart(assetsCtx, {
+        type: 'line',
+        data: {
+            labels: {{ assets_timeline_data.months|safe }},
+            datasets: [
+                {
+                    label: 'Ist-Saldo',
+                    data: {{ assets_timeline_data.actual|safe }},
+                    borderColor: '#3A6EA5',
+                    backgroundColor: 'rgba(58, 110, 165, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                },
+                {
+                    label: 'Forecast-Saldo',
+                    data: {{ assets_timeline_data.forecast|safe }},
                     borderColor: '#39A77B',
                     backgroundColor: 'rgba(57, 167, 123, 0.1)',
                     tension: 0.4,

@@ -1,0 +1,423 @@
+{% extends 'core/base.html' %}
+
+{% block title %}{{ account.name }} - Finoa{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>
+            <i class="bi bi-wallet2"></i> {{ account.name }}
+        </h1>
+        <a href="{% url 'accounts' %}" class="btn btn-finoa-secondary">
+            <i class="bi bi-arrow-left"></i> Zurück zur Übersicht
+        </a>
+    </div>
+
+    <!-- Account Summary Cards -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card card-finoa summary-card">
+                <div class="card-body">
+                    <div class="label">Gebucht</div>
+                    <div class="value">{{ posted_count }}</div>
+                    <small class="text-muted">Buchungen</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card card-finoa summary-card">
+                <div class="card-body">
+                    <div class="label">Geplant</div>
+                    <div class="value">{{ planned_count }}</div>
+                    <small class="text-muted">Buchungen</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card card-finoa summary-card">
+                <div class="card-body">
+                    <div class="label">Serie</div>
+                    <div class="value">{{ recurring_count }}</div>
+                    <small class="text-muted">Wiederkehrend</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Balance Summary -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card card-finoa summary-card">
+                <div class="card-body">
+                    <div class="label">Aktueller Ist-Saldo</div>
+                    <div class="value {% if actual_balance >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
+                        {{ actual_balance|floatformat:2 }} €
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card card-finoa summary-card">
+                <div class="card-body">
+                    <div class="label">Forecast-Saldo</div>
+                    <div class="value {% if forecast_balance >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
+                        {{ forecast_balance|floatformat:2 }} €
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 6-Month Forecast Chart -->
+    <div class="card card-finoa mb-4">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="bi bi-graph-up"></i> 6-Monats Forecast</h5>
+        </div>
+        <div class="card-body">
+            <div class="chart-container">
+                <canvas id="accountForecastChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Month Navigation -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3>Buchungen für {{ month_name }}</h3>
+        <div class="btn-group" role="group">
+            <a href="?year={{ prev_year }}&month={{ prev_month }}" class="btn btn-finoa-secondary">
+                <i class="bi bi-chevron-left"></i> Vorheriger Monat
+            </a>
+            <a href="?year={{ next_year }}&month={{ next_month }}" class="btn btn-finoa-secondary">
+                Nächster Monat <i class="bi bi-chevron-right"></i>
+            </a>
+        </div>
+    </div>
+
+    <!-- Posted Bookings -->
+    <div class="card card-finoa mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="bi bi-check-circle"></i> Gebuchte Buchungen ({{ posted_count }})</h5>
+            <button class="btn btn-finoa-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addBookingModal">
+                <i class="bi bi-plus-circle"></i> Neue Buchung
+            </button>
+        </div>
+        <div class="card-body">
+            {% if posted_bookings %}
+            <div class="table-responsive">
+                <table class="table table-finoa">
+                    <thead>
+                        <tr>
+                            <th>Datum</th>
+                            <th>Beschreibung</th>
+                            <th>Kategorie</th>
+                            <th>Empfänger</th>
+                            <th class="text-end">Betrag</th>
+                            <th class="text-center">Aktionen</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for booking in posted_bookings %}
+                        <tr>
+                            <td>{{ booking.booking_date|date:"d.m.Y" }}</td>
+                            <td>{{ booking.description }}</td>
+                            <td>
+                                {% if booking.category %}
+                                    <span class="badge bg-info">{{ booking.category.name }}</span>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if booking.payee %}
+                                    {{ booking.payee.name }}
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end {% if booking.amount >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
+                                <strong>{{ booking.amount|floatformat:2 }} €</strong>
+                            </td>
+                            <td class="text-center">
+                                <a href="/admin/core/booking/{{ booking.id }}/change/" class="btn btn-sm btn-outline-secondary">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted text-center py-3">Keine gebuchten Buchungen in diesem Monat</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Planned Bookings -->
+    <div class="card card-finoa mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="bi bi-calendar-check"></i> Geplante Buchungen ({{ planned_count }})</h5>
+        </div>
+        <div class="card-body">
+            {% if planned_bookings %}
+            <div class="table-responsive">
+                <table class="table table-finoa">
+                    <thead>
+                        <tr>
+                            <th>Datum</th>
+                            <th>Beschreibung</th>
+                            <th>Kategorie</th>
+                            <th>Empfänger</th>
+                            <th class="text-end">Betrag</th>
+                            <th class="text-center">Aktionen</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for booking in planned_bookings %}
+                        <tr>
+                            <td>{{ booking.booking_date|date:"d.m.Y" }}</td>
+                            <td>{{ booking.description }}</td>
+                            <td>
+                                {% if booking.category %}
+                                    <span class="badge bg-warning">{{ booking.category.name }}</span>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if booking.payee %}
+                                    {{ booking.payee.name }}
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end {% if booking.amount >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
+                                <strong>{{ booking.amount|floatformat:2 }} €</strong>
+                            </td>
+                            <td class="text-center">
+                                <a href="/admin/core/booking/{{ booking.id }}/change/" class="btn btn-sm btn-outline-secondary">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted text-center py-3">Keine geplanten Buchungen in diesem Monat</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Virtual Bookings from Recurring -->
+    {% if virtual_bookings %}
+    <div class="card card-finoa mb-4">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="bi bi-arrow-repeat"></i> Virtuelle Buchungen (Serien)</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-finoa">
+                    <thead>
+                        <tr>
+                            <th>Datum</th>
+                            <th>Beschreibung</th>
+                            <th>Kategorie</th>
+                            <th class="text-end">Betrag</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for booking in virtual_bookings %}
+                        <tr class="table-secondary">
+                            <td>{{ booking.booking_date|date:"d.m.Y" }}</td>
+                            <td>{{ booking.description }} <span class="badge bg-secondary">virtuell</span></td>
+                            <td>
+                                {% if booking.category %}
+                                    <span class="badge bg-info">{{ booking.category.name }}</span>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end {% if booking.amount >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
+                                <strong>{{ booking.amount|floatformat:2 }} €</strong>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Recurring Bookings Management -->
+    <div class="card card-finoa mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="bi bi-arrow-repeat"></i> Wiederkehrende Buchungen ({{ recurring_count }})</h5>
+            <a href="/admin/core/recurringbooking/add/?account={{ account.id }}" class="btn btn-finoa-primary btn-sm">
+                <i class="bi bi-plus-circle"></i> Neue Serie
+            </a>
+        </div>
+        <div class="card-body">
+            {% if recurring_bookings %}
+            <div class="table-responsive">
+                <table class="table table-finoa">
+                    <thead>
+                        <tr>
+                            <th>Beschreibung</th>
+                            <th>Kategorie</th>
+                            <th>Tag im Monat</th>
+                            <th>Zeitraum</th>
+                            <th class="text-end">Betrag</th>
+                            <th class="text-center">Aktionen</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for rb in recurring_bookings %}
+                        <tr>
+                            <td>{{ rb.description }}</td>
+                            <td>
+                                {% if rb.category %}
+                                    <span class="badge bg-info">{{ rb.category.name }}</span>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ rb.day_of_month }}.</td>
+                            <td>
+                                {{ rb.start_date|date:"d.m.Y" }}
+                                {% if rb.end_date %}
+                                    - {{ rb.end_date|date:"d.m.Y" }}
+                                {% else %}
+                                    - unbegrenzt
+                                {% endif %}
+                            </td>
+                            <td class="text-end {% if rb.amount >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
+                                <strong>{{ rb.amount|floatformat:2 }} €</strong>
+                            </td>
+                            <td class="text-center">
+                                <a href="/admin/core/recurringbooking/{{ rb.id }}/change/" class="btn btn-sm btn-outline-secondary">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted text-center py-3">Keine wiederkehrenden Buchungen definiert</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Account Info -->
+    <div class="card card-finoa">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="bi bi-info-circle"></i> Konto-Informationen</h5>
+        </div>
+        <div class="card-body">
+            <dl class="row mb-0">
+                <dt class="col-sm-3">Typ:</dt>
+                <dd class="col-sm-9">{{ account.get_type_display }}</dd>
+                
+                <dt class="col-sm-3">Startsaldo:</dt>
+                <dd class="col-sm-9">{{ account.initial_balance|floatformat:2 }} €</dd>
+                
+                <dt class="col-sm-3">Liquiditätsrelevant:</dt>
+                <dd class="col-sm-9">
+                    {% if account.is_liquidity_relevant %}
+                        <span class="badge bg-success">Ja</span>
+                    {% else %}
+                        <span class="badge bg-secondary">Nein</span>
+                    {% endif %}
+                </dd>
+                
+                <dt class="col-sm-3">Erstellt:</dt>
+                <dd class="col-sm-9">{{ account.created_at|date:"d.m.Y H:i" }}</dd>
+            </dl>
+        </div>
+    </div>
+</div>
+
+<!-- Add Booking Modal (Placeholder for future HTMX implementation) -->
+<div class="modal fade" id="addBookingModal" tabindex="-1" aria-labelledby="addBookingModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addBookingModalLabel">Neue Buchung</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted">
+                    CRUD-Funktionalität für Buchungen wird in einer zukünftigen Version direkt hier integriert.
+                    Verwenden Sie vorerst den Admin-Bereich zur Bearbeitung.
+                </p>
+                <a href="/admin/core/booking/add/?account={{ account.id }}" class="btn btn-finoa-primary">
+                    <i class="bi bi-plus-circle"></i> Im Admin-Bereich anlegen
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const ctx = document.getElementById('accountForecastChart').getContext('2d');
+    const forecastChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: {{ timeline_data.months|safe }},
+            datasets: [
+                {
+                    label: 'Ist-Saldo',
+                    data: {{ timeline_data.actual|safe }},
+                    borderColor: '#3A6EA5',
+                    backgroundColor: 'rgba(58, 110, 165, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                },
+                {
+                    label: 'Forecast-Saldo',
+                    data: {{ timeline_data.forecast|safe }},
+                    borderColor: '#39A77B',
+                    backgroundColor: 'rgba(57, 167, 123, 0.1)',
+                    tension: 0.4,
+                    fill: true,
+                    borderDash: [5, 5]
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return context.dataset.label + ': ' + 
+                                   context.parsed.y.toFixed(2) + ' €';
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: false,
+                    ticks: {
+                        callback: function(value) {
+                            return value.toFixed(0) + ' €';
+                        }
+                    }
+                }
+            }
+        }
+    });
+</script>
+{% endblock %}

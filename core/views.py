@@ -23,62 +23,92 @@ from .services import (
 
 
 @login_required
+def _build_total_liquidity_timeline(months=6, liquidity_relevant_only=False):
+    """
+    Helper function to build timeline data for total liquidity or assets.
+    
+    Args:
+        months: Number of months to project
+        liquidity_relevant_only: Whether to include only liquidity-relevant accounts
+    
+    Returns:
+        dict: Timeline data with months, actual, and forecast arrays
+    """
+    timeline_months = []
+    timeline_actual = []
+    timeline_forecast = []
+    
+    for month_offset in range(months):
+        target_date = date.today() + relativedelta(months=month_offset)
+        end_of_month = (target_date.replace(day=1) + relativedelta(months=1)) - relativedelta(days=1)
+        
+        actual = get_total_liquidity(as_of_date=end_of_month, include_forecast=False, liquidity_relevant_only=liquidity_relevant_only)
+        forecast = get_total_liquidity(as_of_date=end_of_month, include_forecast=True, liquidity_relevant_only=liquidity_relevant_only)
+        
+        timeline_months.append(end_of_month.strftime('%b %Y'))
+        timeline_actual.append(float(actual))
+        timeline_forecast.append(float(forecast))
+    
+    return {
+        'months': timeline_months,
+        'actual': timeline_actual,
+        'forecast': timeline_forecast,
+    }
+
+
 def dashboard(request):
     """
     Dashboard view showing:
-    - Total liquidity (actual & forecast)
-    - Summary of all accounts
-    - 6-month forecast chart
+    - Total liquidity (actual & forecast) - only liquidity-relevant accounts
+    - Total assets (actual & forecast) - all accounts
+    - Summary of all accounts with end-of-month forecast
+    - 6-month forecast charts (liquidity and assets)
     """
     accounts = Account.objects.filter(is_active=True)
     
-    # Calculate total liquidity
-    total_actual = get_total_liquidity(include_forecast=False)
-    total_forecast = get_total_liquidity(include_forecast=True)
+    # Calculate total liquidity (liquidity-relevant accounts only)
+    liquidity_actual = get_total_liquidity(include_forecast=False, liquidity_relevant_only=True)
+    liquidity_forecast = get_total_liquidity(include_forecast=True, liquidity_relevant_only=True)
     
-    # Prepare account summaries
+    # Calculate total assets (all accounts)
+    assets_actual = get_total_liquidity(include_forecast=False, liquidity_relevant_only=False)
+    assets_forecast = get_total_liquidity(include_forecast=True, liquidity_relevant_only=False)
+    
+    # Prepare account summaries with end-of-month forecast
     account_summaries = []
+    today = date.today()
+    end_of_current_month = (today.replace(day=1) + relativedelta(months=1)) - relativedelta(days=1)
+    
     for account in accounts:
         actual_balance = calculate_actual_balance(account)
-        forecast_balance = calculate_forecast_balance(account)
+        forecast_balance_today = calculate_forecast_balance(account, as_of_date=today)
+        forecast_balance_eom = calculate_forecast_balance(account, as_of_date=end_of_current_month)
         
         account_summaries.append({
             'account': account,
             'actual_balance': actual_balance,
-            'forecast_balance': forecast_balance,
+            'forecast_balance_today': forecast_balance_today,
+            'forecast_balance_eom': forecast_balance_eom,
         })
     
-    # Build timeline for chart (6 months)
-    # Use first account for demo, or aggregate in future
-    timeline_data = None
+    # Build timeline for liquidity chart (6 months)
+    liquidity_timeline_data = None
     if accounts.exists():
-        # For simplicity, show timeline of total liquidity
-        timeline_months = []
-        timeline_actual = []
-        timeline_forecast = []
-        
-        for month_offset in range(6):
-            target_date = date.today() + relativedelta(months=month_offset)
-            end_of_month = (target_date.replace(day=1) + relativedelta(months=1)) - relativedelta(days=1)
-            
-            actual = get_total_liquidity(as_of_date=end_of_month, include_forecast=False)
-            forecast = get_total_liquidity(as_of_date=end_of_month, include_forecast=True)
-            
-            timeline_months.append(end_of_month.strftime('%b %Y'))
-            timeline_actual.append(float(actual))
-            timeline_forecast.append(float(forecast))
-        
-        timeline_data = {
-            'months': timeline_months,
-            'actual': timeline_actual,
-            'forecast': timeline_forecast,
-        }
+        liquidity_timeline_data = _build_total_liquidity_timeline(months=6, liquidity_relevant_only=True)
+    
+    # Build timeline for assets chart (6 months)
+    assets_timeline_data = None
+    if accounts.exists():
+        assets_timeline_data = _build_total_liquidity_timeline(months=6, liquidity_relevant_only=False)
     
     context = {
-        'total_actual': total_actual,
-        'total_forecast': total_forecast,
+        'liquidity_actual': liquidity_actual,
+        'liquidity_forecast': liquidity_forecast,
+        'assets_actual': assets_actual,
+        'assets_forecast': assets_forecast,
         'account_summaries': account_summaries,
-        'timeline_data': timeline_data,
+        'liquidity_timeline_data': liquidity_timeline_data,
+        'assets_timeline_data': assets_timeline_data,
     }
     
     return render(request, 'core/dashboard.html', context)
@@ -87,7 +117,7 @@ def dashboard(request):
 @login_required
 def accounts(request):
     """
-    Accounts overview showing all accounts with balances and forecast charts
+    Accounts overview showing all accounts with balances (without forecast charts)
     """
     accounts = Account.objects.filter(is_active=True)
     
@@ -96,20 +126,10 @@ def accounts(request):
         actual_balance = calculate_actual_balance(account)
         forecast_balance = calculate_forecast_balance(account)
         
-        # Build 6-month timeline for this account
-        timeline = build_account_timeline(account, months=6, include_forecast=True)
-        
-        timeline_data = {
-            'months': [t['date'].strftime('%b %Y') for t in timeline],
-            'actual': [float(t['actual_balance']) for t in timeline],
-            'forecast': [float(t['forecast_balance']) for t in timeline],
-        }
-        
         account_list.append({
             'account': account,
             'actual_balance': actual_balance,
             'forecast_balance': forecast_balance,
-            'timeline_data': timeline_data,
         })
     
     context = {
@@ -120,6 +140,100 @@ def accounts(request):
 
 
 @login_required
+def account_detail(request, account_id):
+    """
+    Account detail view showing:
+    - Account summary with booking counts
+    - Current and forecast balances
+    - 6-month forecast chart
+    - Bookings for selected month (posted, planned, and virtual from recurring)
+    - Recurring bookings management (links to admin interface for CRUD)
+    
+    Note: Full CRUD operations within this view are planned for future implementation with HTMX.
+    Currently provides read access and links to admin interface for create/update/delete operations.
+    """
+    account = get_object_or_404(Account, id=account_id, is_active=True)
+    
+    # Get current year and month
+    year = int(request.GET.get('year', date.today().year))
+    month = int(request.GET.get('month', date.today().month))
+    
+    # Calculate balances
+    actual_balance = calculate_actual_balance(account)
+    forecast_balance = calculate_forecast_balance(account)
+    
+    # Build 6-month timeline for this account
+    timeline = build_account_timeline(account, months=6, include_forecast=True)
+    
+    timeline_data = {
+        'months': [t['date'].strftime('%b %Y') for t in timeline],
+        'actual': [float(t['actual_balance']) for t in timeline],
+        'forecast': [float(t['forecast_balance']) for t in timeline],
+    }
+    
+    # Get bookings for the current/selected month
+    start_of_month = date(year, month, 1)
+    end_of_month = (start_of_month + relativedelta(months=1)) - relativedelta(days=1)
+    
+    posted_bookings = Booking.objects.filter(
+        account=account,
+        booking_date__gte=start_of_month,
+        booking_date__lte=end_of_month,
+        status='POSTED'
+    ).order_by('-booking_date')
+    
+    planned_bookings = Booking.objects.filter(
+        account=account,
+        booking_date__gte=start_of_month,
+        booking_date__lte=end_of_month,
+        status='PLANNED'
+    ).order_by('-booking_date')
+    
+    # Get virtual bookings from recurring
+    virtual_bookings = get_virtual_bookings_for_month(account, year, month)
+    
+    # Get all recurring bookings for this account
+    recurring_bookings = RecurringBooking.objects.filter(
+        account=account,
+        is_active=True
+    ).order_by('day_of_month')
+    
+    # Count bookings
+    posted_count = posted_bookings.count()
+    planned_count = planned_bookings.count()
+    recurring_count = recurring_bookings.count()
+    
+    # Prepare navigation (prev/next month)
+    prev_month_date = date(year, month, 1) - relativedelta(months=1)
+    next_month_date = date(year, month, 1) + relativedelta(months=1)
+    
+    context = {
+        'account': account,
+        'actual_balance': actual_balance,
+        'forecast_balance': forecast_balance,
+        'timeline_data': timeline_data,
+        'year': year,
+        'month': month,
+        'month_name': date(year, month, 1).strftime('%B %Y'),
+        'posted_bookings': posted_bookings,
+        'planned_bookings': planned_bookings,
+        'virtual_bookings': virtual_bookings,
+        'recurring_bookings': recurring_bookings,
+        'posted_count': posted_count,
+        'planned_count': planned_count,
+        'recurring_count': recurring_count,
+        'prev_year': prev_month_date.year,
+        'prev_month': prev_month_date.month,
+        'next_year': next_month_date.year,
+        'next_month': next_month_date.month,
+        'categories': Category.objects.all(),
+        'all_accounts': Account.objects.filter(is_active=True),
+        'payees': Payee.objects.filter(is_active=True),
+    }
+    
+    return render(request, 'core/account_detail.html', context)
+
+
 def monthly_view(request):
     """
     Monthly view showing bookings for a specific month and account
