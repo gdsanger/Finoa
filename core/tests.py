@@ -859,6 +859,50 @@ class DocumentProcessorTest(TestCase):
         self.assertEqual(get_mime_type('test.jpeg'), 'image/jpeg')
         self.assertEqual(get_mime_type('test.png'), 'image/png')
     
+    def test_is_image_mime_type(self):
+        """Test image MIME type detection"""
+        from .services.document_processor import is_image_mime_type
+        
+        # Test image types
+        self.assertTrue(is_image_mime_type('image/jpeg'))
+        self.assertTrue(is_image_mime_type('image/png'))
+        self.assertTrue(is_image_mime_type('image/gif'))
+        self.assertTrue(is_image_mime_type('image/webp'))
+        
+        # Test non-image types
+        self.assertFalse(is_image_mime_type('application/pdf'))
+        self.assertFalse(is_image_mime_type('text/plain'))
+        self.assertFalse(is_image_mime_type('application/json'))
+    
+    def test_extract_text_from_pdf(self):
+        """Test PDF text extraction"""
+        from .services.document_processor import extract_text_from_pdf
+        import tempfile
+        import fitz  # PyMuPDF
+        
+        # Create a temporary PDF with some text
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_file:
+            tmp_path = tmp_file.name
+            
+        try:
+            # Create a simple PDF with PyMuPDF
+            doc = fitz.open()
+            page = doc.new_page()
+            page.insert_text((50, 50), "Test Invoice\nAmount: 99.99 EUR\nDate: 2024-01-15")
+            doc.save(tmp_path)
+            doc.close()
+            
+            # Extract text
+            extracted_text = extract_text_from_pdf(tmp_path)
+            
+            # Verify text extraction
+            self.assertIn("Test Invoice", extracted_text)
+            self.assertIn("99.99", extracted_text)
+            self.assertIn("2024-01-15", extracted_text)
+        finally:
+            import os
+            os.unlink(tmp_path)
+    
     def test_map_to_database_objects_basic(self):
         """Test mapping extracted data to database objects"""
         from .services.document_processor import map_to_database_objects
