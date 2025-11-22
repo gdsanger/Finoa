@@ -8,6 +8,12 @@ import requests
 from django.core.exceptions import ImproperlyConfigured
 
 
+# Default fallback values for KIGate API
+DEFAULT_PROVIDER = "gemma3"
+DEFAULT_MODEL = "ollama"
+DEFAULT_USER_ID = "default"
+
+
 @dataclass
 class KIGateResponse:
     """Response wrapper for KIGate API calls."""
@@ -67,14 +73,14 @@ def execute_agent(
         config = get_active_kigate_config()
         
         # Get user_id and ensure it's not empty (API requires at least 1 character)
-        user_id_value = user_id or config.default_user_id or "default"
+        user_id_value = user_id or config.default_user_id or DEFAULT_USER_ID
         
         # Build request payload according to API schema
         payload = {
             "message": prompt,  # API expects 'message', not 'prompt'
             "agent_name": agent_name or config.default_agent_name,
-            "provider": provider or config.default_provider or "gemma3",
-            "model": model or config.default_model or "ollama",
+            "provider": provider or config.default_provider or DEFAULT_PROVIDER,
+            "model": model or config.default_model or DEFAULT_MODEL,
             "user_id": user_id_value,
             "max_tokens": max_tokens or config.max_tokens,
             "temperature": temperature,
