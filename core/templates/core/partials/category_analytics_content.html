@@ -153,106 +153,122 @@
 <!-- Chart.js Scripts -->
 {% if expense_labels %}
 <script>
-// Finoa color palette for charts
-const finoaColors = [
-    '#39A77B', // Finoa Green
-    '#3A6EA5', // Finoa Blue
-    '#5AB88D', // Light Green
-    '#4D7EB8', // Light Blue
-    '#2D8962', // Dark Green
-    '#2E5684', // Dark Blue
-    '#7CC4A5', // Pale Green
-    '#7FA3C9', // Pale Blue
-    '#1F6A4D', // Deep Green
-    '#1F4566', // Deep Blue
-];
+(function() {
+    // Finoa color palette for charts
+    const finoaColors = [
+        '#39A77B', // Finoa Green
+        '#3A6EA5', // Finoa Blue
+        '#5AB88D', // Light Green
+        '#4D7EB8', // Light Blue
+        '#2D8962', // Dark Green
+        '#2E5684', // Dark Blue
+        '#7CC4A5', // Pale Green
+        '#7FA3C9', // Pale Blue
+        '#1F6A4D', // Deep Green
+        '#1F4566', // Deep Blue
+    ];
 
-// Donut Chart: Expenses by Category
-const expenseDonutCtx = document.getElementById('expenseDonutChart').getContext('2d');
-const expenseDonutChart = new Chart(expenseDonutCtx, {
-    type: 'doughnut',
-    data: {
-        labels: {{ expense_labels|safe }},
-        datasets: [{
-            data: {{ expense_data|safe }},
-            backgroundColor: finoaColors,
-            borderWidth: 2,
-            borderColor: '#fff'
-        }]
-    },
-    options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            legend: {
-                position: 'bottom',
-                labels: {
-                    padding: 15,
-                    font: {
-                        size: 12
+    // Destroy existing chart if it exists
+    const existingExpenseChart = Chart.getChart('expenseDonutChart');
+    if (existingExpenseChart) {
+        existingExpenseChart.destroy();
+    }
+
+    // Donut Chart: Expenses by Category
+    const expenseDonutCtx = document.getElementById('expenseDonutChart').getContext('2d');
+    const expenseDonutChart = new Chart(expenseDonutCtx, {
+        type: 'doughnut',
+        data: {
+            labels: {{ expense_labels|safe }},
+            datasets: [{
+                data: {{ expense_data|safe }},
+                backgroundColor: finoaColors,
+                borderWidth: 2,
+                borderColor: '#fff'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        padding: 15,
+                        font: {
+                            size: 12
+                        }
                     }
-                }
-            },
-            tooltip: {
-                callbacks: {
-                    label: function(context) {
-                        const label = context.label || '';
-                        const value = context.parsed || 0;
-                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                        const percentage = ((value / total) * 100).toFixed(1);
-                        return label + ': ' + value.toFixed(2) + ' € (' + percentage + '%)';
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const label = context.label || '';
+                            const value = context.parsed || 0;
+                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            const percentage = ((value / total) * 100).toFixed(1);
+                            return label + ': ' + value.toFixed(2) + ' € (' + percentage + '%)';
+                        }
                     }
                 }
             }
         }
-    }
-});
+    });
+})();
 </script>
 {% endif %}
 
 {% if top_labels %}
 <script>
-// Bar Chart: Top Categories
-const topCategoriesCtx = document.getElementById('topCategoriesChart').getContext('2d');
-const topCategoriesChart = new Chart(topCategoriesCtx, {
-    type: 'bar',
-    data: {
-        labels: {{ top_labels|safe }},
-        datasets: [{
-            label: 'Ausgaben',
-            data: {{ top_data|safe }},
-            backgroundColor: '#39A77B',
-            borderColor: '#2d8962',
-            borderWidth: 1
-        }]
-    },
-    options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        indexAxis: 'y',
-        plugins: {
-            legend: {
-                display: false
-            },
-            tooltip: {
-                callbacks: {
-                    label: function(context) {
-                        return context.parsed.x.toFixed(2) + ' €';
+(function() {
+    // Destroy existing chart if it exists
+    const existingTopChart = Chart.getChart('topCategoriesChart');
+    if (existingTopChart) {
+        existingTopChart.destroy();
+    }
+
+    // Bar Chart: Top Categories
+    const topCategoriesCtx = document.getElementById('topCategoriesChart').getContext('2d');
+    const topCategoriesChart = new Chart(topCategoriesCtx, {
+        type: 'bar',
+        data: {
+            labels: {{ top_labels|safe }},
+            datasets: [{
+                label: 'Ausgaben',
+                data: {{ top_data|safe }},
+                backgroundColor: '#39A77B',
+                borderColor: '#2d8962',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            indexAxis: 'y',
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return context.parsed.x.toFixed(2) + ' €';
+                        }
                     }
                 }
-            }
-        },
-        scales: {
-            x: {
-                beginAtZero: true,
-                ticks: {
-                    callback: function(value) {
-                        return value.toFixed(0) + ' €';
+            },
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return value.toFixed(0) + ' €';
+                        }
                     }
                 }
             }
         }
-    }
-});
+    });
+})();
 </script>
 {% endif %}

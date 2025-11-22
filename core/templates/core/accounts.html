@@ -31,7 +31,11 @@
                     <tbody>
                         {% for item in account_list %}
                         <tr class="account-{{ item.account.type }}">
-                            <td><strong>{{ item.account.name }}</strong></td>
+                            <td>
+                                <a href="{% url 'account_detail' item.account.id %}" class="text-decoration-none">
+                                    <strong>{{ item.account.name }}</strong>
+                                </a>
+                            </td>
                             <td>
                                 <span class="badge bg-secondary">
                                     {{ item.account.get_type_display }}
@@ -47,9 +51,9 @@
                                 {{ item.forecast_balance|floatformat:2 }} €
                             </td>
                             <td class="text-center">
-                                <a href="{% url 'monthly_view' %}?account_id={{ item.account.id }}" 
-                                   class="btn btn-sm btn-finoa-secondary">
-                                    <i class="bi bi-calendar-month"></i> Buchungen
+                                <a href="{% url 'account_detail' item.account.id %}" 
+                                   class="btn btn-sm btn-finoa-primary">
+                                    <i class="bi bi-eye"></i> Details
                                 </a>
                             </td>
                         </tr>
@@ -69,23 +73,6 @@
             </div>
         </div>
     </div>
-
-    <!-- Per-Account Forecast Charts -->
-    <h2 class="mt-5 mb-4">Konto-Forecast (6 Monate)</h2>
-    {% for item in account_list %}
-    <div class="card card-finoa">
-        <div class="card-header account-{{ item.account.type }}">
-            <h5 class="mb-0">
-                <i class="bi bi-graph-up"></i> {{ item.account.name }}
-            </h5>
-        </div>
-        <div class="card-body">
-            <div class="chart-container">
-                <canvas id="accountForecastChart{{ item.account.id }}"></canvas>
-            </div>
-        </div>
-    </div>
-    {% endfor %}
 
     <!-- Recurring Bookings Summary -->
     <div class="card card-finoa mt-4">
@@ -109,64 +96,4 @@
 {% endblock %}
 
 {% block extra_js %}
-{% for item in account_list %}
-<script>
-(function() {
-    const ctx{{ item.account.id }} = document.getElementById('accountForecastChart{{ item.account.id }}').getContext('2d');
-    const chart{{ item.account.id }} = new Chart(ctx{{ item.account.id }}, {
-        type: 'line',
-        data: {
-            labels: {{ item.timeline_data.months|safe }},
-            datasets: [
-                {
-                    label: 'Ist-Saldo',
-                    data: {{ item.timeline_data.actual|safe }},
-                    borderColor: '#3A6EA5',
-                    backgroundColor: 'rgba(58, 110, 165, 0.1)',
-                    tension: 0.4,
-                    fill: true
-                },
-                {
-                    label: 'Forecast-Saldo',
-                    data: {{ item.timeline_data.forecast|safe }},
-                    borderColor: '#39A77B',
-                    backgroundColor: 'rgba(57, 167, 123, 0.1)',
-                    tension: 0.4,
-                    fill: true,
-                    borderDash: [5, 5]
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    display: true,
-                    position: 'top',
-                },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            return context.dataset.label + ': ' + 
-                                   context.parsed.y.toFixed(2) + ' €';
-                        }
-                    }
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: false,
-                    ticks: {
-                        callback: function(value) {
-                            return value.toFixed(0) + ' €';
-                        }
-                    }
-                }
-            }
-        }
-    });
-})();
-</script>
-{% endfor %}
 {% endblock %}
