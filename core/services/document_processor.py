@@ -66,22 +66,48 @@ def is_image_mime_type(mime_type: str) -> bool:
     return mime_type.startswith('image/')
 
 
-def extract_text_from_pdf(file_path: str, max_chars: int = 50000) -> str:
+def sanitize_extracted_text(text: str) -> str:
+    """
+    Sanitize extracted text to prevent prompt injection.
+    
+    Args:
+        text: The raw extracted text.
+        
+    Returns:
+        str: Sanitized text with potentially harmful patterns removed.
+    """
+    # Remove null bytes and other control characters except common ones (newline, tab, carriage return)
+    sanitized = ''.join(char for char in text if char >= ' ' or char in '\n\t\r')
+    
+    # Remove excessive whitespace
+    sanitized = '\n'.join(line.strip() for line in sanitized.split('\n') if line.strip())
+    
+    return sanitized
+
+
+def extract_text_from_pdf(file_path: str, max_chars: int = 50000, max_file_size_mb: int = 50) -> str:
     """
     Extract text from a PDF file using PyMuPDF.
     
     Args:
         file_path: Path to the PDF file.
         max_chars: Maximum number of characters to extract (default: 50000).
+        max_file_size_mb: Maximum file size in MB to process (default: 50).
         
     Returns:
-        str: Extracted text from the PDF, truncated if it exceeds max_chars.
+        str: Extracted and sanitized text from the PDF, truncated if it exceeds max_chars.
         
     Raises:
         FileNotFoundError: If the PDF file doesn't exist.
+        ValueError: If the PDF file is too large.
         RuntimeError: If PDF extraction fails.
     """
     try:
+        # Check file size before processing
+        file_size_mb = Path(file_path).stat().st_size / (1024 * 1024)
+        if file_size_mb > max_file_size_mb:
+            raise ValueError(f"PDF file is too large ({file_size_mb:.1f} MB). Maximum allowed is {max_file_size_mb} MB.")
+        
         with fitz.open(file_path) as doc:
             text_parts = []
             total_chars = 0
@@ -102,8 +128,11 @@ def extract_text_from_pdf(file_path: str, max_chars: int = 50000) -> str:
                 text_parts.append(page_text)
                 total_chars += len(page_text)
             
-            return '\n'.join(text_parts)
+            raw_text = '\n'.join(text_parts)
+            return sanitize_extracted_text(raw_text)
     except FileNotFoundError:
+        raise
+    except ValueError:
         raise
     except Exception as e:
         raise RuntimeError(f"Failed to extract text from PDF: {str(e)}") from e

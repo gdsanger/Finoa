@@ -928,6 +928,22 @@ class DocumentProcessorTest(TestCase):
         finally:
             os.unlink(tmp_path)
     
+    def test_sanitize_extracted_text(self):
+        """Test text sanitization removes control characters"""
+        from .services.document_processor import sanitize_extracted_text
+        
+        # Test with control characters and excessive whitespace
+        dirty_text = "Hello\x00World\n\n\n   Spaced  Out   \n\nEnd"
+        clean_text = sanitize_extracted_text(dirty_text)
+        
+        # Verify control characters are removed
+        self.assertNotIn('\x00', clean_text)
+        # Verify excessive whitespace is reduced
+        self.assertNotIn('\n\n\n', clean_text)
+        # Verify content is preserved
+        self.assertIn('Hello', clean_text)
+        self.assertIn('World', clean_text)
+    
     def test_map_to_database_objects_basic(self):
         """Test mapping extracted data to database objects"""
         from .services.document_processor import map_to_database_objects
