@@ -22,7 +22,6 @@ from .services import (
 )
 
 
-@login_required
 def _build_total_liquidity_timeline(months=6, liquidity_relevant_only=False):
     """
     Helper function to build timeline data for total liquidity or assets.
@@ -56,6 +55,7 @@ def _build_total_liquidity_timeline(months=6, liquidity_relevant_only=False):
     }
 
 
+@login_required
 def dashboard(request):
     """
     Dashboard view showing:
