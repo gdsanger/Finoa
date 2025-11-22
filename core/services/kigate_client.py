@@ -70,8 +70,8 @@ def execute_agent(
         payload = {
             "prompt": prompt,
             "agent_name": agent_name or config.default_agent_name,
-            "provider": provider or config.default_provider,
-            "model": model or config.default_model,
+            "provider": "unwichtig",
+            "model": "unwichtig",
             "user_id": user_id or config.default_user_id,
             "max_tokens": max_tokens or config.max_tokens,
             "temperature": temperature,
