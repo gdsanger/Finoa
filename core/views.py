@@ -1,12 +1,13 @@
 from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
+from django.db.models import Count
 from datetime import date
 from dateutil.relativedelta import relativedelta
 from decimal import Decimal
 import json
 
-from .models import Account, Booking, Category, RecurringBooking
+from .models import Account, Booking, Category, RecurringBooking, Payee
 from .services import (
     calculate_actual_balance,
     calculate_forecast_balance,
@@ -288,9 +289,6 @@ def payees(request):
     """
     Payee management view showing all payees with booking counts
     """
-    from .models import Payee
-    from django.db.models import Count
-    
     payees_list = Payee.objects.annotate(
         booking_count=Count('bookings'),
         recurring_booking_count=Count('recurring_bookings')
