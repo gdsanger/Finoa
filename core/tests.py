@@ -2,6 +2,10 @@ from django.test import TestCase
 from decimal import Decimal
 from datetime import date
 from dateutil.relativedelta import relativedelta
+import tempfile
+import os
+
+import fitz  # PyMuPDF
 
 from .models import Account, Category, Booking, RecurringBooking, Payee, KIGateConfig, OpenAIConfig, DocumentUpload
 from .services import (
@@ -858,6 +862,87 @@ class DocumentProcessorTest(TestCase):
         self.assertEqual(get_mime_type('test.jpg'), 'image/jpeg')
         self.assertEqual(get_mime_type('test.jpeg'), 'image/jpeg')
         self.assertEqual(get_mime_type('test.png'), 'image/png')
+    
+    def test_is_image_mime_type(self):
+        """Test image MIME type detection"""
+        from .services.document_processor import is_image_mime_type
+        
+        # Test image types
+        self.assertTrue(is_image_mime_type('image/jpeg'))
+        self.assertTrue(is_image_mime_type('image/png'))
+        self.assertTrue(is_image_mime_type('image/gif'))
+        self.assertTrue(is_image_mime_type('image/webp'))
+        
+        # Test non-image types
+        self.assertFalse(is_image_mime_type('application/pdf'))
+        self.assertFalse(is_image_mime_type('text/plain'))
+        self.assertFalse(is_image_mime_type('application/json'))
+    
+    def test_extract_text_from_pdf(self):
+        """Test PDF text extraction"""
+        from .services.document_processor import extract_text_from_pdf
+        
+        # Create a temporary PDF with some text
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_file:
+            tmp_path = tmp_file.name
+            
+        try:
+            # Create a simple PDF with PyMuPDF using context manager
+            with fitz.open() as doc:
+                page = doc.new_page()
+                page.insert_text((50, 50), "Test Invoice\nAmount: 99.99 EUR\nDate: 2024-01-15")
+                doc.save(tmp_path)
+            
+            # Extract text
+            extracted_text = extract_text_from_pdf(tmp_path)
+            
+            # Verify text extraction
+            self.assertIn("Test Invoice", extracted_text)
+            self.assertIn("99.99", extracted_text)
+            self.assertIn("2024-01-15", extracted_text)
+        finally:
+            os.unlink(tmp_path)
+    
+    def test_extract_text_from_pdf_with_length_limit(self):
+        """Test PDF text extraction respects character limit"""
+        from .services.document_processor import extract_text_from_pdf
+        
+        # Create a temporary PDF with longer text
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_file:
+            tmp_path = tmp_file.name
+            
+        try:
+            # Create a PDF with repeated text
+            with fitz.open() as doc:
+                page = doc.new_page()
+                long_text = "A" * 1000  # 1000 characters
+                page.insert_text((50, 50), long_text)
+                doc.save(tmp_path)
+            
+            # Extract text with a small limit
+            extracted_text = extract_text_from_pdf(tmp_path, max_chars=500)
+            
+            # Verify text is truncated
+            self.assertLessEqual(len(extracted_text), 500)
+            self.assertTrue(extracted_text.startswith("A"))
+        finally:
+            os.unlink(tmp_path)
+    
+    def test_sanitize_extracted_text(self):
+        """Test text sanitization removes control characters"""
+        from .services.document_processor import sanitize_extracted_text
+        
+        # Test with control characters and excessive whitespace
+        dirty_text = "Hello\x00World\n\n\n   Spaced  Out   \n\nEnd"
+        clean_text = sanitize_extracted_text(dirty_text)
+        
+        # Verify control characters are removed
+        self.assertNotIn('\x00', clean_text)
+        # Verify excessive whitespace is reduced
+        self.assertNotIn('\n\n\n', clean_text)
+        # Verify content is preserved
+        self.assertIn('Hello', clean_text)
+        self.assertIn('World', clean_text)
     
     def test_map_to_database_objects_basic(self):
         """Test mapping extracted data to database objects"""

@@ -1,6 +1,6 @@
 """
 Document processor for AI-powered analysis of receipts and invoices.
-Uses OpenAI Vision API to extract booking information from documents.
+Uses OpenAI Vision API for images and text extraction for PDFs.
 """
 import base64
 import json
@@ -8,6 +8,8 @@ from typing import Dict, Any, Optional
 from decimal import Decimal, InvalidOperation
 from datetime import datetime
 from pathlib import Path
+
+import fitz  # PyMuPDF
 
 from django.core.files.uploadedfile import UploadedFile
 
@@ -51,9 +53,96 @@ def get_mime_type(filename: str) -> str:
     return mime_types.get(ext, 'application/octet-stream')
 
 
+def is_image_mime_type(mime_type: str) -> bool:
+    """
+    Check if MIME type is an image.
+    
+    Args:
+        mime_type: MIME type string.
+        
+    Returns:
+        bool: True if the MIME type is an image, False otherwise.
+    """
+    return mime_type.startswith('image/')
+
+
+def sanitize_extracted_text(text: str) -> str:
+    """
+    Sanitize extracted text to prevent prompt injection.
+    
+    Args:
+        text: The raw extracted text.
+        
+    Returns:
+        str: Sanitized text with potentially harmful patterns removed.
+    """
+    # Remove null bytes and other control characters except common ones (newline, tab, carriage return)
+    sanitized = ''.join(char for char in text if char >= ' ' or char in '\n\t\r')
+    
+    # Remove excessive whitespace
+    sanitized = '\n'.join(line.strip() for line in sanitized.split('\n') if line.strip())
+    
+    return sanitized
+
+
+def extract_text_from_pdf(file_path: str, max_chars: int = 50000, max_file_size_mb: int = 50) -> str:
+    """
+    Extract text from a PDF file using PyMuPDF.
+    
+    Args:
+        file_path: Path to the PDF file.
+        max_chars: Maximum number of characters to extract (default: 50000).
+        max_file_size_mb: Maximum file size in MB to process (default: 50).
+        
+    Returns:
+        str: Extracted and sanitized text from the PDF, truncated if it exceeds max_chars.
+        
+    Raises:
+        FileNotFoundError: If the PDF file doesn't exist.
+        ValueError: If the PDF file is too large.
+        RuntimeError: If PDF extraction fails.
+    """
+    try:
+        # Check file size before processing
+        file_size_mb = Path(file_path).stat().st_size / (1024 * 1024)
+        if file_size_mb > max_file_size_mb:
+            raise ValueError(f"PDF file is too large ({file_size_mb:.1f} MB). Maximum allowed is {max_file_size_mb} MB.")
+        
+        with fitz.open(file_path) as doc:
+            text_parts = []
+            total_chars = 0
+            
+            for page_num in range(len(doc)):
+                page = doc[page_num]
+                page_text = page.get_text()
+                
+                # Stop if we've reached the character limit
+                remaining_chars = max_chars - total_chars
+                if remaining_chars <= 0:
+                    break
+                
+                if len(page_text) > remaining_chars:
+                    text_parts.append(page_text[:remaining_chars])
+                    break
+                
+                text_parts.append(page_text)
+                total_chars += len(page_text)
+            
+            raw_text = '\n'.join(text_parts)
+            return sanitize_extracted_text(raw_text)
+    except FileNotFoundError:
+        raise
+    except ValueError:
+        raise
+    except Exception as e:
+        raise RuntimeError(f"Failed to extract text from PDF: {str(e)}") from e
+
+
 def process_document_with_openai(file_path: str, mime_type: str) -> Dict[str, Any]:
     """
-    Process a document using OpenAI Vision API to extract booking information.
+    Process a document using OpenAI to extract booking information.
+    For images: uses Vision API with base64-encoded image.
+    For PDFs: extracts text with PyMuPDF and processes with regular chat API.
     
     Args:
         file_path: Path to the document file.
@@ -65,11 +154,8 @@ def process_document_with_openai(file_path: str, mime_type: str) -> Dict[str, An
     try:
         config = get_active_openai_config()
         
-        # Encode file to base64
-        base64_content = encode_file_to_base64(file_path)
-        
-        # Build the prompt for extraction
-        prompt = """Analysiere dieses Dokument (Beleg/Rechnung) und extrahiere folgende Informationen im JSON-Format:
+        # Build the base prompt for extraction
+        base_prompt = """Analysiere dieses Dokument (Beleg/Rechnung) und extrahiere folgende Informationen im JSON-Format:
 
 {
   "payee_name": "Name des Zahlungsempfängers/Händlers",
@@ -92,33 +178,67 @@ Wichtig:
 - is_recurring: true nur bei klar erkennbaren Abos/Mitgliedschaften (z.B. "monatlich", "jährlich")
 - confidence: Wie sicher bist du bei der Extraktion? (0.0 = sehr unsicher, 1.0 = sehr sicher)
 - extracted_text: Alle lesbare Texte aus dem Dokument"""
-
-        # Prepare messages for OpenAI
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": prompt
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:{mime_type};base64,{base64_content}"
-                        }
-                    }
-                ]
-            }
-        ]
         
-        # Call OpenAI
-        response = call_openai_chat(
-            messages=messages,
-            model=config.default_vision_model,
-            temperature=0.1,  # Lower temperature for more deterministic extraction
-            max_tokens=2000
-        )
+        # Determine processing method based on MIME type
+        if is_image_mime_type(mime_type):
+            # Process image with Vision API
+            base64_content = encode_file_to_base64(file_path)
+            
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": base_prompt
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{mime_type};base64,{base64_content}"
+                            }
+                        }
+                    ]
+                }
+            ]
+            
+            # Call OpenAI with vision model
+            response = call_openai_chat(
+                messages=messages,
+                model=config.default_vision_model,
+                temperature=0.1,
+                max_tokens=2000
+            )
+        elif mime_type == 'application/pdf':
+            # Extract text from PDF first
+            extracted_text = extract_text_from_pdf(file_path)
+            
+            # Process extracted text with regular chat API
+            text_prompt = f"""{base_prompt}
+
+Hier ist der extrahierte Text aus dem PDF-Dokument:
+
+{extracted_text}"""
+            
+            messages = [
+                {
+                    "role": "user",
+                    "content": text_prompt
+                }
+            ]
+            
+            # Call OpenAI with regular text model
+            response = call_openai_chat(
+                messages=messages,
+                model=config.default_model,
+                temperature=0.1,
+                max_tokens=2000
+            )
+        else:
+            return {
+                'success': False,
+                'error': f'Unsupported MIME type: {mime_type}'
+            }
         
         if not response.success:
             return {
