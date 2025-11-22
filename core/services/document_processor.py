@@ -66,31 +66,43 @@ def is_image_mime_type(mime_type: str) -> bool:
     return mime_type.startswith('image/')
 
 
-def extract_text_from_pdf(file_path: str) -> str:
+def extract_text_from_pdf(file_path: str, max_chars: int = 50000) -> str:
     """
     Extract text from a PDF file using PyMuPDF.
     
     Args:
         file_path: Path to the PDF file.
+        max_chars: Maximum number of characters to extract (default: 50000).
         
     Returns:
-        str: Extracted text from the PDF.
+        str: Extracted text from the PDF, truncated if it exceeds max_chars.
         
     Raises:
         FileNotFoundError: If the PDF file doesn't exist.
         RuntimeError: If PDF extraction fails.
     """
     try:
-        doc = fitz.open(file_path)
-        text_parts = []
-        
-        for page_num in range(len(doc)):
-            page = doc[page_num]
-            text_parts.append(page.get_text())
-        
-        doc.close()
-        
-        return '\n'.join(text_parts)
+        with fitz.open(file_path) as doc:
+            text_parts = []
+            total_chars = 0
+            
+            for page_num in range(len(doc)):
+                page = doc[page_num]
+                page_text = page.get_text()
+                
+                # Stop if we've reached the character limit
+                remaining_chars = max_chars - total_chars
+                if remaining_chars <= 0:
+                    break
+                
+                if len(page_text) > remaining_chars:
+                    text_parts.append(page_text[:remaining_chars])
+                    break
+                
+                text_parts.append(page_text)
+                total_chars += len(page_text)
+            
+            return '\n'.join(text_parts)
     except FileNotFoundError:
         raise
     except Exception as e:

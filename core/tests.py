@@ -887,12 +887,11 @@ class DocumentProcessorTest(TestCase):
             tmp_path = tmp_file.name
             
         try:
-            # Create a simple PDF with PyMuPDF
-            doc = fitz.open()
-            page = doc.new_page()
-            page.insert_text((50, 50), "Test Invoice\nAmount: 99.99 EUR\nDate: 2024-01-15")
-            doc.save(tmp_path)
-            doc.close()
+            # Create a simple PDF with PyMuPDF using context manager
+            with fitz.open() as doc:
+                page = doc.new_page()
+                page.insert_text((50, 50), "Test Invoice\nAmount: 99.99 EUR\nDate: 2024-01-15")
+                doc.save(tmp_path)
             
             # Extract text
             extracted_text = extract_text_from_pdf(tmp_path)
@@ -901,6 +900,31 @@ class DocumentProcessorTest(TestCase):
             self.assertIn("Test Invoice", extracted_text)
             self.assertIn("99.99", extracted_text)
             self.assertIn("2024-01-15", extracted_text)
+        finally:
+            os.unlink(tmp_path)
+    
+    def test_extract_text_from_pdf_with_length_limit(self):
+        """Test PDF text extraction respects character limit"""
+        from .services.document_processor import extract_text_from_pdf
+        
+        # Create a temporary PDF with longer text
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_file:
+            tmp_path = tmp_file.name
+            
+        try:
+            # Create a PDF with repeated text
+            with fitz.open() as doc:
+                page = doc.new_page()
+                long_text = "A" * 1000  # 1000 characters
+                page.insert_text((50, 50), long_text)
+                doc.save(tmp_path)
+            
+            # Extract text with a small limit
+            extracted_text = extract_text_from_pdf(tmp_path, max_chars=500)
+            
+            # Verify text is truncated
+            self.assertLessEqual(len(extracted_text), 500)
+            self.assertTrue(extracted_text.startswith("A"))
         finally:
             os.unlink(tmp_path)
     
