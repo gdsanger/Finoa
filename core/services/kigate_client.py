@@ -81,8 +81,8 @@ def execute_agent(
         if additional_params:
             payload.update(additional_params)
         
-        # Remove empty values
-        payload = {k: v for k, v in payload.items() if v}
+        # Remove None values but keep falsy values like 0 or empty strings
+        payload = {k: v for k, v in payload.items() if v is not None}
         
         # Make API request
         url = f"{config.base_url.rstrip('/')}/agent/execute"
