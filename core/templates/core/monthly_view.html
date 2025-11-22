@@ -1,0 +1,198 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Monatsansicht - Finoa{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="mb-4">
+        <i class="bi bi-calendar-month"></i> Monatsansicht
+    </h1>
+
+    <!-- Account & Month Selection -->
+    <div class="card card-finoa mb-4">
+        <div class="card-body">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <label for="accountSelect" class="form-label"><strong>Konto auswählen:</strong></label>
+                    <select id="accountSelect" class="form-select" onchange="changeAccount(this.value)">
+                        {% for account in accounts %}
+                        <option value="{{ account.id }}" {% if selected_account and account.id == selected_account.id %}selected{% endif %}>
+                            {{ account.name }} ({{ account.get_type_display }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6 text-end">
+                    <label class="form-label d-block"><strong>Monat:</strong></label>
+                    <div class="btn-group" role="group">
+                        <a href="?year={{ prev_year }}&month={{ prev_month }}{% if selected_account %}&account_id={{ selected_account.id }}{% endif %}" 
+                           class="btn btn-finoa-secondary">
+                            <i class="bi bi-chevron-left"></i>
+                        </a>
+                        <button type="button" class="btn btn-outline-secondary" disabled>
+                            {{ month_name }}
+                        </button>
+                        <a href="?year={{ next_year }}&month={{ next_month }}{% if selected_account %}&account_id={{ selected_account.id }}{% endif %}" 
+                           class="btn btn-finoa-secondary">
+                            <i class="bi bi-chevron-right"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if selected_account %}
+    <!-- Balance Summary -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card card-finoa summary-card">
+                <div class="card-body">
+                    <div class="label">Saldo zu Monatsbeginn</div>
+                    <div class="value {% if running_balance >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
+                        {{ running_balance|floatformat:2 }} €
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card card-finoa summary-card">
+                <div class="card-body">
+                    <div class="label">Anzahl Buchungen</div>
+                    <div class="value" style="color: var(--finoa-blue);">
+                        {{ bookings|length }}
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card card-finoa summary-card">
+                <div class="card-body">
+                    <div class="label">Wiederkehrende (virtuell)</div>
+                    <div class="value" style="color: var(--finoa-green);">
+                        {{ virtual_bookings|length }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bookings Table -->
+    <div class="card card-finoa">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Buchungen</h5>
+            <a href="/admin/core/booking/add/?account={{ selected_account.id }}" 
+               class="btn btn-finoa-primary btn-sm">
+                <i class="bi bi-plus-circle"></i> Neue Buchung
+            </a>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-finoa">
+                    <thead>
+                        <tr>
+                            <th>Datum</th>
+                            <th>Beschreibung</th>
+                            <th>Kategorie</th>
+                            <th class="text-end">Betrag</th>
+                            <th>Status</th>
+                            <th class="text-center">Aktion</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for booking in bookings %}
+                        <tr>
+                            <td>{{ booking.booking_date|date:"d.m.Y" }}</td>
+                            <td>
+                                {{ booking.description|default:"—" }}
+                                {% if booking.is_transfer %}
+                                <span class="badge badge-transfer">
+                                    <i class="bi bi-arrow-left-right"></i> Umbuchung
+                                </span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if booking.category %}
+                                <span class="badge bg-info">{{ booking.category.name }}</span>
+                                {% else %}
+                                <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end {% if booking.amount >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
+                                <strong>{{ booking.amount|floatformat:2 }} €</strong>
+                            </td>
+                            <td>
+                                {% if booking.status == 'POSTED' %}
+                                <span class="badge badge-posted">Gebucht</span>
+                                {% elif booking.status == 'PLANNED' %}
+                                <span class="badge badge-planned">Geplant</span>
+                                {% else %}
+                                <span class="badge badge-cancelled">Storniert</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <a href="/admin/core/booking/{{ booking.id }}/change/" 
+                                   class="btn btn-sm btn-outline-secondary">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+
+                        <!-- Virtual Bookings from Recurring -->
+                        {% for vbooking in virtual_bookings %}
+                        <tr class="table-info">
+                            <td>{{ vbooking.date|date:"d.m.Y" }}</td>
+                            <td>
+                                {{ vbooking.description }}
+                                <span class="badge bg-success">
+                                    <i class="bi bi-arrow-repeat"></i> Virtuell
+                                </span>
+                            </td>
+                            <td>
+                                {% if vbooking.category %}
+                                <span class="badge bg-info">{{ vbooking.category.name }}</span>
+                                {% else %}
+                                <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end {% if vbooking.amount >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
+                                <strong>{{ vbooking.amount|floatformat:2 }} €</strong>
+                            </td>
+                            <td>
+                                <span class="badge bg-success">Forecast</span>
+                            </td>
+                            <td class="text-center">
+                                <span class="text-muted">—</span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+
+                        {% if not bookings and not virtual_bookings %}
+                        <tr>
+                            <td colspan="6" class="text-center text-muted py-4">
+                                <i class="bi bi-inbox" style="font-size: 2rem;"></i>
+                                <p class="mt-2">Keine Buchungen für diesen Monat</p>
+                            </td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle"></i> Bitte wählen Sie ein Konto aus oder legen Sie ein neues Konto an.
+    </div>
+    {% endif %}
+</div>
+
+<script>
+function changeAccount(accountId) {
+    const year = {{ year }};
+    const month = {{ month }};
+    window.location.href = `?year=${year}&month=${month}&account_id=${accountId}`;
+}
+</script>
+{% endblock %}
