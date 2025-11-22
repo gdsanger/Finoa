@@ -185,31 +185,33 @@ def map_to_database_objects(extracted_data: Dict[str, Any]) -> Dict[str, Any]:
     # Map payee
     payee_name = extracted_data.get('payee_name')
     if payee_name:
-        # Try to find existing payee (case-insensitive)
-        payee = Payee.objects.filter(name__iexact=payee_name, is_active=True).first()
-        if not payee:
-            # Try partial match
-            payee = Payee.objects.filter(name__icontains=payee_name, is_active=True).first()
+        from django.db.models import Q
+        # Try to find existing payee using exact or partial match in one query
+        payee = Payee.objects.filter(
+            Q(name__iexact=payee_name) | Q(name__icontains=payee_name),
+            is_active=True
+        ).first()
         result['suggested_payee'] = payee
     
     # Map account
     account_name = extracted_data.get('account_name')
     if account_name:
-        # Try to find existing account (case-insensitive)
-        account = Account.objects.filter(name__iexact=account_name, is_active=True).first()
-        if not account:
-            # Try partial match
-            account = Account.objects.filter(name__icontains=account_name, is_active=True).first()
+        from django.db.models import Q
+        # Try to find existing account using exact or partial match in one query
+        account = Account.objects.filter(
+            Q(name__iexact=account_name) | Q(name__icontains=account_name),
+            is_active=True
+        ).first()
         result['suggested_account'] = account
     
     # Map category
     category_name = extracted_data.get('category_name')
     if category_name:
-        # Try to find existing category (case-insensitive)
-        category = Category.objects.filter(name__iexact=category_name).first()
-        if not category:
-            # Try partial match
-            category = Category.objects.filter(name__icontains=category_name).first()
+        from django.db.models import Q
+        # Try to find existing category using exact or partial match in one query
+        category = Category.objects.filter(
+            Q(name__iexact=category_name) | Q(name__icontains=category_name)
+        ).first()
         result['suggested_category'] = category
     
     # Parse amount

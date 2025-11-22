@@ -8,7 +8,7 @@ from datetime import date
 from dateutil.relativedelta import relativedelta
 from decimal import Decimal
 import json
-import uuid
+import os
 
 from .models import Account, Booking, Category, RecurringBooking, Payee, DocumentUpload
 from .services import (
@@ -22,6 +22,7 @@ from .services import (
     get_category_analysis,
     get_top_categories,
 )
+from .services.document_processor import get_mime_type
 
 
 def _build_total_liquidity_timeline(months=6, liquidity_relevant_only=False):
@@ -433,10 +434,12 @@ def document_list(request):
         # Handle file upload
         uploaded_file = request.FILES['document']
         
-        # Validate file type
+        # Validate file type using file extension
         allowed_extensions = ['.pdf', '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']
-        file_ext = uploaded_file.name.lower().split('.')[-1]
-        if f'.{file_ext}' not in allowed_extensions:
+        # Get file extension safely
+        _, file_ext = os.path.splitext(uploaded_file.name.lower())
+        
+        if not file_ext or file_ext not in allowed_extensions:
             messages.error(request, 'Ungültiger Dateityp. Erlaubt sind: PDF, JPG, JPEG, PNG, GIF, BMP, WEBP')
         else:
             # Validate file size (max 10MB)
@@ -445,8 +448,6 @@ def document_list(request):
                 messages.error(request, 'Datei zu groß. Maximale Größe: 10 MB')
             else:
                 # Create DocumentUpload
-                from .services.document_processor import get_mime_type
-                
                 document = DocumentUpload.objects.create(
                     file=uploaded_file,
                     original_filename=uploaded_file.name,
