@@ -122,7 +122,7 @@ STATIC_URL = 'static/'
 # Media files (User uploads)
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
-
+X_FRAME_OPTIONS = 'SAMEORIGIN'
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
 
