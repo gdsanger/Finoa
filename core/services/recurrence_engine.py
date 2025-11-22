@@ -111,7 +111,7 @@ def _generate_bookings_for_recurring(recurring, start_date, end_date):
         if recurring.is_transfer and recurring.transfer_partner_account:
             virtual_bookings.append({
                 'date': current_date,
-                'amount': -recurring.amount,  # Opposite sign
+                'amount': -recurring.amount,  # Negate amount for counter-entry (outflow becomes inflow)
                 'description': recurring.description,
                 'category': recurring.category,
                 'recurring_booking_id': recurring.id,

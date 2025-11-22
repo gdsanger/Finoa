@@ -158,7 +158,7 @@ class RecurringBookingTest(TestCase):
         # Create a recurring transfer booking
         recurring = RecurringBooking.objects.create(
             account=self.account,
-            amount=Decimal('-200.00'),  # Negative because it's an outgoing transfer
+            amount=Decimal('-200.00'),  # Negative amount represents outflow from source account
             category=self.category,
             description='Monthly Savings Transfer',
             start_date=date(2025, 1, 15),
@@ -220,7 +220,7 @@ class RecurringBookingTest(TestCase):
         # Create a recurring transfer booking: 200 from account1 to account2 monthly
         recurring = RecurringBooking.objects.create(
             account=self.account,
-            amount=Decimal('-200.00'),  # Negative because it's an outgoing transfer
+            amount=Decimal('-200.00'),  # Negative amount represents outflow from source account
             category=self.category,
             description='Monthly Savings Transfer',
             start_date=next_month,
