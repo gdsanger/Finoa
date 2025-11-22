@@ -1,6 +1,7 @@
 from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
+from django.contrib.auth.decorators import login_required
 from django.db.models import Count
 from datetime import date
 from dateutil.relativedelta import relativedelta
@@ -21,6 +22,7 @@ from .services import (
 )
 
 
+@login_required
 def _build_total_liquidity_timeline(months=6, liquidity_relevant_only=False):
     """
     Helper function to build timeline data for total liquidity or assets.
@@ -112,6 +114,7 @@ def dashboard(request):
     return render(request, 'core/dashboard.html', context)
 
 
+@login_required
 def accounts(request):
     """
     Accounts overview showing all accounts with balances (without forecast charts)
@@ -136,6 +139,7 @@ def accounts(request):
     return render(request, 'core/accounts.html', context)
 
 
+@login_required
 def account_detail(request, account_id):
     """
     Account detail view showing:
@@ -295,6 +299,7 @@ def monthly_view(request):
     return render(request, 'core/monthly_view.html', context)
 
 
+@login_required
 def category_analytics(request):
     """
     Category analytics view showing income/expense analysis by category.
@@ -399,6 +404,7 @@ def category_analytics(request):
     return render(request, 'core/category_analytics.html', context)
 
 
+@login_required
 def payees(request):
     """
     Payee management view showing all payees with booking counts
