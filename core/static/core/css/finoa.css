@@ -1,0 +1,201 @@
+/* 
+ * Finoa Brand Colors & Custom Styles
+ * Minimalistic, modern financial management UI
+ */
+
+:root {
+    --finoa-green: #39A77B;
+    --finoa-blue: #3A6EA5;
+    --finoa-grey: #E9ECEF;
+    --dark-slate: #2E3440;
+    --soft-white: #F7F9FA;
+}
+
+body {
+    background-color: var(--soft-white);
+    color: var(--dark-slate);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+/* Navigation & Header */
+.navbar-finoa {
+    background-color: var(--finoa-blue);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.navbar-finoa .navbar-brand,
+.navbar-finoa .nav-link {
+    color: white !important;
+}
+
+.navbar-finoa .nav-link:hover {
+    color: var(--finoa-green) !important;
+}
+
+/* Cards & Panels */
+.card-finoa {
+    background-color: white;
+    border: none;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    margin-bottom: 1.5rem;
+}
+
+.card-finoa .card-header {
+    background-color: var(--finoa-grey);
+    border-bottom: 2px solid var(--finoa-blue);
+    font-weight: 600;
+    border-radius: 8px 8px 0 0;
+}
+
+/* Buttons */
+.btn-finoa-primary {
+    background-color: var(--finoa-green);
+    border-color: var(--finoa-green);
+    color: white;
+}
+
+.btn-finoa-primary:hover {
+    background-color: #2d8962;
+    border-color: #2d8962;
+    color: white;
+}
+
+.btn-finoa-secondary {
+    background-color: var(--finoa-blue);
+    border-color: var(--finoa-blue);
+    color: white;
+}
+
+.btn-finoa-secondary:hover {
+    background-color: #2e5684;
+    border-color: #2e5684;
+    color: white;
+}
+
+/* Balance Display */
+.balance-positive {
+    color: var(--finoa-green);
+    font-weight: 600;
+}
+
+.balance-negative {
+    color: #dc3545;
+    font-weight: 600;
+}
+
+.balance-large {
+    font-size: 2rem;
+    font-weight: 700;
+}
+
+/* Tables */
+.table-finoa {
+    background-color: white;
+}
+
+.table-finoa thead {
+    background-color: var(--finoa-grey);
+    color: var(--dark-slate);
+}
+
+.table-finoa tbody tr:hover {
+    background-color: var(--finoa-grey);
+}
+
+/* Status Badges */
+.badge-posted {
+    background-color: var(--finoa-green);
+}
+
+.badge-planned {
+    background-color: var(--finoa-blue);
+}
+
+.badge-cancelled {
+    background-color: #6c757d;
+}
+
+.badge-transfer {
+    background-color: #ffc107;
+    color: var(--dark-slate);
+}
+
+/* Charts */
+.chart-container {
+    position: relative;
+    height: 300px;
+    margin: 2rem 0;
+}
+
+/* Summary Cards */
+.summary-card {
+    text-align: center;
+    padding: 1.5rem;
+}
+
+.summary-card .label {
+    font-size: 0.875rem;
+    color: #6c757d;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.5rem;
+}
+
+.summary-card .value {
+    font-size: 1.75rem;
+    font-weight: 700;
+}
+
+/* Account Type Colors */
+.account-checking {
+    border-left: 4px solid var(--finoa-blue);
+}
+
+.account-credit_card {
+    border-left: 4px solid #e74c3c;
+}
+
+.account-trading {
+    border-left: 4px solid var(--finoa-green);
+}
+
+.account-loan {
+    border-left: 4px solid #95a5a6;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .balance-large {
+        font-size: 1.5rem;
+    }
+    
+    .chart-container {
+        height: 250px;
+    }
+}
+
+/* Loading states */
+.htmx-indicator {
+    opacity: 0;
+    transition: opacity 200ms ease-in;
+}
+
+.htmx-request .htmx-indicator {
+    opacity: 1;
+}
+
+.htmx-request.htmx-indicator {
+    opacity: 1;
+}
+
+/* Form styling */
+.form-finoa .form-label {
+    font-weight: 600;
+    color: var(--dark-slate);
+}
+
+.form-finoa .form-control:focus {
+    border-color: var(--finoa-blue);
+    box-shadow: 0 0 0 0.2rem rgba(58, 110, 165, 0.25);
+}

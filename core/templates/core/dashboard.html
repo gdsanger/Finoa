@@ -1,0 +1,151 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Dashboard - Finoa{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1 class="mb-4">
+        <i class="bi bi-speedometer2"></i> Dashboard
+    </h1>
+
+    <!-- Total Liquidity Summary -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card card-finoa summary-card">
+                <div class="card-body">
+                    <div class="label">Gesamtliquidität (Ist)</div>
+                    <div class="value {% if total_actual >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
+                        {{ total_actual|floatformat:2 }} €
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card card-finoa summary-card">
+                <div class="card-body">
+                    <div class="label">Gesamtliquidität (Forecast)</div>
+                    <div class="value {% if total_forecast >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
+                        {{ total_forecast|floatformat:2 }} €
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 6-Month Forecast Chart -->
+    {% if timeline_data %}
+    <div class="card card-finoa">
+        <div class="card-header">
+            <h5 class="mb-0">6-Monats Forecast</h5>
+        </div>
+        <div class="card-body">
+            <div class="chart-container">
+                <canvas id="forecastChart"></canvas>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Account Summaries -->
+    <div class="card card-finoa mt-4">
+        <div class="card-header">
+            <h5 class="mb-0">Konten Übersicht</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-finoa">
+                    <thead>
+                        <tr>
+                            <th>Konto</th>
+                            <th>Typ</th>
+                            <th class="text-end">Ist-Saldo</th>
+                            <th class="text-end">Forecast-Saldo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in account_summaries %}
+                        <tr class="account-{{ item.account.type }}">
+                            <td><strong>{{ item.account.name }}</strong></td>
+                            <td>{{ item.account.get_type_display }}</td>
+                            <td class="text-end {% if item.actual_balance >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
+                                {{ item.actual_balance|floatformat:2 }} €
+                            </td>
+                            <td class="text-end {% if item.forecast_balance >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
+                                {{ item.forecast_balance|floatformat:2 }} €
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="4" class="text-center text-muted">
+                                Keine aktiven Konten vorhanden
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if timeline_data %}
+<script>
+    const ctx = document.getElementById('forecastChart').getContext('2d');
+    const forecastChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: {{ timeline_data.months|safe }},
+            datasets: [
+                {
+                    label: 'Ist-Saldo',
+                    data: {{ timeline_data.actual|safe }},
+                    borderColor: '#3A6EA5',
+                    backgroundColor: 'rgba(58, 110, 165, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                },
+                {
+                    label: 'Forecast-Saldo',
+                    data: {{ timeline_data.forecast|safe }},
+                    borderColor: '#39A77B',
+                    backgroundColor: 'rgba(57, 167, 123, 0.1)',
+                    tension: 0.4,
+                    fill: true,
+                    borderDash: [5, 5]
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return context.dataset.label + ': ' + 
+                                   context.parsed.y.toFixed(2) + ' €';
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: false,
+                    ticks: {
+                        callback: function(value) {
+                            return value.toFixed(0) + ' €';
+                        }
+                    }
+                }
+            }
+        }
+    });
+</script>
+{% endif %}
+{% endblock %}

@@ -120,11 +120,11 @@ finoa/
 
 ### 1. Repository klonen
 ```bash
-git clone https://github.com/<USER>/<REPO>.git finao
-cd finao
+git clone https://github.com/gdsanger/Finoa.git
+cd Finoa
 ```
 
-### 2. Virtualenv
+### 2. Virtualenv erstellen und aktivieren
 ```bash
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
@@ -141,13 +141,43 @@ pip install -r requirements.txt
 python manage.py migrate
 ```
 
-### 5. Starten
+### 5. Admin-Benutzer erstellen
+```bash
+python manage.py createsuperuser
+```
+
+Folgen Sie den Anweisungen und erstellen Sie einen Admin-Account.
+
+### 6. Starten
 ```bash
 python manage.py runserver
 ```
 
 Die App läuft unter:  
 👉 **http://127.0.0.1:8000/**
+
+Admin-Interface:  
+👉 **http://127.0.0.1:8000/admin/**
+
+---
+
+## 🎬 Erste Schritte
+
+Nach der Installation:
+
+1. **Konto anlegen**: Gehen Sie zum Admin-Interface und erstellen Sie Ihr erstes Konto (z.B. Girokonto)
+2. **Kategorien erstellen**: Legen Sie Kategorien an (Gehalt, Miete, Lebensmittel, etc.)
+3. **Buchungen erfassen**: Erfassen Sie Ihre Transaktionen
+4. **Wiederkehrende Buchungen**: Legen Sie monatliche Serien für regelmäßige Ein-/Ausgaben an
+5. **Dashboard nutzen**: Betrachten Sie Ihre Finanzen und Forecasts im Dashboard
+
+---
+
+## 🧪 Tests ausführen
+
+```bash
+python manage.py test
+```
 
 ---
 
