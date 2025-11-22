@@ -31,26 +31,22 @@
                     <div class="col-md-4 mb-3" id="monthNav" {% if filter_type == 'custom' %}style="display:none;"{% endif %}>
                         <label class="form-label"><strong>Monat:</strong></label>
                         <div class="btn-group w-100" role="group">
-                            <a href="?filter=month&year={{ prev_year }}&month={{ prev_month }}{% if selected_account %}&account_id={{ selected_account.id }}{% endif %}" 
-                               class="btn btn-finoa-secondary"
-                               hx-get="?filter=month&year={{ prev_year }}&month={{ prev_month }}{% if selected_account %}&account_id={{ selected_account.id }}{% endif %}"
-                               hx-target="#analytics-content"
-                               hx-swap="innerHTML">
+                            <button type="button" 
+                                    class="btn btn-finoa-secondary"
+                                    onclick="navigateToMonth({{ prev_year }}, {{ prev_month }})">
                                 <i class="bi bi-chevron-left"></i>
-                            </a>
+                            </button>
                             <button type="button" class="btn btn-outline-secondary" disabled>
                                 {{ month_name }}
                             </button>
-                            <a href="?filter=month&year={{ next_year }}&month={{ next_month }}{% if selected_account %}&account_id={{ selected_account.id }}{% endif %}" 
-                               class="btn btn-finoa-secondary"
-                               hx-get="?filter=month&year={{ next_year }}&month={{ next_month }}{% if selected_account %}&account_id={{ selected_account.id }}{% endif %}"
-                               hx-target="#analytics-content"
-                               hx-swap="innerHTML">
+                            <button type="button" 
+                                    class="btn btn-finoa-secondary"
+                                    onclick="navigateToMonth({{ next_year }}, {{ next_month }})">
                                 <i class="bi bi-chevron-right"></i>
-                            </a>
+                            </button>
                         </div>
-                        <input type="hidden" name="year" value="{{ year }}">
-                        <input type="hidden" name="month" value="{{ month }}">
+                        <input type="hidden" name="year" id="year-input" value="{{ year }}">
+                        <input type="hidden" name="month" id="month-input" value="{{ month }}">
                     </div>
 
                     <!-- Custom Date Range (shown when filter=custom) -->
@@ -111,6 +107,27 @@ function toggleDateInputs(filterType) {
         monthNav.style.display = 'block';
         customDateRange.style.display = 'none';
     }
+}
+
+function navigateToMonth(year, month) {
+    // Update hidden fields
+    document.getElementById('year-input').value = year;
+    document.getElementById('month-input').value = month;
+    
+    // Build the URL with all current parameters
+    const accountSelect = document.getElementById('accountSelect');
+    const accountId = accountSelect ? accountSelect.value : '';
+    
+    let url = '?filter=month&year=' + year + '&month=' + month;
+    if (accountId) {
+        url += '&account_id=' + accountId;
+    }
+    
+    // Use HTMX to update the content
+    htmx.ajax('GET', url, {
+        target: '#analytics-content',
+        swap: 'innerHTML'
+    });
 }
 </script>
 {% endblock %}
