@@ -1,6 +1,7 @@
 from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
+from django.contrib.auth.decorators import login_required
 from django.db.models import Count
 from datetime import date
 from dateutil.relativedelta import relativedelta
@@ -21,6 +22,7 @@ from .services import (
 )
 
 
+@login_required
 def dashboard(request):
     """
     Dashboard view showing:
@@ -82,6 +84,7 @@ def dashboard(request):
     return render(request, 'core/dashboard.html', context)
 
 
+@login_required
 def accounts(request):
     """
     Accounts overview showing all accounts with balances and forecast charts
@@ -116,6 +119,7 @@ def accounts(request):
     return render(request, 'core/accounts.html', context)
 
 
+@login_required
 def monthly_view(request):
     """
     Monthly view showing bookings for a specific month and account
@@ -181,6 +185,7 @@ def monthly_view(request):
     return render(request, 'core/monthly_view.html', context)
 
 
+@login_required
 def category_analytics(request):
     """
     Category analytics view showing income/expense analysis by category.
@@ -285,6 +290,7 @@ def category_analytics(request):
     return render(request, 'core/category_analytics.html', context)
 
 
+@login_required
 def payees(request):
     """
     Payee management view showing all payees with booking counts

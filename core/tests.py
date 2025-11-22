@@ -247,21 +247,36 @@ class RecurringBookingTest(TestCase):
 
 class ViewTest(TestCase):
     def setUp(self):
+        from django.contrib.auth.models import User
         self.account = Account.objects.create(
             name='Test Account',
             type='checking',
             initial_balance=Decimal('1000.00')
         )
+        self.user = User.objects.create_user(username='testuser', password='testpass123')
+        self.client.login(username='testuser', password='testpass123')
 
     def test_dashboard_view(self):
         response = self.client.get('/')
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Dashboard')
 
+    def test_dashboard_view_requires_login(self):
+        self.client.logout()
+        response = self.client.get('/')
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.url.startswith('/login/'))
+
     def test_accounts_view(self):
         response = self.client.get('/accounts/')
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Test Account')
+
+    def test_accounts_view_requires_login(self):
+        self.client.logout()
+        response = self.client.get('/accounts/')
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.url.startswith('/login/'))
 
     def test_monthly_view(self):
         response = self.client.get('/monthly/')
