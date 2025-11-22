@@ -1,0 +1,107 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Zahlungsempfänger - Finoa{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1 class="mb-4">
+        <i class="bi bi-people"></i> Zahlungsempfänger
+    </h1>
+
+    <div class="card card-finoa">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Alle Zahlungsempfänger</h5>
+            <a href="{% url 'admin:core_payee_add' %}" class="btn btn-finoa-primary btn-sm">
+                <i class="bi bi-plus-circle"></i> Neuer Zahlungsempfänger
+            </a>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-finoa">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Notiz</th>
+                            <th class="text-center">Buchungen</th>
+                            <th class="text-center">Wiederkehrend</th>
+                            <th class="text-center">Status</th>
+                            <th class="text-center">Aktionen</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for payee in payees %}
+                        <tr class="{% if not payee.is_active %}text-muted{% endif %}">
+                            <td><strong>{{ payee.name }}</strong></td>
+                            <td>
+                                {% if payee.note %}
+                                    <small class="text-muted">{{ payee.note|truncatewords:10 }}</small>
+                                {% else %}
+                                    <small class="text-muted">-</small>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if payee.booking_count > 0 %}
+                                    <span class="badge bg-info">{{ payee.booking_count }}</span>
+                                {% else %}
+                                    <span class="text-muted">0</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if payee.recurring_booking_count > 0 %}
+                                    <span class="badge bg-success">{{ payee.recurring_booking_count }}</span>
+                                {% else %}
+                                    <span class="text-muted">0</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if payee.is_active %}
+                                    <span class="badge bg-success">Aktiv</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Inaktiv</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <a href="{% url 'admin:core_payee_change' payee.id %}" 
+                                   class="btn btn-sm btn-finoa-secondary"
+                                   title="Bearbeiten">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="6" class="text-center text-muted py-4">
+                                <i class="bi bi-inbox" style="font-size: 2rem;"></i>
+                                <p class="mt-2">Keine Zahlungsempfänger vorhanden</p>
+                                <a href="{% url 'admin:core_payee_add' %}" class="btn btn-finoa-primary">
+                                    <i class="bi bi-plus-circle"></i> Ersten Zahlungsempfänger anlegen
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Info Box -->
+    <div class="card card-finoa mt-4">
+        <div class="card-header">
+            <h5 class="mb-0">
+                <i class="bi bi-info-circle"></i> Über Zahlungsempfänger
+            </h5>
+        </div>
+        <div class="card-body">
+            <p class="mb-2">
+                <strong>Zahlungsempfänger</strong> helfen Ihnen, Ihre Ausgaben und Einnahmen besser zu organisieren.
+            </p>
+            <ul class="mb-0">
+                <li>Ordnen Sie Buchungen einem Empfänger zu (z.B. "Amazon", "Netflix", "Vermieter")</li>
+                <li>Bei wiederkehrenden Buchungen wird der Empfänger automatisch verwendet</li>
+                <li>Spätere Auswertungen nach Empfänger sind geplant (z.B. "Top 10 Ausgaben nach Empfänger")</li>
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}

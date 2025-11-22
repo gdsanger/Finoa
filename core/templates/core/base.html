@@ -24,7 +24,7 @@
             <a class="navbar-brand" href="{% url 'dashboard' %}">
                 🌿 <strong>Finoa</strong>
             </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <button class="navbar-toggler navbar-toggler-finoa" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
@@ -42,6 +42,16 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'monthly_view' %}">
                             <i class="bi bi-calendar-month"></i> Monatsansicht
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'category_analytics' %}">
+                            <i class="bi bi-bar-chart"></i> Auswertungen
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'payees' %}">
+                            <i class="bi bi-people"></i> Zahlungsempfänger
                         </a>
                     </li>
                 </ul>
