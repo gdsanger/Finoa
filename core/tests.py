@@ -802,6 +802,29 @@ class KIGateClientTest(TestCase):
             self.assertIn('user_id', payload)
             self.assertNotEqual(payload['user_id'], '')
             self.assertEqual(payload['user_id'], 'default')
+    
+    def test_execute_agent_explicit_empty_user_id(self):
+        """Test that explicitly passing empty user_id gets replaced with default"""
+        from .services.kigate_client import execute_agent
+        from unittest.mock import patch, MagicMock
+        
+        # Mock the requests.post method
+        with patch('core.services.kigate_client.requests.post') as mock_post:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {'result': 'success'}
+            mock_post.return_value = mock_response
+            
+            # Call execute_agent with explicitly empty user_id
+            execute_agent(prompt="Test message", user_id="")
+            
+            # Verify the payload has non-empty user_id (should fallback to config or default)
+            call_args = mock_post.call_args
+            payload = call_args.kwargs['json']
+            self.assertIn('user_id', payload)
+            self.assertNotEqual(payload['user_id'], '')
+            # Should use config default or fallback to 'default'
+            self.assertIn(payload['user_id'], ['test-user', 'default'])
 
 
 class OpenAIClientTest(TestCase):
