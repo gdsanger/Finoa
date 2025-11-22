@@ -6,7 +6,7 @@ Handles balance calculations, forecasts, and transfer operations.
 from decimal import Decimal
 from datetime import date, timedelta
 from dateutil.relativedelta import relativedelta
-from django.db.models import Sum, Q
+from django.db.models import Sum
 import uuid
 
 from core.models import Account, Booking
