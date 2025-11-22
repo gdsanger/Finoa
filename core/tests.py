@@ -3,7 +3,7 @@ from decimal import Decimal
 from datetime import date
 from dateutil.relativedelta import relativedelta
 
-from .models import Account, Category, Booking, RecurringBooking
+from .models import Account, Category, Booking, RecurringBooking, Payee
 from .services import (
     calculate_actual_balance,
     calculate_forecast_balance,
@@ -380,3 +380,145 @@ class AnalyticsEngineTest(TestCase):
 
         # Should only include posted bookings
         self.assertEqual(analysis['total_expenses'], Decimal('100.00'))
+
+
+class PayeeModelTest(TestCase):
+    def test_payee_creation(self):
+        """Test basic payee creation"""
+        payee = Payee.objects.create(
+            name='Amazon',
+            note='Online shopping'
+        )
+        self.assertEqual(payee.name, 'Amazon')
+        self.assertEqual(payee.note, 'Online shopping')
+        self.assertTrue(payee.is_active)
+        self.assertEqual(str(payee), 'Amazon')
+
+    def test_payee_in_booking(self):
+        """Test that a booking can have a payee"""
+        account = Account.objects.create(
+            name='Test Account',
+            type='checking',
+            initial_balance=Decimal('1000.00')
+        )
+        payee = Payee.objects.create(name='Netflix')
+        category = Category.objects.create(name='Entertainment')
+        
+        booking = Booking.objects.create(
+            account=account,
+            booking_date=date.today(),
+            amount=Decimal('-15.99'),
+            category=category,
+            payee=payee,
+            description='Monthly subscription',
+            status='POSTED'
+        )
+        
+        self.assertEqual(booking.payee, payee)
+        self.assertEqual(booking.payee.name, 'Netflix')
+
+    def test_payee_in_recurring_booking(self):
+        """Test that a recurring booking can have a payee"""
+        account = Account.objects.create(
+            name='Test Account',
+            type='checking',
+            initial_balance=Decimal('1000.00')
+        )
+        payee = Payee.objects.create(name='Landlord')
+        category = Category.objects.create(name='Rent')
+        
+        recurring = RecurringBooking.objects.create(
+            account=account,
+            amount=Decimal('-1200.00'),
+            category=category,
+            payee=payee,
+            description='Monthly rent',
+            start_date=date(2025, 1, 1),
+            frequency='MONTHLY',
+            day_of_month=1,
+            is_active=True
+        )
+        
+        self.assertEqual(recurring.payee, payee)
+        self.assertEqual(recurring.payee.name, 'Landlord')
+
+    def test_payee_in_virtual_bookings(self):
+        """Test that virtual bookings from recurring bookings include payee"""
+        account = Account.objects.create(
+            name='Test Account',
+            type='checking',
+            initial_balance=Decimal('1000.00')
+        )
+        payee = Payee.objects.create(name='Gym')
+        category = Category.objects.create(name='Health')
+        
+        recurring = RecurringBooking.objects.create(
+            account=account,
+            amount=Decimal('-50.00'),
+            category=category,
+            payee=payee,
+            description='Gym membership',
+            start_date=date(2025, 1, 1),
+            frequency='MONTHLY',
+            day_of_month=1,
+            is_active=True
+        )
+        
+        # Generate virtual bookings
+        start = date(2025, 1, 1)
+        end = date(2025, 3, 31)
+        virtual_bookings = generate_virtual_bookings(
+            account=account,
+            start_date=start,
+            end_date=end
+        )
+        
+        # Check that virtual bookings have the payee
+        self.assertEqual(len(virtual_bookings), 3)
+        for vb in virtual_bookings:
+            self.assertEqual(vb['payee'], payee)
+
+    def test_payee_deletion_sets_null(self):
+        """Test that deleting a payee sets booking.payee to NULL"""
+        account = Account.objects.create(
+            name='Test Account',
+            type='checking',
+            initial_balance=Decimal('1000.00')
+        )
+        payee = Payee.objects.create(name='Test Payee')
+        
+        booking = Booking.objects.create(
+            account=account,
+            booking_date=date.today(),
+            amount=Decimal('-100.00'),
+            payee=payee,
+            status='POSTED'
+        )
+        
+        # Delete payee
+        payee.delete()
+        
+        # Reload booking
+        booking.refresh_from_db()
+        self.assertIsNone(booking.payee)
+
+
+class AccountLiquidityRelevanceTest(TestCase):
+    def test_account_liquidity_relevance_default(self):
+        """Test that accounts are liquidity-relevant by default"""
+        account = Account.objects.create(
+            name='Checking Account',
+            type='checking',
+            initial_balance=Decimal('1000.00')
+        )
+        self.assertTrue(account.is_liquidity_relevant)
+
+    def test_account_liquidity_relevance_false(self):
+        """Test setting account as not liquidity-relevant"""
+        account = Account.objects.create(
+            name='Savings Account',
+            type='loan',
+            initial_balance=Decimal('5000.00'),
+            is_liquidity_relevant=False
+        )
+        self.assertFalse(account.is_liquidity_relevant)
