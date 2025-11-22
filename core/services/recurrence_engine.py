@@ -101,6 +101,7 @@ def _generate_bookings_for_recurring(recurring, start_date, end_date):
             'amount': recurring.amount,
             'description': recurring.description,
             'category': recurring.category,
+            'payee': recurring.payee,
             'recurring_booking_id': recurring.id,
             'account': recurring.account,
             'is_transfer': recurring.is_transfer,
@@ -114,6 +115,7 @@ def _generate_bookings_for_recurring(recurring, start_date, end_date):
                 'amount': -recurring.amount,  # Negate amount for counter-entry (outflow becomes inflow)
                 'description': recurring.description,
                 'category': recurring.category,
+                'payee': recurring.payee,
                 'recurring_booking_id': recurring.id,
                 'account': recurring.transfer_partner_account,
                 'is_transfer': True,

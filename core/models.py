@@ -3,6 +3,26 @@ from django.core.validators import MinValueValidator
 from decimal import Decimal
 
 
+class Payee(models.Model):
+    """
+    Represents a payment recipient (Zahlungsempfänger) for bookings.
+    Used for analysis and reporting by recipient.
+    """
+    name = models.CharField(max_length=200)
+    note = models.TextField(blank=True, help_text='Optional description or alias')
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['name']
+        verbose_name = 'Payee'
+        verbose_name_plural = 'Payees'
+    
+    def __str__(self):
+        return self.name
+
+
 class Account(models.Model):
     """
     Represents a financial account (checking, credit card, trading, loan, etc.)
@@ -24,6 +44,10 @@ class Account(models.Model):
         default=Decimal('0.00')
     )
     is_active = models.BooleanField(default=True)
+    is_liquidity_relevant = models.BooleanField(
+        default=True,
+        help_text='Whether this account should be included in liquidity calculations (e.g., checking accounts: yes, loans/savings: no)'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -79,6 +103,14 @@ class Booking(models.Model):
         null=True, 
         blank=True,
         related_name='bookings'
+    )
+    payee = models.ForeignKey(
+        Payee,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='bookings',
+        help_text='Optional payment recipient'
     )
     description = models.CharField(max_length=500, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='POSTED')
@@ -144,6 +176,14 @@ class RecurringBooking(models.Model):
         null=True,
         blank=True,
         related_name='recurring_bookings'
+    )
+    payee = models.ForeignKey(
+        Payee,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='recurring_bookings',
+        help_text='Optional payment recipient'
     )
     description = models.CharField(max_length=500, blank=True)
     

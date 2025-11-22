@@ -182,13 +182,14 @@ def create_transfer(from_account, to_account, amount, booking_date, description=
     return from_booking, to_booking
 
 
-def get_total_liquidity(as_of_date=None, include_forecast=False):
+def get_total_liquidity(as_of_date=None, include_forecast=False, liquidity_relevant_only=False):
     """
     Calculate total liquidity across all active accounts.
     
     Args:
         as_of_date: Date to calculate for (default: today)
         include_forecast: Whether to use forecast or actual balances
+        liquidity_relevant_only: Whether to only include liquidity-relevant accounts
     
     Returns:
         Decimal: Total liquidity
@@ -197,6 +198,9 @@ def get_total_liquidity(as_of_date=None, include_forecast=False):
         as_of_date = date.today()
     
     active_accounts = Account.objects.filter(is_active=True)
+    
+    if liquidity_relevant_only:
+        active_accounts = active_accounts.filter(is_liquidity_relevant=True)
     
     total = Decimal('0.00')
     for account in active_accounts:
