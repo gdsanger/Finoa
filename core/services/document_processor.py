@@ -9,6 +9,8 @@ from decimal import Decimal, InvalidOperation
 from datetime import datetime
 from pathlib import Path
 
+import fitz  # PyMuPDF
+
 from django.core.files.uploadedfile import UploadedFile
 
 from .openai_client import call_openai_chat, get_active_openai_config
@@ -73,10 +75,12 @@ def extract_text_from_pdf(file_path: str) -> str:
         
     Returns:
         str: Extracted text from the PDF.
+        
+    Raises:
+        FileNotFoundError: If the PDF file doesn't exist.
+        RuntimeError: If PDF extraction fails.
     """
     try:
-        import fitz  # PyMuPDF
-        
         doc = fitz.open(file_path)
         text_parts = []
         
@@ -87,8 +91,10 @@ def extract_text_from_pdf(file_path: str) -> str:
         doc.close()
         
         return '\n'.join(text_parts)
+    except FileNotFoundError:
+        raise
     except Exception as e:
-        raise Exception(f"Failed to extract text from PDF: {str(e)}")
+        raise RuntimeError(f"Failed to extract text from PDF: {str(e)}") from e
 
 
 def process_document_with_openai(file_path: str, mime_type: str) -> Dict[str, Any]:

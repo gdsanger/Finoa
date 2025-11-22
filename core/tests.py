@@ -2,6 +2,10 @@ from django.test import TestCase
 from decimal import Decimal
 from datetime import date
 from dateutil.relativedelta import relativedelta
+import tempfile
+import os
+
+import fitz  # PyMuPDF
 
 from .models import Account, Category, Booking, RecurringBooking, Payee, KIGateConfig, OpenAIConfig, DocumentUpload
 from .services import (
@@ -877,8 +881,6 @@ class DocumentProcessorTest(TestCase):
     def test_extract_text_from_pdf(self):
         """Test PDF text extraction"""
         from .services.document_processor import extract_text_from_pdf
-        import tempfile
-        import fitz  # PyMuPDF
         
         # Create a temporary PDF with some text
         with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_file:
@@ -900,7 +902,6 @@ class DocumentProcessorTest(TestCase):
             self.assertIn("99.99", extracted_text)
             self.assertIn("2024-01-15", extracted_text)
         finally:
-            import os
             os.unlink(tmp_path)
     
     def test_map_to_database_objects_basic(self):
