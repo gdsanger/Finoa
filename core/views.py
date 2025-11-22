@@ -282,3 +282,22 @@ def category_analytics(request):
         return render(request, 'core/partials/category_analytics_content.html', context)
     
     return render(request, 'core/category_analytics.html', context)
+
+
+def payees(request):
+    """
+    Payee management view showing all payees with booking counts
+    """
+    from .models import Payee
+    from django.db.models import Count
+    
+    payees_list = Payee.objects.annotate(
+        booking_count=Count('bookings'),
+        recurring_booking_count=Count('recurring_bookings')
+    ).order_by('-is_active', 'name')
+    
+    context = {
+        'payees': payees_list,
+    }
+    
+    return render(request, 'core/payees.html', context)
