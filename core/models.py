@@ -221,3 +221,56 @@ class RecurringBooking(models.Model):
     
     def __str__(self):
         return f"{self.description} - {self.amount}€ ({self.get_frequency_display()})"
+
+
+class KIGateConfig(models.Model):
+    """
+    Configuration for KIGate AI service integration.
+    Used for text-based AI functions (agents, auto-categorization, matching, forecasts, etc.)
+    """
+    name = models.CharField(max_length=200, help_text='Configuration name for identification')
+    base_url = models.URLField(help_text='Base URL for KIGate API')
+    api_key = models.CharField(max_length=500, help_text='API key for authentication')
+    max_tokens = models.PositiveIntegerField(default=2000, help_text='Maximum tokens for responses')
+    default_agent_name = models.CharField(max_length=200, blank=True, help_text='Default agent name to use')
+    default_provider = models.CharField(max_length=100, blank=True, help_text='Default AI provider (e.g., openai, anthropic)')
+    default_model = models.CharField(max_length=100, blank=True, help_text='Default model name')
+    default_user_id = models.CharField(max_length=200, blank=True, help_text='Default user ID for requests')
+    timeout_seconds = models.PositiveIntegerField(default=30, help_text='Request timeout in seconds')
+    is_active = models.BooleanField(default=False, help_text='Whether this configuration is active')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-is_active', 'name']
+        verbose_name = 'KIGate Configuration'
+        verbose_name_plural = 'KIGate Configurations'
+    
+    def __str__(self):
+        status = '✓' if self.is_active else '✗'
+        return f"{status} {self.name}"
+
+
+class OpenAIConfig(models.Model):
+    """
+    Configuration for direct OpenAI API integration.
+    Used for special use cases like vision/document recognition.
+    """
+    name = models.CharField(max_length=200, help_text='Configuration name for identification')
+    api_key = models.CharField(max_length=500, help_text='OpenAI API key')
+    base_url = models.URLField(default='https://api.openai.com/v1', help_text='OpenAI API base URL')
+    default_model = models.CharField(max_length=100, default='gpt-4', help_text='Default text model')
+    default_vision_model = models.CharField(max_length=100, default='gpt-4-vision-preview', help_text='Default vision model')
+    timeout_seconds = models.PositiveIntegerField(default=30, help_text='Request timeout in seconds')
+    is_active = models.BooleanField(default=False, help_text='Whether this configuration is active')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-is_active', 'name']
+        verbose_name = 'OpenAI Configuration'
+        verbose_name_plural = 'OpenAI Configurations'
+    
+    def __str__(self):
+        status = '✓' if self.is_active else '✗'
+        return f"{status} {self.name}"

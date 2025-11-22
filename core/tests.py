@@ -3,7 +3,7 @@ from decimal import Decimal
 from datetime import date
 from dateutil.relativedelta import relativedelta
 
-from .models import Account, Category, Booking, RecurringBooking, Payee
+from .models import Account, Category, Booking, RecurringBooking, Payee, KIGateConfig, OpenAIConfig
 from .services import (
     calculate_actual_balance,
     calculate_forecast_balance,
@@ -571,3 +571,212 @@ class AccountLiquidityRelevanceTest(TestCase):
         # Test with filter - should only include checking account
         total_liquid = get_total_liquidity(liquidity_relevant_only=True)
         self.assertEqual(total_liquid, Decimal('1000.00'))
+
+
+class KIGateConfigModelTest(TestCase):
+    """Tests for KIGateConfig model."""
+    
+    def test_kigate_config_creation(self):
+        """Test basic KIGate configuration creation"""
+        config = KIGateConfig.objects.create(
+            name='Test KIGate',
+            base_url='https://kigate.example.com',
+            api_key='test-api-key-123',
+            max_tokens=2000,
+            default_agent_name='test-agent',
+            default_provider='openai',
+            default_model='gpt-4',
+            default_user_id='user123',
+            timeout_seconds=30,
+            is_active=True
+        )
+        self.assertEqual(config.name, 'Test KIGate')
+        self.assertEqual(config.base_url, 'https://kigate.example.com')
+        self.assertTrue(config.is_active)
+        self.assertEqual(config.max_tokens, 2000)
+        self.assertEqual(config.timeout_seconds, 30)
+        
+    def test_kigate_config_str_active(self):
+        """Test string representation for active config"""
+        config = KIGateConfig.objects.create(
+            name='Production KIGate',
+            base_url='https://kigate.example.com',
+            api_key='key',
+            is_active=True
+        )
+        self.assertEqual(str(config), '✓ Production KIGate')
+        
+    def test_kigate_config_str_inactive(self):
+        """Test string representation for inactive config"""
+        config = KIGateConfig.objects.create(
+            name='Inactive KIGate',
+            base_url='https://kigate.example.com',
+            api_key='key',
+            is_active=False
+        )
+        self.assertEqual(str(config), '✗ Inactive KIGate')
+        
+    def test_kigate_config_ordering(self):
+        """Test that active configs appear first"""
+        inactive = KIGateConfig.objects.create(
+            name='Inactive',
+            base_url='https://kigate1.example.com',
+            api_key='key1',
+            is_active=False
+        )
+        active = KIGateConfig.objects.create(
+            name='Active',
+            base_url='https://kigate2.example.com',
+            api_key='key2',
+            is_active=True
+        )
+        
+        configs = list(KIGateConfig.objects.all())
+        self.assertEqual(configs[0], active)
+        self.assertEqual(configs[1], inactive)
+
+
+class OpenAIConfigModelTest(TestCase):
+    """Tests for OpenAIConfig model."""
+    
+    def test_openai_config_creation(self):
+        """Test basic OpenAI configuration creation"""
+        config = OpenAIConfig.objects.create(
+            name='Test OpenAI',
+            api_key='sk-test-key-123',
+            base_url='https://api.openai.com/v1',
+            default_model='gpt-4',
+            default_vision_model='gpt-4-vision-preview',
+            timeout_seconds=30,
+            is_active=True
+        )
+        self.assertEqual(config.name, 'Test OpenAI')
+        self.assertEqual(config.default_model, 'gpt-4')
+        self.assertTrue(config.is_active)
+        
+    def test_openai_config_defaults(self):
+        """Test that default values are set correctly"""
+        config = OpenAIConfig.objects.create(
+            name='OpenAI',
+            api_key='sk-key',
+        )
+        self.assertEqual(config.base_url, 'https://api.openai.com/v1')
+        self.assertEqual(config.default_model, 'gpt-4')
+        self.assertEqual(config.default_vision_model, 'gpt-4-vision-preview')
+        self.assertEqual(config.timeout_seconds, 30)
+        self.assertFalse(config.is_active)
+        
+    def test_openai_config_str_active(self):
+        """Test string representation for active config"""
+        config = OpenAIConfig.objects.create(
+            name='Production OpenAI',
+            api_key='sk-key',
+            is_active=True
+        )
+        self.assertEqual(str(config), '✓ Production OpenAI')
+        
+    def test_openai_config_str_inactive(self):
+        """Test string representation for inactive config"""
+        config = OpenAIConfig.objects.create(
+            name='Inactive OpenAI',
+            api_key='sk-key',
+            is_active=False
+        )
+        self.assertEqual(str(config), '✗ Inactive OpenAI')
+
+
+class KIGateClientTest(TestCase):
+    """Tests for KIGate client functions."""
+    
+    def setUp(self):
+        """Create test configuration"""
+        self.config = KIGateConfig.objects.create(
+            name='Test Config',
+            base_url='https://kigate.test.com',
+            api_key='test-key',
+            default_agent_name='test-agent',
+            default_provider='openai',
+            default_model='gpt-4',
+            default_user_id='test-user',
+            max_tokens=1000,
+            timeout_seconds=30,
+            is_active=True
+        )
+    
+    def test_get_active_kigate_config_success(self):
+        """Test retrieving active configuration"""
+        from .services import get_active_kigate_config
+        config = get_active_kigate_config()
+        self.assertEqual(config.name, 'Test Config')
+        self.assertTrue(config.is_active)
+    
+    def test_get_active_kigate_config_no_active(self):
+        """Test error when no active configuration exists"""
+        from .services import get_active_kigate_config
+        from django.core.exceptions import ImproperlyConfigured
+        
+        # Deactivate the config
+        self.config.is_active = False
+        self.config.save()
+        
+        with self.assertRaises(ImproperlyConfigured):
+            get_active_kigate_config()
+    
+    def test_execute_agent_no_config(self):
+        """Test execute_agent returns error when no active config"""
+        from .services import execute_agent
+        
+        # Deactivate the config
+        self.config.is_active = False
+        self.config.save()
+        
+        response = execute_agent("test prompt")
+        self.assertFalse(response.success)
+        self.assertIn("No active KIGate configuration", response.error)
+
+
+class OpenAIClientTest(TestCase):
+    """Tests for OpenAI client functions."""
+    
+    def setUp(self):
+        """Create test configuration"""
+        self.config = OpenAIConfig.objects.create(
+            name='Test Config',
+            api_key='sk-test-key',
+            base_url='https://api.openai.com/v1',
+            default_model='gpt-4',
+            timeout_seconds=30,
+            is_active=True
+        )
+    
+    def test_get_active_openai_config_success(self):
+        """Test retrieving active configuration"""
+        from .services import get_active_openai_config
+        config = get_active_openai_config()
+        self.assertEqual(config.name, 'Test Config')
+        self.assertTrue(config.is_active)
+    
+    def test_get_active_openai_config_no_active(self):
+        """Test error when no active configuration exists"""
+        from .services import get_active_openai_config
+        from django.core.exceptions import ImproperlyConfigured
+        
+        # Deactivate the config
+        self.config.is_active = False
+        self.config.save()
+        
+        with self.assertRaises(ImproperlyConfigured):
+            get_active_openai_config()
+    
+    def test_call_openai_chat_no_config(self):
+        """Test call_openai_chat returns error when no active config"""
+        from .services import call_openai_chat
+        
+        # Deactivate the config
+        self.config.is_active = False
+        self.config.save()
+        
+        messages = [{"role": "user", "content": "Hello"}]
+        response = call_openai_chat(messages)
+        self.assertFalse(response.success)
+        self.assertIn("No active OpenAI configuration", response.error)
