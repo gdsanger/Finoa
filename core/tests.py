@@ -737,6 +737,94 @@ class KIGateClientTest(TestCase):
         response = execute_agent("test prompt")
         self.assertFalse(response.success)
         self.assertIn("No active KIGate configuration", response.error)
+    
+    def test_execute_agent_payload_format(self):
+        """Test that execute_agent constructs payload with correct API schema"""
+        from .services.kigate_client import execute_agent
+        from unittest.mock import patch, MagicMock
+        
+        # Mock the requests.post method
+        with patch('core.services.kigate_client.requests.post') as mock_post:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {'result': 'success'}
+            mock_post.return_value = mock_response
+            
+            # Call execute_agent
+            execute_agent(
+                prompt="Test message",
+                agent_name="test-agent",
+                provider="test-provider",
+                model="test-model",
+                user_id="test-user",
+                max_tokens=1500,
+                temperature=0.5
+            )
+            
+            # Verify the payload structure
+            mock_post.assert_called_once()
+            call_args = mock_post.call_args
+            payload = call_args.kwargs['json']
+            
+            # Verify payload has correct fields according to API schema
+            self.assertIn('message', payload)  # Should be 'message', not 'prompt'
+            self.assertNotIn('prompt', payload)  # Should not contain 'prompt'
+            self.assertEqual(payload['message'], 'Test message')
+            self.assertEqual(payload['agent_name'], 'test-agent')
+            self.assertEqual(payload['provider'], 'test-provider')
+            self.assertEqual(payload['model'], 'test-model')
+            self.assertEqual(payload['user_id'], 'test-user')
+            self.assertEqual(payload['max_tokens'], 1500)
+            self.assertEqual(payload['temperature'], 0.5)
+    
+    def test_execute_agent_empty_user_id_fallback(self):
+        """Test that empty user_id gets replaced with default value"""
+        from .services.kigate_client import execute_agent
+        from unittest.mock import patch, MagicMock
+        
+        # Update config to have empty user_id
+        self.config.default_user_id = ''
+        self.config.save()
+        
+        # Mock the requests.post method
+        with patch('core.services.kigate_client.requests.post') as mock_post:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {'result': 'success'}
+            mock_post.return_value = mock_response
+            
+            # Call execute_agent without user_id
+            execute_agent(prompt="Test message")
+            
+            # Verify the payload has non-empty user_id
+            call_args = mock_post.call_args
+            payload = call_args.kwargs['json']
+            self.assertIn('user_id', payload)
+            self.assertNotEqual(payload['user_id'], '')
+            self.assertEqual(payload['user_id'], 'default')
+    
+    def test_execute_agent_explicit_empty_user_id(self):
+        """Test that explicitly passing empty user_id gets replaced with default"""
+        from .services.kigate_client import execute_agent
+        from unittest.mock import patch, MagicMock
+        
+        # Mock the requests.post method
+        with patch('core.services.kigate_client.requests.post') as mock_post:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {'result': 'success'}
+            mock_post.return_value = mock_response
+            
+            # Call execute_agent with explicitly empty user_id
+            execute_agent(prompt="Test message", user_id="")
+            
+            # Verify the payload has non-empty user_id (should fallback to config or default)
+            call_args = mock_post.call_args
+            payload = call_args.kwargs['json']
+            self.assertIn('user_id', payload)
+            self.assertNotEqual(payload['user_id'], '')
+            # Should use config default or fallback to 'default'
+            self.assertIn(payload['user_id'], ['test-user', 'default'])
 
 
 class OpenAIClientTest(TestCase):
