@@ -275,6 +275,12 @@ class ViewTest(TestCase):
         self.assertContains(response, 'Gesamtausgaben')
         self.assertContains(response, 'Gesamteinnahmen')
 
+    def test_payees_view(self):
+        response = self.client.get('/payees/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Zahlungsempfänger')
+        self.assertContains(response, 'Neuer Zahlungsempfänger')
+
 
 class AnalyticsEngineTest(TestCase):
     def setUp(self):
@@ -522,3 +528,31 @@ class AccountLiquidityRelevanceTest(TestCase):
             is_liquidity_relevant=False
         )
         self.assertFalse(account.is_liquidity_relevant)
+
+    def test_total_liquidity_with_filter(self):
+        """Test that get_total_liquidity can filter by liquidity relevance"""
+        from .services import get_total_liquidity
+        
+        # Create liquidity-relevant account
+        checking = Account.objects.create(
+            name='Checking',
+            type='checking',
+            initial_balance=Decimal('1000.00'),
+            is_liquidity_relevant=True
+        )
+        
+        # Create non-liquidity-relevant account (e.g., loan)
+        loan = Account.objects.create(
+            name='Loan',
+            type='loan',
+            initial_balance=Decimal('-5000.00'),
+            is_liquidity_relevant=False
+        )
+        
+        # Test without filter - should include both
+        total_all = get_total_liquidity(liquidity_relevant_only=False)
+        self.assertEqual(total_all, Decimal('-4000.00'))
+        
+        # Test with filter - should only include checking account
+        total_liquid = get_total_liquidity(liquidity_relevant_only=True)
+        self.assertEqual(total_liquid, Decimal('1000.00'))
