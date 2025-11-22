@@ -1161,3 +1161,29 @@ class DocumentViewTest(TestCase):
         doc.refresh_from_db()
         self.assertEqual(doc.status, 'BOOKED')
         self.assertIsNotNone(doc.booking)
+    
+    def test_document_review_detail_amount_field_renders_correctly(self):
+        """Test that the amount field in review detail renders with correct format for HTML input"""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        
+        file_content = b'test'
+        uploaded_file = SimpleUploadedFile('test.pdf', file_content)
+        
+        # Test with a decimal amount
+        doc = DocumentUpload.objects.create(
+            file=uploaded_file,
+            original_filename='test.pdf',
+            status='REVIEW_PENDING',
+            suggested_amount=Decimal('42.50'),
+            suggested_currency='EUR',
+            suggested_date=date.today()
+        )
+        
+        response = self.client.get(f'/documents/review/{doc.id}/')
+        self.assertEqual(response.status_code, 200)
+        
+        # The amount should be rendered with a period (.) not a comma (,) for HTML number inputs
+        # Check that the input field contains the correct value format
+        self.assertContains(response, 'value="42.50"')
+        # Ensure it doesn't contain the localized comma format
+        self.assertNotContains(response, 'value="42,50"')
