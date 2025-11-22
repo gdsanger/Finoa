@@ -12,11 +12,11 @@ def update_vision_model(apps, schema_editor):
 
 
 def reverse_vision_model(apps, schema_editor):
-    """Reverse migration - restore gpt-4-vision-preview"""
-    OpenAIConfig = apps.get_model('core', 'OpenAIConfig')
-    OpenAIConfig.objects.filter(default_vision_model='gpt-4o').update(
-        default_vision_model='gpt-4-vision-preview'
-    )
+    """
+    Reverse migration - no-op since we don't want to revert to deprecated model.
+    If you need to rollback, manually update OpenAIConfig records as needed.
+    """
+    pass
 
 
 class Migration(migrations.Migration):
