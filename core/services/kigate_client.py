@@ -66,13 +66,16 @@ def execute_agent(
     try:
         config = get_active_kigate_config()
         
-        # Build request payload
+        # Get user_id and ensure it's not empty (API requires at least 1 character)
+        user_id_value = user_id or config.default_user_id or "default"
+        
+        # Build request payload according to API schema
         payload = {
-            "prompt": prompt,
+            "message": prompt,  # API expects 'message', not 'prompt'
             "agent_name": agent_name or config.default_agent_name,
-            "provider": provider or config.default_provider,
-            "model": model or config.default_model,
-            "user_id": user_id or config.default_user_id,
+            "provider": provider or config.default_provider or "gemma3",
+            "model": model or config.default_model or "ollama",
+            "user_id": user_id_value,
             "max_tokens": max_tokens or config.max_tokens,
             "temperature": temperature,
         }
