@@ -260,7 +260,7 @@ class OpenAIConfig(models.Model):
     api_key = models.CharField(max_length=500, help_text='OpenAI API key')
     base_url = models.URLField(default='https://api.openai.com/v1', help_text='OpenAI API base URL')
     default_model = models.CharField(max_length=100, default='gpt-4', help_text='Default text model')
-    default_vision_model = models.CharField(max_length=100, default='gpt-4-vision-preview', help_text='Default vision model')
+    default_vision_model = models.CharField(max_length=100, default='gpt-4o', help_text='Default vision model')
     timeout_seconds = models.PositiveIntegerField(default=30, help_text='Request timeout in seconds')
     is_active = models.BooleanField(default=False, help_text='Whether this configuration is active')
     created_at = models.DateTimeField(auto_now_add=True)

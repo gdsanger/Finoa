@@ -646,7 +646,7 @@ class OpenAIConfigModelTest(TestCase):
             api_key='sk-test-key-123',
             base_url='https://api.openai.com/v1',
             default_model='gpt-4',
-            default_vision_model='gpt-4-vision-preview',
+            default_vision_model='gpt-4o',
             timeout_seconds=30,
             is_active=True
         )
@@ -662,7 +662,7 @@ class OpenAIConfigModelTest(TestCase):
         )
         self.assertEqual(config.base_url, 'https://api.openai.com/v1')
         self.assertEqual(config.default_model, 'gpt-4')
-        self.assertEqual(config.default_vision_model, 'gpt-4-vision-preview')
+        self.assertEqual(config.default_vision_model, 'gpt-4o')
         self.assertEqual(config.timeout_seconds, 30)
         self.assertFalse(config.is_active)
         
