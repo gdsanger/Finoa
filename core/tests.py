@@ -971,6 +971,53 @@ class DocumentProcessorTest(TestCase):
         self.assertEqual(result['suggested_payee'], payee)
         self.assertEqual(result['suggested_category'], category)
         self.assertEqual(result['suggested_amount'], Decimal('42.50'))
+    
+    def test_process_document_with_kigate_parses_german_format(self):
+        """Test parsing German-formatted KIGate response"""
+        from .services.document_processor import process_document_with_kigate
+        from unittest.mock import patch, MagicMock
+        
+        # Create a temporary PDF for testing
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_file:
+            tmp_path = tmp_file.name
+        
+        try:
+            # Create a simple PDF
+            with fitz.open() as doc:
+                page = doc.new_page()
+                page.insert_text((50, 50), "Test Invoice")
+                doc.save(tmp_path)
+            
+            # Mock the KIGate response with German format
+            mock_kigate_response = MagicMock()
+            mock_kigate_response.success = True
+            mock_kigate_response.data = {
+                'job_id': 'test-job-123',
+                'result': '''{
+                    "Belegnummer": "DE52E6ZDABEY",
+                    "Absender": "Amazon Business EU S.à r.l.",
+                    "Betrag": "27,03 €",
+                    "Fällig": "13. Dezember 2025",
+                    "Info": "Schlitzer Neutralalkohol"
+                }'''
+            }
+            
+            with patch('core.services.document_processor.execute_agent', return_value=mock_kigate_response):
+                result = process_document_with_kigate(tmp_path, 'application/pdf')
+            
+            # Verify success
+            self.assertTrue(result['success'])
+            
+            # Verify data extraction
+            data = result['data']
+            self.assertEqual(data['payee_name'], 'Amazon Business EU S.à r.l.')
+            self.assertAlmostEqual(data['amount'], 27.03, places=2)
+            self.assertEqual(data['currency'], 'EUR')
+            self.assertEqual(data['date'], '2025-12-13')
+            self.assertEqual(data['description'], 'DE52E6ZDABEY Schlitzer Neutralalkohol')
+            
+        finally:
+            os.unlink(tmp_path)
 
 
 class DocumentViewTest(TestCase):

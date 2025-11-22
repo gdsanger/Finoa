@@ -1,19 +1,23 @@
 """
 Document processor for AI-powered analysis of receipts and invoices.
-Uses OpenAI Vision API for images and text extraction for PDFs.
+Uses OpenAI Vision API for text extraction from images and PyMuPDF for PDFs.
+Sends extracted text to KIGate agent for metadata extraction.
 """
 import base64
 import json
+import re
 from typing import Dict, Any, Optional
 from decimal import Decimal, InvalidOperation
 from datetime import datetime
 from pathlib import Path
 
 import fitz  # PyMuPDF
+from dateutil import parser
 
 from django.core.files.uploadedfile import UploadedFile
 
 from .openai_client import call_openai_chat, get_active_openai_config
+from .kigate_client import execute_agent
 
 
 def encode_file_to_base64(file_path: str) -> str:
@@ -277,6 +281,194 @@ Hier ist der extrahierte Text aus dem PDF-Dokument:
         }
 
 
+def process_document_with_kigate(file_path: str, mime_type: str) -> Dict[str, Any]:
+    """
+    Process a document using KIGate agent to extract booking information.
+    For images: uses OpenAI Vision API to extract text first.
+    For PDFs: extracts text with PyMuPDF.
+    Then sends extracted text to KIGate agent "invoice-metadata-extractor-de".
+    
+    Args:
+        file_path: Path to the document file.
+        mime_type: MIME type of the document.
+        
+    Returns:
+        dict: Extracted information or error details.
+    """
+    try:
+        # Step 1: Extract text from document
+        extracted_text = ""
+        
+        if is_image_mime_type(mime_type):
+            # For images, use OpenAI Vision API to extract text
+            config = get_active_openai_config()
+            base64_content = encode_file_to_base64(file_path)
+            
+            # Simple prompt to extract text from image
+            text_extraction_prompt = "Extrahiere den gesamten lesbaren Text aus diesem Bild. Gib nur den Text zurück, ohne zusätzliche Erklärungen."
+            
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": text_extraction_prompt
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{mime_type};base64,{base64_content}"
+                            }
+                        }
+                    ]
+                }
+            ]
+            
+            # Call OpenAI Vision API to extract text
+            response = call_openai_chat(
+                messages=messages,
+                model=config.default_vision_model,
+                temperature=0.1,
+                max_tokens=2000
+            )
+            
+            if not response.success:
+                return {
+                    'success': False,
+                    'error': f'Failed to extract text from image: {response.error}'
+                }
+            
+            extracted_text = response.data['choices'][0]['message']['content']
+            
+        elif mime_type == 'application/pdf':
+            # Extract text from PDF
+            extracted_text = extract_text_from_pdf(file_path)
+        else:
+            return {
+                'success': False,
+                'error': f'Unsupported MIME type: {mime_type}'
+            }
+        
+        # Step 2: Send extracted text to KIGate agent
+        kigate_response = execute_agent(
+            prompt=extracted_text,
+            agent_name="invoice-metadata-extractor-de"
+        )
+        
+        if not kigate_response.success:
+            return {
+                'success': False,
+                'error': f'KIGate agent failed: {kigate_response.error}'
+            }
+        
+        # Step 3: Parse the response
+        # KIGate returns the result in the 'result' field
+        result_text = kigate_response.data.get('result', '')
+        
+        # Try to parse JSON from the response
+        # Sometimes the model wraps JSON in markdown code blocks
+        if '```json' in result_text:
+            result_text = result_text.split('```json')[1].split('```')[0].strip()
+        elif '```' in result_text:
+            result_text = result_text.split('```')[1].split('```')[0].strip()
+        
+        kigate_data = json.loads(result_text)
+        
+        # Step 4: Convert German field names to internal format
+        # Expected KIGate response format:
+        # {
+        #   "Belegnummer": "DE52E6ZDABEY",
+        #   "Absender": "Amazon Business EU S.à r.l.",
+        #   "Betrag": "27,03 €",
+        #   "Fällig": "13. Dezember 2025",
+        #   "Info": "Schlitzer Neutralalkohol"
+        # }
+        
+        # Parse amount from German format (e.g., "27,03 €")
+        amount_str = kigate_data.get('Betrag', '')
+        amount = None
+        currency = 'EUR'
+        if amount_str:
+            # Remove currency symbol and convert comma to decimal point
+            import re
+            # Extract number and currency
+            amount_match = re.search(r'([\d.,]+)\s*([€$£]|\w{3})?', amount_str)
+            if amount_match:
+                number_part = amount_match.group(1).replace('.', '').replace(',', '.')
+                try:
+                    amount = float(number_part)
+                except ValueError:
+                    amount = None
+                # Try to detect currency
+                currency_part = amount_match.group(2)
+                if currency_part == '€':
+                    currency = 'EUR'
+                elif currency_part == '$':
+                    currency = 'USD'
+                elif currency_part == '£':
+                    currency = 'GBP'
+                elif currency_part and len(currency_part) == 3:
+                    currency = currency_part
+        
+        # Parse date from German format (e.g., "13. Dezember 2025")
+        date_str = kigate_data.get('Fällig', '')
+        parsed_date = None
+        if date_str:
+            try:
+                # Try to parse German date format
+                # Map German month names to English for parsing
+                german_months = {
+                    'Januar': 'January', 'Februar': 'February', 'März': 'March',
+                    'April': 'April', 'Mai': 'May', 'Juni': 'June',
+                    'Juli': 'July', 'August': 'August', 'September': 'September',
+                    'Oktober': 'October', 'November': 'November', 'Dezember': 'December'
+                }
+                date_str_english = date_str
+                for de, en in german_months.items():
+                    date_str_english = date_str_english.replace(de, en)
+                parsed_date = parser.parse(date_str_english, dayfirst=True).strftime('%Y-%m-%d')
+            except Exception:
+                parsed_date = None
+        
+        # Build description from Belegnummer + Info
+        belegnummer = kigate_data.get('Belegnummer', '')
+        info = kigate_data.get('Info', '')
+        description = f"{belegnummer} {info}".strip() if belegnummer or info else ''
+        
+        # Convert to internal format
+        extracted_data = {
+            'payee_name': kigate_data.get('Absender'),
+            'account_name': None,  # Not provided by KIGate agent
+            'category_name': None,  # Not provided by KIGate agent
+            'amount': amount,
+            'currency': currency,
+            'date': parsed_date,
+            'description': description,
+            'is_recurring': False,  # Not provided by KIGate agent
+            'confidence': 0.8,  # Default confidence for KIGate
+            'extracted_text': extracted_text
+        }
+        
+        return {
+            'success': True,
+            'data': extracted_data,
+            'raw_response': kigate_response.data
+        }
+        
+    except json.JSONDecodeError as e:
+        return {
+            'success': False,
+            'error': f'Failed to parse JSON from KIGate response: {str(e)}',
+            'raw_content': result_text if 'result_text' in locals() else None
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'error': f'Error processing document with KIGate: {str(e)}'
+        }
+
+
 def map_to_database_objects(extracted_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Map extracted data to database objects (Account, Payee, Category).
@@ -372,8 +564,8 @@ def process_document_upload(document_upload) -> bool:
         file_path = document_upload.file.path
         mime_type = document_upload.mime_type or get_mime_type(document_upload.original_filename)
         
-        # Process with OpenAI
-        result = process_document_with_openai(file_path, mime_type)
+        # Process with KIGate
+        result = process_document_with_kigate(file_path, mime_type)
         
         if not result['success']:
             document_upload.status = 'ERROR'
@@ -381,8 +573,8 @@ def process_document_upload(document_upload) -> bool:
             document_upload.save()
             return False
         
-        # Store raw AI result
-        document_upload.ai_result_openai = result['raw_response']
+        # Store raw AI result from KIGate
+        document_upload.ai_result_kigate = result['raw_response']
         
         # Map to database objects
         extracted_data = result['data']
