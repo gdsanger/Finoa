@@ -267,3 +267,116 @@ class ViewTest(TestCase):
         response = self.client.get('/monthly/')
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Monatsansicht')
+
+    def test_category_analytics_view(self):
+        response = self.client.get('/analytics/categories/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Kategorien-Auswertung')
+        self.assertContains(response, 'Gesamtausgaben')
+        self.assertContains(response, 'Gesamteinnahmen')
+
+
+class AnalyticsEngineTest(TestCase):
+    def setUp(self):
+        self.account = Account.objects.create(
+            name='Test Account',
+            type='checking',
+            initial_balance=Decimal('1000.00')
+        )
+        self.income_category = Category.objects.create(name='Salary', type='income')
+        self.expense_category = Category.objects.create(name='Groceries', type='expense')
+
+    def test_category_analysis_basic(self):
+        from .services import get_category_analysis
+        
+        # Create bookings
+        Booking.objects.create(
+            account=self.account,
+            booking_date=date(2025, 11, 1),
+            amount=Decimal('3000.00'),
+            category=self.income_category,
+            status='POSTED'
+        )
+        Booking.objects.create(
+            account=self.account,
+            booking_date=date(2025, 11, 15),
+            amount=Decimal('-500.00'),
+            category=self.expense_category,
+            status='POSTED'
+        )
+
+        # Analyze
+        analysis = get_category_analysis(
+            start_date=date(2025, 11, 1),
+            end_date=date(2025, 11, 30)
+        )
+
+        self.assertEqual(analysis['total_income'], Decimal('3000.00'))
+        self.assertEqual(analysis['total_expenses'], Decimal('500.00'))
+        self.assertEqual(analysis['total_net'], Decimal('2500.00'))
+        self.assertIn('Salary', analysis['income_by_category'])
+        self.assertIn('Groceries', analysis['expenses_by_category'])
+
+    def test_category_analysis_with_account_filter(self):
+        from .services import get_category_analysis
+        
+        account2 = Account.objects.create(
+            name='Account 2',
+            type='checking',
+            initial_balance=Decimal('500.00')
+        )
+
+        # Create bookings on different accounts
+        Booking.objects.create(
+            account=self.account,
+            booking_date=date(2025, 11, 1),
+            amount=Decimal('-100.00'),
+            category=self.expense_category,
+            status='POSTED'
+        )
+        Booking.objects.create(
+            account=account2,
+            booking_date=date(2025, 11, 1),
+            amount=Decimal('-200.00'),
+            category=self.expense_category,
+            status='POSTED'
+        )
+
+        # Analyze only first account
+        analysis = get_category_analysis(
+            start_date=date(2025, 11, 1),
+            end_date=date(2025, 11, 30),
+            account=self.account
+        )
+
+        # Should only include bookings from first account
+        self.assertEqual(analysis['total_expenses'], Decimal('100.00'))
+
+    def test_category_analysis_excludes_planned(self):
+        from .services import get_category_analysis
+        
+        # Create posted and planned bookings
+        Booking.objects.create(
+            account=self.account,
+            booking_date=date(2025, 11, 1),
+            amount=Decimal('-100.00'),
+            category=self.expense_category,
+            status='POSTED'
+        )
+        Booking.objects.create(
+            account=self.account,
+            booking_date=date(2025, 11, 15),
+            amount=Decimal('-200.00'),
+            category=self.expense_category,
+            status='PLANNED'
+        )
+
+        # Analyze with POSTED status (default)
+        analysis = get_category_analysis(
+            start_date=date(2025, 11, 1),
+            end_date=date(2025, 11, 30),
+            status='POSTED'
+        )
+
+        # Should only include posted bookings
+        self.assertEqual(analysis['total_expenses'], Decimal('100.00'))

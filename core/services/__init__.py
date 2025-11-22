@@ -9,6 +9,10 @@ from .recurrence_engine import (
     generate_virtual_bookings,
     get_virtual_bookings_for_month,
 )
+from .analytics_engine import (
+    get_category_analysis,
+    get_top_categories,
+)
 
 __all__ = [
     'calculate_actual_balance',
@@ -18,4 +22,6 @@ __all__ = [
     'get_total_liquidity',
     'generate_virtual_bookings',
     'get_virtual_bookings_for_month',
+    'get_category_analysis',
+    'get_top_categories',
 ]

@@ -1,0 +1,116 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Kategorien-Auswertung - Finoa{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="mb-4">
+        <i class="bi bi-bar-chart"></i> Kategorien-Auswertung
+    </h1>
+
+    <!-- Filters -->
+    <div class="card card-finoa mb-4">
+        <div class="card-body">
+            <form method="get" 
+                  hx-get="{% url 'category_analytics' %}" 
+                  hx-target="#analytics-content" 
+                  hx-swap="innerHTML"
+                  hx-indicator=".htmx-indicator">
+                
+                <div class="row align-items-end">
+                    <!-- Filter Type -->
+                    <div class="col-md-3 mb-3">
+                        <label for="filterType" class="form-label"><strong>Zeitraum-Typ:</strong></label>
+                        <select id="filterType" name="filter" class="form-select" onchange="toggleDateInputs(this.value)">
+                            <option value="month" {% if filter_type == 'month' %}selected{% endif %}>Monat</option>
+                            <option value="custom" {% if filter_type == 'custom' %}selected{% endif %}>Freier Zeitraum</option>
+                        </select>
+                    </div>
+
+                    <!-- Month Navigation (shown when filter=month) -->
+                    <div class="col-md-4 mb-3" id="monthNav" {% if filter_type == 'custom' %}style="display:none;"{% endif %}>
+                        <label class="form-label"><strong>Monat:</strong></label>
+                        <div class="btn-group w-100" role="group">
+                            <a href="?filter=month&year={{ prev_year }}&month={{ prev_month }}{% if selected_account %}&account_id={{ selected_account.id }}{% endif %}" 
+                               class="btn btn-finoa-secondary"
+                               hx-get="?filter=month&year={{ prev_year }}&month={{ prev_month }}{% if selected_account %}&account_id={{ selected_account.id }}{% endif %}"
+                               hx-target="#analytics-content"
+                               hx-swap="innerHTML">
+                                <i class="bi bi-chevron-left"></i>
+                            </a>
+                            <button type="button" class="btn btn-outline-secondary" disabled>
+                                {{ month_name }}
+                            </button>
+                            <a href="?filter=month&year={{ next_year }}&month={{ next_month }}{% if selected_account %}&account_id={{ selected_account.id }}{% endif %}" 
+                               class="btn btn-finoa-secondary"
+                               hx-get="?filter=month&year={{ next_year }}&month={{ next_month }}{% if selected_account %}&account_id={{ selected_account.id }}{% endif %}"
+                               hx-target="#analytics-content"
+                               hx-swap="innerHTML">
+                                <i class="bi bi-chevron-right"></i>
+                            </a>
+                        </div>
+                        <input type="hidden" name="year" value="{{ year }}">
+                        <input type="hidden" name="month" value="{{ month }}">
+                    </div>
+
+                    <!-- Custom Date Range (shown when filter=custom) -->
+                    <div class="col-md-4 mb-3" id="customDateRange" {% if filter_type != 'custom' %}style="display:none;"{% endif %}>
+                        <label class="form-label"><strong>Von - Bis:</strong></label>
+                        <div class="input-group">
+                            <input type="date" name="start_date" class="form-control" value="{{ start_date|date:'Y-m-d' }}">
+                            <input type="date" name="end_date" class="form-control" value="{{ end_date|date:'Y-m-d' }}">
+                        </div>
+                    </div>
+
+                    <!-- Account Filter -->
+                    <div class="col-md-3 mb-3">
+                        <label for="accountSelect" class="form-label"><strong>Konto:</strong></label>
+                        <select id="accountSelect" name="account_id" class="form-select">
+                            <option value="">Alle Konten</option>
+                            {% for account in accounts %}
+                            <option value="{{ account.id }}" {% if selected_account and account.id == selected_account.id %}selected{% endif %}>
+                                {{ account.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <div class="col-md-2 mb-3">
+                        <button type="submit" class="btn btn-finoa-primary w-100">
+                            <i class="bi bi-filter"></i> Filtern
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Loading Indicator -->
+                <div class="htmx-indicator text-center py-2">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Laden...</span>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Analytics Content -->
+    <div id="analytics-content">
+        {% include 'core/partials/category_analytics_content.html' %}
+    </div>
+</div>
+
+<script>
+function toggleDateInputs(filterType) {
+    const monthNav = document.getElementById('monthNav');
+    const customDateRange = document.getElementById('customDateRange');
+    
+    if (filterType === 'custom') {
+        monthNav.style.display = 'none';
+        customDateRange.style.display = 'block';
+    } else {
+        monthNav.style.display = 'block';
+        customDateRange.style.display = 'none';
+    }
+}
+</script>
+{% endblock %}
