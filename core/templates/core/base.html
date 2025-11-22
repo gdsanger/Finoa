@@ -64,9 +64,14 @@
                                 <i class="bi bi-shield-lock"></i> Passwort ändern
                             </a></li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{% url 'logout' %}">
-                                <i class="bi bi-box-arrow-right"></i> Abmelden
-                            </a></li>
+                            <li>
+                                <form method="post" action="{% url 'logout' %}" style="display: inline;">
+                                    {% csrf_token %}
+                                    <button type="submit" class="dropdown-item" style="border: none; background: none; cursor: pointer; width: 100%; text-align: left;">
+                                        <i class="bi bi-box-arrow-right"></i> Abmelden
+                                    </button>
+                                </form>
+                            </li>
                         </ul>
                     </li>
                     {% endif %}
