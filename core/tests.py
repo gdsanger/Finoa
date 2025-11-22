@@ -1164,7 +1164,6 @@ class DocumentViewTest(TestCase):
     
     def test_document_review_detail_amount_field_renders_correctly(self):
         """Test that the amount field in review detail renders with correct format for HTML input"""
-        from .models import DocumentUpload
         from django.core.files.uploadedfile import SimpleUploadedFile
         
         file_content = b'test'
