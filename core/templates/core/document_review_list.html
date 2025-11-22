@@ -1,0 +1,110 @@
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block title %}Dokumente prüfen - Finoa{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="h2">
+                <i class="bi bi-search"></i> Dokumente zur Prüfung
+            </h1>
+            <a href="{% url 'document_list' %}" class="btn btn-secondary">
+                <i class="bi bi-arrow-left"></i> Zurück
+            </a>
+        </div>
+
+        {% if documents %}
+        <div class="row">
+            {% for doc in documents %}
+            <div class="col-md-6 col-lg-4 mb-4">
+                <div class="card h-100">
+                    <div class="card-header bg-warning-subtle">
+                        <h6 class="mb-0">
+                            <i class="bi bi-file-earmark-pdf"></i>
+                            {{ doc.original_filename|truncatechars:25 }}
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-2">
+                            <strong>Betrag:</strong>
+                            {% if doc.suggested_amount %}
+                            <span class="text-success fw-bold">
+                                {{ doc.suggested_amount }} {{ doc.suggested_currency }}
+                            </span>
+                            {% else %}
+                            <span class="text-muted">Nicht erkannt</span>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="mb-2">
+                            <strong>Empfänger:</strong>
+                            {% if doc.suggested_payee %}
+                            {{ doc.suggested_payee.name }}
+                            {% else %}
+                            <span class="text-muted">Nicht erkannt</span>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="mb-2">
+                            <strong>Datum:</strong>
+                            {% if doc.suggested_date %}
+                            {{ doc.suggested_date|date:"d.m.Y" }}
+                            {% else %}
+                            <span class="text-muted">Nicht erkannt</span>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="mb-2">
+                            <strong>Kategorie:</strong>
+                            {% if doc.suggested_category %}
+                            {{ doc.suggested_category.name }}
+                            {% else %}
+                            <span class="text-muted">Nicht erkannt</span>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="mb-2">
+                            <strong>Konto:</strong>
+                            {% if doc.suggested_account %}
+                            {{ doc.suggested_account.name }}
+                            {% else %}
+                            <span class="text-muted">Nicht erkannt</span>
+                            {% endif %}
+                        </div>
+                        
+                        {% if doc.suggested_description %}
+                        <div class="mb-2">
+                            <strong>Beschreibung:</strong>
+                            <small>{{ doc.suggested_description|truncatechars:50 }}</small>
+                        </div>
+                        {% endif %}
+                        
+                        {% if doc.suggestion_confidence %}
+                        <div class="mb-2">
+                            <small class="text-muted">
+                                Konfidenz: {{ doc.suggestion_confidence|floatformat:2 }}
+                            </small>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="card-footer">
+                        <a href="{% url 'document_review_detail' doc.id %}" class="btn btn-primary w-100">
+                            <i class="bi bi-check-circle"></i> Prüfen & Verbuchen
+                        </a>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle"></i>
+            Keine Dokumente zur Prüfung vorhanden.
+        </div>
+        {% endif %}
+
+    </div>
+</div>
+{% endblock %}

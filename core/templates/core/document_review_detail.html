@@ -1,0 +1,174 @@
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block title %}Dokument prüfen - Finoa{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-6 mb-4">
+        <!-- Document Preview -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-file-earmark"></i> Dokumentvorschau
+                </h5>
+            </div>
+            <div class="card-body">
+                <h6>{{ document.original_filename }}</h6>
+                <p class="text-muted">
+                    <small>
+                        Hochgeladen: {{ document.uploaded_at|date:"d.m.Y H:i" }} |
+                        Größe: {{ document.file_size|filesizeformat }}
+                    </small>
+                </p>
+                
+                <!-- Preview based on file type -->
+                {% if document.mime_type == 'application/pdf' %}
+                <div class="ratio ratio-4x3 border">
+                    <iframe src="{{ document.file.url }}" title="PDF Preview"></iframe>
+                </div>
+                <div class="mt-2">
+                    <a href="{{ document.file.url }}" target="_blank" class="btn btn-sm btn-secondary">
+                        <i class="bi bi-download"></i> PDF herunterladen
+                    </a>
+                </div>
+                {% else %}
+                <div class="text-center">
+                    <img src="{{ document.file.url }}" class="img-fluid" alt="Document" style="max-height: 500px;">
+                </div>
+                {% endif %}
+
+                <!-- AI Confidence -->
+                {% if document.suggestion_confidence %}
+                <div class="mt-3">
+                    <small class="text-muted">
+                        KI-Konfidenz: 
+                        <strong>{{ document.suggestion_confidence|floatformat:0 }}%</strong>
+                    </small>
+                    <div class="progress" style="height: 5px;">
+                        <div class="progress-bar" role="progressbar" 
+                             style="width: {{ document.suggestion_confidence|floatformat:0 }}%"
+                             aria-valuenow="{{ document.suggestion_confidence|floatformat:0 }}" 
+                             aria-valuemin="0" aria-valuemax="100"></div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Extracted Text -->
+                {% if document.extracted_text %}
+                <div class="mt-3">
+                    <button class="btn btn-sm btn-outline-secondary" type="button" 
+                            data-bs-toggle="collapse" data-bs-target="#extractedText">
+                        <i class="bi bi-file-text"></i> Extrahierter Text anzeigen
+                    </button>
+                    <div class="collapse mt-2" id="extractedText">
+                        <div class="card card-body bg-light">
+                            <small style="white-space: pre-wrap;">{{ document.extracted_text }}</small>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <!-- Booking Form -->
+        <div class="card">
+            <div class="card-header bg-warning-subtle">
+                <h5 class="mb-0">
+                    <i class="bi bi-check-circle"></i> Buchung erstellen
+                </h5>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    <div class="mb-3">
+                        <label for="account" class="form-label">Konto *</label>
+                        <select class="form-select" id="account" name="account" required>
+                            <option value="">Konto auswählen...</option>
+                            {% for acc in accounts %}
+                            <option value="{{ acc.id }}" 
+                                    {% if document.suggested_account and document.suggested_account.id == acc.id %}selected{% endif %}>
+                                {{ acc.name }} ({{ acc.get_type_display }})
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="amount" class="form-label">Betrag *</label>
+                        <div class="input-group">
+                            <input type="number" step="0.01" class="form-control" id="amount" name="amount" 
+                                   value="{{ document.suggested_amount }}" required>
+                            <span class="input-group-text">{{ document.suggested_currency }}</span>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="booking_date" class="form-label">Buchungsdatum *</label>
+                        <input type="date" class="form-control" id="booking_date" name="booking_date" 
+                               value="{{ document.suggested_date|date:'Y-m-d' }}" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="payee" class="form-label">Zahlungsempfänger</label>
+                        <select class="form-select" id="payee" name="payee">
+                            <option value="">Kein Empfänger...</option>
+                            {% for p in payees %}
+                            <option value="{{ p.id }}"
+                                    {% if document.suggested_payee and document.suggested_payee.id == p.id %}selected{% endif %}>
+                                {{ p.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">
+                            Empfänger nicht gefunden? Im Admin-Bereich anlegen.
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="category" class="form-label">Kategorie</label>
+                        <select class="form-select" id="category" name="category">
+                            <option value="">Keine Kategorie...</option>
+                            {% for cat in categories %}
+                            <option value="{{ cat.id }}"
+                                    {% if document.suggested_category and document.suggested_category.id == cat.id %}selected{% endif %}>
+                                {{ cat.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Beschreibung</label>
+                        <textarea class="form-control" id="description" name="description" rows="2">{{ document.suggested_description }}</textarea>
+                    </div>
+
+                    {% if document.suggested_is_recurring %}
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="create_recurring" name="create_recurring">
+                            <label class="form-check-label" for="create_recurring">
+                                Als wiederkehrende Buchung anlegen
+                                <small class="text-muted">(KI hat diese als wiederkehrend erkannt)</small>
+                            </label>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-success btn-lg">
+                            <i class="bi bi-check-circle"></i> Buchung erstellen
+                        </button>
+                        <a href="{% url 'document_review_list' %}" class="btn btn-outline-secondary">
+                            Abbrechen
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
