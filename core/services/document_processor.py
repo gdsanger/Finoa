@@ -385,21 +385,42 @@ def process_document_with_kigate(file_path: str, mime_type: str) -> Dict[str, An
         #   "Info": "Schlitzer Neutralalkohol"
         # }
         
-        # Parse amount from German format (e.g., "27,03 €")
+        # Parse amount from German format (e.g., "27,03 €" or "1.234,56 €")
         amount_str = kigate_data.get('Betrag', '')
         amount = None
         currency = 'EUR'
         if amount_str:
-            # Remove currency symbol and convert comma to decimal point
-            import re
             # Extract number and currency
             amount_match = re.search(r'([\d.,]+)\s*([€$£]|\w{3})?', amount_str)
             if amount_match:
-                number_part = amount_match.group(1).replace('.', '').replace(',', '.')
+                number_part = amount_match.group(1)
+                
+                # German number format uses:
+                # - dot (.) as thousands separator: 1.234
+                # - comma (,) as decimal separator: 27,03
+                # So we need to:
+                # 1. Remove dots (thousands separators)
+                # 2. Replace comma with dot (decimal point)
+                # But only if there's a comma (otherwise it's an integer or already in standard format)
+                
+                if ',' in number_part:
+                    # German format: remove dots, replace comma with dot
+                    number_part = number_part.replace('.', '').replace(',', '.')
+                elif '.' in number_part:
+                    # Check if this is a thousands separator or decimal point
+                    # If there are multiple dots, they're thousands separators
+                    # If only one dot and less than 3 digits after, it's decimal point
+                    parts = number_part.split('.')
+                    if len(parts) > 2 or (len(parts) == 2 and len(parts[1]) > 2):
+                        # Multiple dots or more than 2 decimals -> thousands separator
+                        number_part = number_part.replace('.', '')
+                    # else: single dot with 1-2 decimals -> keep as is (already standard format)
+                
                 try:
                     amount = float(number_part)
                 except ValueError:
                     amount = None
+                
                 # Try to detect currency
                 currency_part = amount_match.group(2)
                 if currency_part == '€':
