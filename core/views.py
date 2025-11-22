@@ -4,6 +4,7 @@ from django.views.decorators.http import require_http_methods
 from datetime import date
 from dateutil.relativedelta import relativedelta
 from decimal import Decimal
+import json
 
 from .models import Account, Booking, Category, RecurringBooking
 from .services import (
@@ -14,6 +15,8 @@ from .services import (
     generate_virtual_bookings,
     get_virtual_bookings_for_month,
     get_total_liquidity,
+    get_category_analysis,
+    get_top_categories,
 )
 
 
@@ -80,7 +83,7 @@ def dashboard(request):
 
 def accounts(request):
     """
-    Accounts overview showing all accounts with balances
+    Accounts overview showing all accounts with balances and forecast charts
     """
     accounts = Account.objects.filter(is_active=True)
     
@@ -89,10 +92,20 @@ def accounts(request):
         actual_balance = calculate_actual_balance(account)
         forecast_balance = calculate_forecast_balance(account)
         
+        # Build 6-month timeline for this account
+        timeline = build_account_timeline(account, months=6, include_forecast=True)
+        
+        timeline_data = {
+            'months': [t['date'].strftime('%b %Y') for t in timeline],
+            'actual': [float(t['actual_balance']) for t in timeline],
+            'forecast': [float(t['forecast_balance']) for t in timeline],
+        }
+        
         account_list.append({
             'account': account,
             'actual_balance': actual_balance,
             'forecast_balance': forecast_balance,
+            'timeline_data': timeline_data,
         })
     
     context = {
@@ -165,3 +178,107 @@ def monthly_view(request):
     }
     
     return render(request, 'core/monthly_view.html', context)
+
+
+def category_analytics(request):
+    """
+    Category analytics view showing income/expense analysis by category.
+    Supports filtering by time period and account.
+    """
+    # Get filter parameters
+    filter_type = request.GET.get('filter', 'month')  # 'month' or 'custom'
+    year = int(request.GET.get('year', date.today().year))
+    month = int(request.GET.get('month', date.today().month))
+    account_id = request.GET.get('account_id')
+    
+    # Calculate date range based on filter type
+    if filter_type == 'custom':
+        start_date_str = request.GET.get('start_date')
+        end_date_str = request.GET.get('end_date')
+        
+        if start_date_str and end_date_str:
+            start_date = date.fromisoformat(start_date_str)
+            end_date = date.fromisoformat(end_date_str)
+        else:
+            # Fallback to current month
+            start_date = date(year, month, 1)
+            end_date = (start_date + relativedelta(months=1)) - relativedelta(days=1)
+    else:
+        # Default: current/selected month
+        start_date = date(year, month, 1)
+        end_date = (start_date + relativedelta(months=1)) - relativedelta(days=1)
+    
+    # Get selected account if any
+    selected_account = None
+    if account_id:
+        selected_account = get_object_or_404(Account, id=account_id, is_active=True)
+    
+    # Get all accounts for dropdown
+    accounts = Account.objects.filter(is_active=True)
+    
+    # Get category analysis
+    analysis = get_category_analysis(
+        start_date=start_date,
+        end_date=end_date,
+        account=selected_account,
+        status='POSTED'
+    )
+    
+    # Prepare data for charts
+    # Donut chart: Expenses by category
+    expense_labels = []
+    expense_data = []
+    for category, amount in analysis['sorted_expenses']:
+        if amount > 0:  # Only include categories with expenses
+            expense_labels.append(category)
+            expense_data.append(float(amount))
+    
+    # Bar chart: Top 10 categories
+    top_categories = analysis['sorted_expenses'][:10]
+    top_labels = [cat[0] for cat in top_categories]
+    top_data = [float(cat[1]) for cat in top_categories]
+    
+    # Prepare table data
+    category_table = []
+    all_categories = set(analysis['expenses_by_category'].keys()) | set(analysis['income_by_category'].keys())
+    for category in sorted(all_categories):
+        category_table.append({
+            'name': category,
+            'expenses': analysis['expenses_by_category'].get(category, Decimal('0.00')),
+            'income': analysis['income_by_category'].get(category, Decimal('0.00')),
+            'net': analysis['net_by_category'].get(category, Decimal('0.00')),
+        })
+    
+    # Sort by expenses (highest first)
+    category_table.sort(key=lambda x: x['expenses'], reverse=True)
+    
+    # Navigation for month filter
+    prev_month_date = date(year, month, 1) - relativedelta(months=1)
+    next_month_date = date(year, month, 1) + relativedelta(months=1)
+    
+    context = {
+        'filter_type': filter_type,
+        'year': year,
+        'month': month,
+        'month_name': date(year, month, 1).strftime('%B %Y'),
+        'start_date': start_date,
+        'end_date': end_date,
+        'selected_account': selected_account,
+        'accounts': accounts,
+        'analysis': analysis,
+        'category_table': category_table,
+        'expense_labels': json.dumps(expense_labels),
+        'expense_data': json.dumps(expense_data),
+        'top_labels': json.dumps(top_labels),
+        'top_data': json.dumps(top_data),
+        'prev_year': prev_month_date.year,
+        'prev_month': prev_month_date.month,
+        'next_year': next_month_date.year,
+        'next_month': next_month_date.month,
+    }
+    
+    # Return partial template for HTMX requests
+    if request.headers.get('HX-Request'):
+        return render(request, 'core/partials/category_analytics_content.html', context)
+    
+    return render(request, 'core/category_analytics.html', context)

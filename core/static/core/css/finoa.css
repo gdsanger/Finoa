@@ -32,6 +32,14 @@ body {
     color: var(--finoa-green) !important;
 }
 
+.navbar-toggler-finoa {
+    border-color: rgba(255, 255, 255, 0.5);
+}
+
+.navbar-toggler-finoa .navbar-toggler-icon {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28255, 255, 255, 1%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+}
+
 /* Cards & Panels */
 .card-finoa {
     background-color: white;
@@ -172,6 +180,37 @@ body {
     
     .chart-container {
         height: 250px;
+    }
+    
+    /* Mobile-friendly buttons */
+    .btn {
+        min-height: 44px;
+        padding: 0.5rem 1rem;
+    }
+    
+    .btn-sm {
+        min-height: 38px;
+        padding: 0.4rem 0.8rem;
+    }
+    
+    /* Mobile navbar */
+    .navbar-nav {
+        padding: 1rem 0;
+    }
+    
+    .navbar-nav .nav-item {
+        padding: 0.25rem 0;
+    }
+    
+    .navbar-nav .nav-link {
+        padding: 0.75rem 1rem;
+        font-size: 1rem;
+    }
+    
+    /* Ensure container has proper padding on mobile */
+    .container-fluid {
+        padding-left: 1rem;
+        padding-right: 1rem;
     }
 }
 

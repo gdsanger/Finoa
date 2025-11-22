@@ -1,0 +1,258 @@
+<!-- Summary Cards -->
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card card-finoa summary-card">
+            <div class="card-body">
+                <div class="label">Gesamtausgaben</div>
+                <div class="value balance-negative">
+                    {{ analysis.total_expenses|floatformat:2 }} €
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card card-finoa summary-card">
+            <div class="card-body">
+                <div class="label">Gesamteinnahmen</div>
+                <div class="value balance-positive">
+                    {{ analysis.total_income|floatformat:2 }} €
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card card-finoa summary-card">
+            <div class="card-body">
+                <div class="label">Netto</div>
+                <div class="value {% if analysis.total_net >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
+                    {{ analysis.total_net|floatformat:2 }} €
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Period Info -->
+<div class="alert alert-info mb-4">
+    <i class="bi bi-calendar-range"></i>
+    <strong>Zeitraum:</strong> {{ start_date|date:"d.m.Y" }} - {{ end_date|date:"d.m.Y" }}
+    {% if selected_account %}
+    | <strong>Konto:</strong> {{ selected_account.name }}
+    {% else %}
+    | <strong>Alle Konten</strong>
+    {% endif %}
+</div>
+
+<!-- Charts -->
+<div class="row mb-4">
+    <!-- Donut Chart: Expenses by Category -->
+    <div class="col-lg-6 mb-4">
+        <div class="card card-finoa">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-pie-chart"></i> Ausgaben nach Kategorie</h5>
+            </div>
+            <div class="card-body">
+                {% if expense_labels %}
+                <div class="chart-container">
+                    <canvas id="expenseDonutChart"></canvas>
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-5">
+                    <i class="bi bi-inbox" style="font-size: 2rem;"></i>
+                    <p class="mt-2">Keine Ausgaben im ausgewählten Zeitraum</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Bar Chart: Top Categories -->
+    <div class="col-lg-6 mb-4">
+        <div class="card card-finoa">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-bar-chart"></i> Top 10 Ausgabenkategorien</h5>
+            </div>
+            <div class="card-body">
+                {% if top_labels %}
+                <div class="chart-container">
+                    <canvas id="topCategoriesChart"></canvas>
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-5">
+                    <i class="bi bi-inbox" style="font-size: 2rem;"></i>
+                    <p class="mt-2">Keine Daten verfügbar</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Category Table -->
+<div class="card card-finoa">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-table"></i> Detaillierte Kategorien-Übersicht</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-finoa">
+                <thead>
+                    <tr>
+                        <th>Kategorie</th>
+                        <th class="text-end">Ausgaben</th>
+                        <th class="text-end">Einnahmen</th>
+                        <th class="text-end">Netto</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in category_table %}
+                    <tr>
+                        <td><strong>{{ item.name }}</strong></td>
+                        <td class="text-end {% if item.expenses > 0 %}balance-negative{% endif %}">
+                            {% if item.expenses > 0 %}
+                                {{ item.expenses|floatformat:2 }} €
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                        <td class="text-end {% if item.income > 0 %}balance-positive{% endif %}">
+                            {% if item.income > 0 %}
+                                {{ item.income|floatformat:2 }} €
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                        <td class="text-end {% if item.net >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
+                            <strong>{{ item.net|floatformat:2 }} €</strong>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4" class="text-center text-muted py-4">
+                            <i class="bi bi-inbox" style="font-size: 2rem;"></i>
+                            <p class="mt-2">Keine Buchungen im ausgewählten Zeitraum</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="table-secondary">
+                        <th>Gesamt</th>
+                        <th class="text-end balance-negative">{{ analysis.total_expenses|floatformat:2 }} €</th>
+                        <th class="text-end balance-positive">{{ analysis.total_income|floatformat:2 }} €</th>
+                        <th class="text-end {% if analysis.total_net >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
+                            <strong>{{ analysis.total_net|floatformat:2 }} €</strong>
+                        </th>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Chart.js Scripts -->
+{% if expense_labels %}
+<script>
+// Finoa color palette for charts
+const finoaColors = [
+    '#39A77B', // Finoa Green
+    '#3A6EA5', // Finoa Blue
+    '#5AB88D', // Light Green
+    '#4D7EB8', // Light Blue
+    '#2D8962', // Dark Green
+    '#2E5684', // Dark Blue
+    '#7CC4A5', // Pale Green
+    '#7FA3C9', // Pale Blue
+    '#1F6A4D', // Deep Green
+    '#1F4566', // Deep Blue
+];
+
+// Donut Chart: Expenses by Category
+const expenseDonutCtx = document.getElementById('expenseDonutChart').getContext('2d');
+const expenseDonutChart = new Chart(expenseDonutCtx, {
+    type: 'doughnut',
+    data: {
+        labels: {{ expense_labels|safe }},
+        datasets: [{
+            data: {{ expense_data|safe }},
+            backgroundColor: finoaColors,
+            borderWidth: 2,
+            borderColor: '#fff'
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'bottom',
+                labels: {
+                    padding: 15,
+                    font: {
+                        size: 12
+                    }
+                }
+            },
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        const label = context.label || '';
+                        const value = context.parsed || 0;
+                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                        const percentage = ((value / total) * 100).toFixed(1);
+                        return label + ': ' + value.toFixed(2) + ' € (' + percentage + '%)';
+                    }
+                }
+            }
+        }
+    }
+});
+</script>
+{% endif %}
+
+{% if top_labels %}
+<script>
+// Bar Chart: Top Categories
+const topCategoriesCtx = document.getElementById('topCategoriesChart').getContext('2d');
+const topCategoriesChart = new Chart(topCategoriesCtx, {
+    type: 'bar',
+    data: {
+        labels: {{ top_labels|safe }},
+        datasets: [{
+            label: 'Ausgaben',
+            data: {{ top_data|safe }},
+            backgroundColor: '#39A77B',
+            borderColor: '#2d8962',
+            borderWidth: 1
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        indexAxis: 'y',
+        plugins: {
+            legend: {
+                display: false
+            },
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        return context.parsed.x.toFixed(2) + ' €';
+                    }
+                }
+            }
+        },
+        scales: {
+            x: {
+                beginAtZero: true,
+                ticks: {
+                    callback: function(value) {
+                        return value.toFixed(0) + ' €';
+                    }
+                }
+            }
+        }
+    }
+});
+</script>
+{% endif %}
