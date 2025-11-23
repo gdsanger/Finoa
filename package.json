@@ -1,4 +1,11 @@
 {
+  "name": "finoa",
+  "version": "1.0.0",
+  "description": "Finoa - Financial Management Application",
+  "private": true,
+  "scripts": {
+    "update-chartjs": "npm install chart.js@4.4.0 && cp node_modules/chart.js/dist/chart.umd.js core/static/core/js/"
+  },
   "dependencies": {
     "chart.js": "^4.4.0"
   }
