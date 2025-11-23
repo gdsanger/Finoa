@@ -111,8 +111,9 @@ def dashboard(request):
     upcoming_sum = get_upcoming_bookings_sum(days=7)
     
     # Calculate deficit/surplus relative to liquidity actual
-    overdue_deficit = liquidity_actual - overdue_sum
-    upcoming_deficit = liquidity_actual - upcoming_sum
+    # Add the sums (which are negative for expenses) to get remaining liquidity
+    overdue_deficit = liquidity_actual + overdue_sum
+    upcoming_deficit = liquidity_actual + upcoming_sum
     
     context = {
         'liquidity_actual': liquidity_actual,
