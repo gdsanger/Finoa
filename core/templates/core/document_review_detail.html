@@ -105,6 +105,9 @@
                                    value="{% if document.suggested_amount != None %}{{ document.suggested_amount|unlocalize }}{% endif %}" required>
                             <span class="input-group-text">{{ document.suggested_currency }}</span>
                         </div>
+                        <div class="form-text">
+                            Der Betrag wird automatisch als Ausgabe (negativ) verbucht.
+                        </div>
                     </div>
 
                     <div class="mb-3">
