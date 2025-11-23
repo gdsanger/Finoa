@@ -1297,9 +1297,8 @@ class DueBookingsViewTest(TestCase):
         response = self.client.post(f'/bookings/{booking.id}/mark-booked/')
         self.assertEqual(response.status_code, 200)
         
-        data = response.json()
-        self.assertTrue(data['success'])
-        self.assertEqual(data['booking_id'], booking.id)
+        # Response should be empty (for HTMX to remove the row)
+        self.assertEqual(response.content, b'')
         
         # Verify booking status changed
         booking.refresh_from_db()
@@ -1318,8 +1317,8 @@ class DueBookingsViewTest(TestCase):
         response = self.client.post(f'/bookings/{booking.id}/mark-booked/')
         self.assertEqual(response.status_code, 400)
         
-        data = response.json()
-        self.assertFalse(data['success'])
+        # Response should contain error message
+        self.assertIn(b'not planned', response.content)
     
     def test_mark_booking_as_booked_requires_login(self):
         """Test that marking booking as booked requires login"""

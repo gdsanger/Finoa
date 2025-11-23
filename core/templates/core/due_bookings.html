@@ -42,9 +42,7 @@
                                         <strong>{{ booking.booking_date|date:"d.m.Y" }}</strong>
                                         <br>
                                         <small class="text-muted">
-                                            {% with days_overdue=today|timesince:booking.booking_date %}
-                                                {{ days_overdue }} überfällig
-                                            {% endwith %}
+                                            {{ booking.booking_date|timesince }} überfällig
                                         </small>
                                     </td>
                                     <td>{{ booking.description|default:"-" }}</td>

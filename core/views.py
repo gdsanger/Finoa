@@ -1,10 +1,10 @@
 from django.shortcuts import render, get_object_or_404, redirect
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.views.decorators.http import require_http_methods
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db.models import Count
-from datetime import date
+from datetime import date, timedelta
 from dateutil.relativedelta import relativedelta
 from decimal import Decimal
 import json
@@ -595,8 +595,6 @@ def due_bookings(request):
     - Overdue bookings (status=PLANNED, date < today)
     - Upcoming bookings (status=PLANNED, today <= date <= today+7)
     """
-    from datetime import timedelta
-    
     today = date.today()
     window_end = today + timedelta(days=7)
     
@@ -626,13 +624,16 @@ def due_bookings(request):
 @require_http_methods(['POST'])
 def mark_booking_as_booked(request, booking_id):
     """
-    Mark a planned booking as booked via HTMX
+    Mark a planned booking as booked via HTMX.
+    Returns empty response so HTMX can remove the row via outerHTML swap.
     """
     booking = get_object_or_404(Booking, id=booking_id)
     
     if booking.status == 'PLANNED':
         booking.status = 'POSTED'
         booking.save()
-        return JsonResponse({'success': True, 'booking_id': booking_id})
+        # Return empty response for HTMX to swap (removes the row)
+        return HttpResponse('')
     
-    return JsonResponse({'success': False, 'error': 'Booking is not planned'}, status=400)
+    # Return error status for non-planned bookings
+    return HttpResponse('Booking is not planned', status=400)
