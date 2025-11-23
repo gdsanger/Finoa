@@ -3,7 +3,9 @@ from django.http import JsonResponse, HttpResponse
 from django.views.decorators.http import require_http_methods
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from django.db.models import Count
+from django.db.models import Count, F, Sum, DecimalField, ExpressionWrapper, Min, Max
+from django.db import transaction
+from django.core.exceptions import ValidationError
 from datetime import date, timedelta
 from dateutil.relativedelta import relativedelta
 from decimal import Decimal
@@ -836,7 +838,6 @@ def time_tracking(request):
     payees = Payee.objects.filter(is_active=True).order_by('name')
     
     # Calculate total for filtered entries using database aggregation
-    from django.db.models import F, Sum, DecimalField, ExpressionWrapper
     total_amount = entries.aggregate(
         total=Sum(ExpressionWrapper(F('duration_hours') * F('hourly_rate'), output_field=DecimalField()))
     )['total'] or Decimal('0.00')
@@ -892,7 +893,7 @@ def time_entry_create(request):
         messages.success(request, 'Zeiteintrag erfolgreich erstellt.')
         return redirect('time_tracking')
         
-    except Exception as e:
+    except (ValueError, ValidationError) as e:
         messages.error(request, f'Fehler beim Erstellen: {str(e)}')
         return redirect('time_tracking')
 
@@ -939,7 +940,7 @@ def time_entry_update(request, entry_id):
         messages.success(request, 'Zeiteintrag erfolgreich aktualisiert.')
         return redirect('time_tracking')
         
-    except Exception as e:
+    except (ValueError, ValidationError) as e:
         messages.error(request, f'Fehler beim Aktualisieren: {str(e)}')
         return redirect('time_tracking')
 
@@ -971,8 +972,6 @@ def time_entry_bulk_billing(request):
     POST: Create booking and mark entries as billed
     """
     if request.method == 'POST':
-        from django.db import transaction
-        
         try:
             # Get selected entry IDs
             selected_ids = request.POST.getlist('selected_entries')
@@ -1011,14 +1010,15 @@ def time_entry_bulk_billing(request):
             category = get_object_or_404(Category, id=category_id)
             billing_date = date.fromisoformat(billing_date_str)
             
-            # Calculate totals and dates in a single iteration
-            total_amount = Decimal('0.00')
-            dates = []
-            for entry in entries:
-                total_amount += entry.amount
-                dates.append(entry.date)
-            start_date = min(dates)
-            end_date = max(dates)
+            # Calculate totals and dates using database aggregation
+            aggregates = entries.aggregate(
+                total=Sum(ExpressionWrapper(F('duration_hours') * F('hourly_rate'), output_field=DecimalField())),
+                min_date=Min('date'),
+                max_date=Max('date')
+            )
+            total_amount = aggregates['total'] or Decimal('0.00')
+            start_date = aggregates['min_date']
+            end_date = aggregates['max_date']
             
             # Generate description
             if start_date == end_date:
@@ -1047,7 +1047,7 @@ def time_entry_bulk_billing(request):
             )
             return redirect('time_tracking')
             
-        except Exception as e:
+        except (ValueError, ValidationError) as e:
             messages.error(request, f'Fehler beim Erstellen der Sammelabrechnung: {str(e)}')
             return redirect('time_tracking')
     
@@ -1079,14 +1079,15 @@ def _show_billing_form(request, selected_ids):
     
     payee = entries.first().payee
     
-    # Calculate totals and dates in a single iteration
-    total_amount = Decimal('0.00')
-    dates = []
-    for entry in entries:
-        total_amount += entry.amount
-        dates.append(entry.date)
-    start_date = min(dates)
-    end_date = max(dates)
+    # Calculate totals and dates using database aggregation
+    aggregates = entries.aggregate(
+        total=Sum(ExpressionWrapper(F('duration_hours') * F('hourly_rate'), output_field=DecimalField())),
+        min_date=Min('date'),
+        max_date=Max('date')
+    )
+    total_amount = aggregates['total'] or Decimal('0.00')
+    start_date = aggregates['min_date']
+    end_date = aggregates['max_date']
     
     # Generate default description
     if start_date == end_date:
