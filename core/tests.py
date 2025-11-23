@@ -2882,6 +2882,56 @@ class FinancialInsightsEngineTest(TestCase):
         # Should not include transfers
         self.assertEqual(len(result), 0)
     
+    def test_aggregate_recurring_bookings_excludes_no_category(self):
+        """Test that recurring bookings without category are excluded"""
+        from core.services.financial_insights_engine import aggregate_recurring_bookings
+        
+        payee = Payee.objects.create(name='Test Payee')
+        
+        # Create recurring booking without category
+        RecurringBooking.objects.create(
+            account=self.account,
+            amount=Decimal('-100.00'),
+            category=None,
+            payee=payee,
+            description='No category recurring',
+            start_date=date(2025, 1, 1),
+            frequency='MONTHLY',
+            interval=1,
+            day_of_month=1,
+            is_active=True
+        )
+        
+        result = aggregate_recurring_bookings()
+        
+        # Should not include recurring booking without category
+        no_cat_recurring = [r for r in result if r.get('payee') == 'Test Payee']
+        self.assertEqual(len(no_cat_recurring), 0)
+    
+    def test_aggregate_recurring_bookings_excludes_no_payee(self):
+        """Test that recurring bookings without payee are excluded"""
+        from core.services.financial_insights_engine import aggregate_recurring_bookings
+        
+        # Create recurring booking without payee
+        RecurringBooking.objects.create(
+            account=self.account,
+            amount=Decimal('-100.00'),
+            category=self.expense_category1,
+            payee=None,
+            description='No payee recurring',
+            start_date=date(2025, 1, 1),
+            frequency='MONTHLY',
+            interval=1,
+            day_of_month=1,
+            is_active=True
+        )
+        
+        result = aggregate_recurring_bookings()
+        
+        # Should not include recurring booking without payee
+        no_payee_recurring = [r for r in result if r.get('category') == 'Miete' and r.get('payee') is None]
+        self.assertEqual(len(no_payee_recurring), 0)
+    
     def test_aggregate_planned_bookings(self):
         """Test planned future bookings aggregation"""
         from core.services.financial_insights_engine import aggregate_planned_bookings

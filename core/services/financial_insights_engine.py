@@ -165,23 +165,30 @@ def aggregate_recurring_bookings() -> List[Dict[str, Any]]:
     """
     Get recurring bookings for AI analysis.
     
+    Filters out:
+    - Recurring bookings without a category (cost-neutral)
+    - Recurring bookings without a payee (cost-neutral)
+    
     Returns:
         List of recurring booking entries with frequency and interval
     """
     from core.models import RecurringBooking
     
     # Get active recurring bookings, exclude transfers
+    # Also exclude recurring bookings without category or without payee
     recurring_bookings = RecurringBooking.objects.filter(
         is_active=True,
-        is_transfer=False
+        is_transfer=False,
+        category__isnull=False,  # Exclude recurring bookings without category
+        payee__isnull=False      # Exclude recurring bookings without payee
     ).select_related('category', 'payee')
     
     entries = []
     for recurring in recurring_bookings:
         entries.append({
             'amount': float(recurring.amount),
-            'category': recurring.category.name if recurring.category else None,
-            'payee': recurring.payee.name if recurring.payee else None,
+            'category': recurring.category.name,
+            'payee': recurring.payee.name,
             'description': recurring.description[:100] if recurring.description else None,
             'frequency': recurring.get_frequency_display(),
             'interval': recurring.interval,
