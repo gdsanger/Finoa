@@ -105,6 +105,9 @@
                                    value="{% if document.suggested_amount != None %}{{ document.suggested_amount|unlocalize }}{% endif %}" required>
                             <span class="input-group-text">{{ document.suggested_currency }}</span>
                         </div>
+                        <div class="form-text">
+                            Der Betrag wird automatisch als Ausgabe (negativ) verbucht.
+                        </div>
                     </div>
 
                     <div class="mb-3">
@@ -145,6 +148,17 @@
                     <div class="mb-3">
                         <label for="description" class="form-label">Beschreibung</label>
                         <textarea class="form-control" id="description" name="description" rows="2">{{ document.suggested_description }}</textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="status" class="form-label">Status</label>
+                        <select class="form-select" id="status" name="status">
+                            <option value="PLANNED" selected>Geplant</option>
+                            <option value="POSTED">Gebucht</option>
+                        </select>
+                        <div class="form-text">
+                            Standardmäßig wird die Buchung als "Geplant" erstellt.
+                        </div>
                     </div>
 
                     {% if document.suggested_is_recurring %}

@@ -6,7 +6,7 @@ from django.contrib import messages
 from django.db.models import Count, F, Sum, DecimalField, ExpressionWrapper, Min, Max
 from django.db import transaction
 from django.core.exceptions import ValidationError
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from decimal import Decimal
 import json
@@ -549,15 +549,23 @@ def document_review_detail(request, document_id):
         try:
             account_id = request.POST.get('account')
             amount = request.POST.get('amount')
-            booking_date = request.POST.get('booking_date')
+            booking_date_str = request.POST.get('booking_date')
             description = request.POST.get('description', '')
             category_id = request.POST.get('category')
             payee_id = request.POST.get('payee')
             create_recurring = request.POST.get('create_recurring') == 'on'
+            status = request.POST.get('status', 'PLANNED')  # Default to PLANNED
             
             # Validate required fields
-            if not account_id or not amount or not booking_date:
+            if not account_id or not amount or not booking_date_str:
                 messages.error(request, 'Konto, Betrag und Datum sind erforderlich.')
+                return redirect('document_review_detail', document_id=document_id)
+            
+            # Parse booking date
+            try:
+                booking_date = datetime.strptime(booking_date_str, '%Y-%m-%d').date()
+            except ValueError:
+                messages.error(request, 'Ungültiges Datumsformat.')
                 return redirect('document_review_detail', document_id=document_id)
             
             # Get account
@@ -572,15 +580,22 @@ def document_review_detail(request, document_id):
             if payee_id:
                 payee = get_object_or_404(Payee, id=payee_id, is_active=True)
             
+            # Invert amount (documents are typically invoices/expenses = money outflow)
+            # Note: This assumes documents represent outgoing payments. For income documents,
+            # users should manually adjust the sign or the amount should be handled differently.
+            # Using -abs() ensures the amount is always negative, even if user accidentally
+            # enters a negative value (prevents double negation issues).
+            booking_amount = -abs(Decimal(amount))
+            
             # Create booking
             booking = Booking.objects.create(
                 account=account,
-                amount=Decimal(amount),
+                amount=booking_amount,
                 booking_date=booking_date,
                 description=description,
                 category=category,
                 payee=payee,
-                status='POSTED'
+                status=status
             )
             
             # Update document
@@ -590,10 +605,10 @@ def document_review_detail(request, document_id):
             
             # Create recurring booking if requested
             if create_recurring and document.suggested_is_recurring:
-                # Create recurring booking
+                # Create recurring booking (also inverted)
                 recurring = RecurringBooking.objects.create(
                     account=account,
-                    amount=Decimal(amount),
+                    amount=booking_amount,
                     description=description,
                     category=category,
                     payee=payee,
