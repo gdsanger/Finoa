@@ -2374,3 +2374,153 @@ class TimeEntryBulkBillingTest(TestCase):
         self.assertIn('vom', booking.description)
         self.assertIn('bis', booking.description)
         self.assertIn('Test Customer', booking.description)
+
+
+class DashboardUnbilledTimeSumTest(TestCase):
+    """Tests for dashboard unbilled time entries sum display"""
+    
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.user = User.objects.create_user(username='testuser', password='testpass')
+        self.client.login(username='testuser', password='testpass')
+        
+        self.payee = Payee.objects.create(name='Test Customer', is_active=True)
+    
+    def test_dashboard_includes_unbilled_time_sum(self):
+        """Test that dashboard includes unbilled time entries sum in context"""
+        # Create some unbilled time entries
+        TimeEntry.objects.create(
+            payee=self.payee,
+            date=date.today(),
+            duration_hours=Decimal('5.0'),
+            activity='Test Work',
+            hourly_rate=Decimal('50.00'),
+            billed=False
+        )
+        TimeEntry.objects.create(
+            payee=self.payee,
+            date=date.today(),
+            duration_hours=Decimal('3.0'),
+            activity='More Work',
+            hourly_rate=Decimal('60.00'),
+            billed=False
+        )
+        
+        response = self.client.get('/')
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify unbilled_time_sum is in context
+        self.assertIn('unbilled_time_sum', response.context)
+        
+        # Verify correct calculation: 5*50 + 3*60 = 250 + 180 = 430
+        expected_sum = Decimal('430.00')
+        self.assertEqual(response.context['unbilled_time_sum'], expected_sum)
+    
+    def test_dashboard_unbilled_time_sum_excludes_billed(self):
+        """Test that dashboard unbilled sum excludes billed entries"""
+        TimeEntry.objects.create(
+            payee=self.payee,
+            date=date.today(),
+            duration_hours=Decimal('2.0'),
+            activity='Unbilled Work',
+            hourly_rate=Decimal('50.00'),
+            billed=False
+        )
+        TimeEntry.objects.create(
+            payee=self.payee,
+            date=date.today(),
+            duration_hours=Decimal('10.0'),
+            activity='Billed Work',
+            hourly_rate=Decimal('100.00'),
+            billed=True
+        )
+        
+        response = self.client.get('/')
+        self.assertEqual(response.status_code, 200)
+        
+        # Should only include unbilled: 2*50 = 100
+        expected_sum = Decimal('100.00')
+        self.assertEqual(response.context['unbilled_time_sum'], expected_sum)
+
+
+class UnbilledTimeEntriesSumTest(TestCase):
+    """Tests for get_unbilled_time_entries_sum service function"""
+    
+    def setUp(self):
+        from .services import get_unbilled_time_entries_sum
+        self.get_unbilled_time_entries_sum = get_unbilled_time_entries_sum
+        self.payee = Payee.objects.create(name='Test Customer', is_active=True)
+    
+    def test_unbilled_sum_with_no_entries(self):
+        """Test that sum is 0 when there are no time entries"""
+        sum_value = self.get_unbilled_time_entries_sum()
+        self.assertEqual(sum_value, Decimal('0.00'))
+    
+    def test_unbilled_sum_with_only_unbilled_entries(self):
+        """Test sum calculation with only unbilled entries"""
+        TimeEntry.objects.create(
+            payee=self.payee,
+            date=date.today(),
+            duration_hours=Decimal('2.5'),
+            activity='Test 1',
+            hourly_rate=Decimal('50.00'),
+            billed=False
+        )
+        TimeEntry.objects.create(
+            payee=self.payee,
+            date=date.today(),
+            duration_hours=Decimal('3.0'),
+            activity='Test 2',
+            hourly_rate=Decimal('60.00'),
+            billed=False
+        )
+        
+        sum_value = self.get_unbilled_time_entries_sum()
+        expected = Decimal('2.5') * Decimal('50.00') + Decimal('3.0') * Decimal('60.00')
+        self.assertEqual(sum_value, expected)  # 125 + 180 = 305
+    
+    def test_unbilled_sum_excludes_billed_entries(self):
+        """Test that sum excludes billed entries"""
+        TimeEntry.objects.create(
+            payee=self.payee,
+            date=date.today(),
+            duration_hours=Decimal('2.0'),
+            activity='Unbilled',
+            hourly_rate=Decimal('50.00'),
+            billed=False
+        )
+        TimeEntry.objects.create(
+            payee=self.payee,
+            date=date.today(),
+            duration_hours=Decimal('5.0'),
+            activity='Billed',
+            hourly_rate=Decimal('50.00'),
+            billed=True
+        )
+        
+        sum_value = self.get_unbilled_time_entries_sum()
+        expected = Decimal('2.0') * Decimal('50.00')
+        self.assertEqual(sum_value, expected)  # Only unbilled: 100
+    
+    def test_unbilled_sum_with_decimal_hours(self):
+        """Test sum calculation with decimal hours"""
+        TimeEntry.objects.create(
+            payee=self.payee,
+            date=date.today(),
+            duration_hours=Decimal('0.5'),
+            activity='Half hour',
+            hourly_rate=Decimal('100.00'),
+            billed=False
+        )
+        TimeEntry.objects.create(
+            payee=self.payee,
+            date=date.today(),
+            duration_hours=Decimal('1.5'),
+            activity='1.5 hours',
+            hourly_rate=Decimal('40.00'),
+            billed=False
+        )
+        
+        sum_value = self.get_unbilled_time_entries_sum()
+        expected = Decimal('110.00')
+        self.assertEqual(sum_value, expected)  # 50 + 60 = 110

@@ -25,6 +25,7 @@ from .services import (
     get_top_categories,
     get_overdue_bookings_sum,
     get_upcoming_bookings_sum,
+    get_unbilled_time_entries_sum,
 )
 from .services.document_processor import get_mime_type
 
@@ -117,6 +118,9 @@ def dashboard(request):
     overdue_deficit = liquidity_actual + overdue_sum
     upcoming_deficit = liquidity_actual + upcoming_sum
     
+    # Get unbilled time entries sum
+    unbilled_time_sum = get_unbilled_time_entries_sum()
+    
     context = {
         'liquidity_actual': liquidity_actual,
         'liquidity_forecast': liquidity_forecast,
@@ -129,6 +133,7 @@ def dashboard(request):
         'upcoming_sum': upcoming_sum,
         'overdue_deficit': overdue_deficit,
         'upcoming_deficit': upcoming_deficit,
+        'unbilled_time_sum': unbilled_time_sum,
     }
     
     return render(request, 'core/dashboard.html', context)
