@@ -114,8 +114,8 @@
     <!-- HTMX - Ready for future interactive features -->
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- Chart.js (local copy) -->
+    <script src="{% static 'core/js/chart.umd.js' %}"></script>
     
     {% block extra_js %}{% endblock %}
 </body>

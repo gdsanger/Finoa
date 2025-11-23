@@ -154,29 +154,36 @@
 {% if expense_labels %}
 <script>
 (function() {
-    // Finoa color palette for charts
-    const finoaColors = [
-        '#39A77B', // Finoa Green
-        '#3A6EA5', // Finoa Blue
-        '#5AB88D', // Light Green
-        '#4D7EB8', // Light Blue
-        '#2D8962', // Dark Green
-        '#2E5684', // Dark Blue
-        '#7CC4A5', // Pale Green
-        '#7FA3C9', // Pale Blue
-        '#1F6A4D', // Deep Green
-        '#1F4566', // Deep Blue
-    ];
+    // Wait for Chart.js to be loaded
+    function initExpenseChart() {
+        if (typeof Chart === 'undefined') {
+            setTimeout(initExpenseChart, 50);
+            return;
+        }
+        
+        // Finoa color palette for charts
+        const finoaColors = [
+            '#39A77B', // Finoa Green
+            '#3A6EA5', // Finoa Blue
+            '#5AB88D', // Light Green
+            '#4D7EB8', // Light Blue
+            '#2D8962', // Dark Green
+            '#2E5684', // Dark Blue
+            '#7CC4A5', // Pale Green
+            '#7FA3C9', // Pale Blue
+            '#1F6A4D', // Deep Green
+            '#1F4566', // Deep Blue
+        ];
 
-    // Destroy existing chart if it exists
-    const existingExpenseChart = Chart.getChart('expenseDonutChart');
-    if (existingExpenseChart) {
-        existingExpenseChart.destroy();
-    }
+        // Destroy existing chart if it exists
+        const existingExpenseChart = Chart.getChart('expenseDonutChart');
+        if (existingExpenseChart) {
+            existingExpenseChart.destroy();
+        }
 
-    // Donut Chart: Expenses by Category
-    const expenseDonutCtx = document.getElementById('expenseDonutChart').getContext('2d');
-    const expenseDonutChart = new Chart(expenseDonutCtx, {
+        // Donut Chart: Expenses by Category
+        const expenseDonutCtx = document.getElementById('expenseDonutChart').getContext('2d');
+        const expenseDonutChart = new Chart(expenseDonutCtx, {
         type: 'doughnut',
         data: {
             labels: {{ expense_labels|safe }},
@@ -214,6 +221,10 @@
             }
         }
     });
+    }
+    
+    // Start initialization
+    initExpenseChart();
 })();
 </script>
 {% endif %}
@@ -221,15 +232,22 @@
 {% if top_labels %}
 <script>
 (function() {
-    // Destroy existing chart if it exists
-    const existingTopChart = Chart.getChart('topCategoriesChart');
-    if (existingTopChart) {
-        existingTopChart.destroy();
-    }
+    // Wait for Chart.js to be loaded
+    function initTopChart() {
+        if (typeof Chart === 'undefined') {
+            setTimeout(initTopChart, 50);
+            return;
+        }
+        
+        // Destroy existing chart if it exists
+        const existingTopChart = Chart.getChart('topCategoriesChart');
+        if (existingTopChart) {
+            existingTopChart.destroy();
+        }
 
-    // Bar Chart: Top Categories
-    const topCategoriesCtx = document.getElementById('topCategoriesChart').getContext('2d');
-    const topCategoriesChart = new Chart(topCategoriesCtx, {
+        // Bar Chart: Top Categories
+        const topCategoriesCtx = document.getElementById('topCategoriesChart').getContext('2d');
+        const topCategoriesChart = new Chart(topCategoriesCtx, {
         type: 'bar',
         data: {
             labels: {{ top_labels|safe }},
@@ -269,6 +287,10 @@
             }
         }
     });
+    }
+    
+    // Start initialization
+    initTopChart();
 })();
 </script>
 {% endif %}
