@@ -562,7 +562,11 @@ def document_review_detail(request, document_id):
                 return redirect('document_review_detail', document_id=document_id)
             
             # Parse booking date
-            booking_date = datetime.strptime(booking_date_str, '%Y-%m-%d').date()
+            try:
+                booking_date = datetime.strptime(booking_date_str, '%Y-%m-%d').date()
+            except ValueError:
+                messages.error(request, 'Ungültiges Datumsformat.')
+                return redirect('document_review_detail', document_id=document_id)
             
             # Get account
             account = get_object_or_404(Account, id=account_id, is_active=True)
@@ -579,6 +583,8 @@ def document_review_detail(request, document_id):
             # Invert amount (documents are typically invoices/expenses = money outflow)
             # Note: This assumes documents represent outgoing payments. For income documents,
             # users should manually adjust the sign or the amount should be handled differently.
+            # Using -abs() ensures the amount is always negative, even if user accidentally
+            # enters a negative value (prevents double negation issues).
             booking_amount = -abs(Decimal(amount))
             
             # Create booking

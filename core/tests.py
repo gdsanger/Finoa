@@ -1498,6 +1498,39 @@ class DocumentViewTest(TestCase):
         
         self.assertIsNotNone(recurring)
         self.assertEqual(recurring.amount, Decimal('-29.99'))
+    
+    def test_document_review_detail_invalid_date_format(self):
+        """Test that invalid date format is handled gracefully"""
+        from .models import DocumentUpload
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        
+        file_content = b'test'
+        uploaded_file = SimpleUploadedFile('test.pdf', file_content)
+        
+        doc = DocumentUpload.objects.create(
+            file=uploaded_file,
+            original_filename='test.pdf',
+            status='REVIEW_PENDING',
+            suggested_amount=Decimal('50.00'),
+            suggested_date=date.today()
+        )
+        
+        # Submit with invalid date format
+        response = self.client.post(f'/documents/review/{doc.id}/', {
+            'account': self.account.id,
+            'amount': '50.00',
+            'booking_date': '2024-13-45',  # Invalid date
+            'description': 'Test booking',
+            'status': 'PLANNED'
+        })
+        
+        # Should redirect back to the review page (not to list)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(f'/documents/review/{doc.id}/', response.url)
+        
+        # No booking should be created
+        doc.refresh_from_db()
+        self.assertIsNone(doc.booking)
 
 
 class DashboardDeficitCalculationTest(TestCase):
