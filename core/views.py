@@ -233,9 +233,30 @@ def account_detail(request, account_id):
         'all_accounts': Account.objects.filter(is_active=True),
         'payees': Payee.objects.filter(is_active=True),
         'today': date.today(),
+        'reconciliation_category_ids': _get_reconciliation_category_ids(),
     }
     
     return render(request, 'core/account_detail.html', context)
+
+
+def _get_reconciliation_category_ids():
+    """Helper function to get category IDs for reconciliation types."""
+    category_names = {
+        'correction': 'Korrektur',
+        'unrealized': 'Unrealisierte Gewinne/Verluste',
+        'roundup': 'RoundUp',
+        'saveback': 'SaveBack',
+    }
+    
+    result = {}
+    for key, name in category_names.items():
+        try:
+            cat = Category.objects.get(name=name)
+            result[key] = cat.id
+        except Category.DoesNotExist:
+            result[key] = None
+    
+    return result
 
 
 def monthly_view(request):
@@ -684,7 +705,10 @@ def reconcile_balance(request, account_id):
                 messages.error(request, 'Bitte geben Sie den neuen Saldo ein.')
                 return redirect('account_detail', account_id=account.id)
             
-            new_balance = Decimal(new_balance_str.replace(',', '.'))
+            # Parse decimal value - replace comma with dot for German locale compatibility
+            # HTML5 number input sends values with dot separator, but handle both
+            new_balance_str = new_balance_str.replace(',', '.')
+            new_balance = Decimal(new_balance_str)
             
             booking_date_str = request.POST.get('date', '').strip()
             if booking_date_str:

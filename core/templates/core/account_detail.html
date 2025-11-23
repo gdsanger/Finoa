@@ -424,7 +424,7 @@
                             class="form-control" 
                             id="date" 
                             name="date" 
-                            value="{{ today.isoformat }}" 
+                            value="{{ today|date:'Y-m-d' }}" 
                             required
                         >
                     </div>
@@ -442,7 +442,7 @@
                                 id="diff_type_correction" 
                                 value="correction"
                                 checked
-                                data-default-category="{% if categories %}{% for cat in categories %}{% if cat.name == 'Korrektur' %}{{ cat.id }}{% endif %}{% endfor %}{% endif %}"
+                                data-default-category="{{ reconciliation_category_ids.correction }}"
                             >
                             <label class="form-check-label" for="diff_type_correction">
                                 <strong>Korrektur</strong> – Allgemeine Abweichungen, Erfassungsfehler
@@ -455,7 +455,7 @@
                                 name="diff_type" 
                                 id="diff_type_unrealized" 
                                 value="unrealized"
-                                data-default-category="{% if categories %}{% for cat in categories %}{% if cat.name == 'Unrealisierte Gewinne/Verluste' %}{{ cat.id }}{% endif %}{% endfor %}{% endif %}"
+                                data-default-category="{{ reconciliation_category_ids.unrealized }}"
                             >
                             <label class="form-check-label" for="diff_type_unrealized">
                                 <strong>Unrealisierte Gewinne/Verluste</strong> – Depot-/Kursbewertungen
@@ -468,7 +468,7 @@
                                 name="diff_type" 
                                 id="diff_type_roundup" 
                                 value="roundup"
-                                data-default-category="{% if categories %}{% for cat in categories %}{% if cat.name == 'RoundUp' %}{{ cat.id }}{% endif %}{% endfor %}{% endif %}"
+                                data-default-category="{{ reconciliation_category_ids.roundup }}"
                             >
                             <label class="form-check-label" for="diff_type_roundup">
                                 <strong>RoundUp</strong> – Trade Republic Aufrundungsbeträge
@@ -481,7 +481,7 @@
                                 name="diff_type" 
                                 id="diff_type_saveback" 
                                 value="saveback"
-                                data-default-category="{% if categories %}{% for cat in categories %}{% if cat.name == 'SaveBack' %}{{ cat.id }}{% endif %}{% endfor %}{% endif %}"
+                                data-default-category="{{ reconciliation_category_ids.saveback }}"
                             >
                             <label class="form-check-label" for="diff_type_saveback">
                                 <strong>SaveBack</strong> – Trade Republic 1% Cashback
@@ -496,7 +496,7 @@
                             <option value="">– Keine Kategorie –</option>
                             {% for category in categories %}
                             <option value="{{ category.id }}"
-                                    {% if category.name == 'Korrektur' %}selected{% endif %}>
+                                    {% if category.id == reconciliation_category_ids.correction %}selected{% endif %}>
                                 {{ category.name }}
                                 {% if category.type %} ({{ category.get_type_display }}){% endif %}
                             </option>
