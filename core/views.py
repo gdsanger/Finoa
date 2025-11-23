@@ -494,6 +494,9 @@ def document_review_list(request):
     
     return render(request, 'core/document_review_list.html', context)
 
+def debug_view(request):
+    from django.http import JsonResponse
+    return JsonResponse(dict(request.headers))
 
 @login_required
 def document_review_detail(request, document_id):

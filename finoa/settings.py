@@ -48,7 +48,7 @@ MIDDLEWARE = [
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # 'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
 ROOT_URLCONF = 'finoa.urls'
@@ -68,7 +68,7 @@ TEMPLATES = [
         },
     },
 ]
-
+X_FRAME_OPTIONS = 'ALLOWALL'
 WSGI_APPLICATION = 'finoa.wsgi.application'
 
 
@@ -122,7 +122,6 @@ STATIC_URL = 'static/'
 # Media files (User uploads)
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
-X_FRAME_OPTIONS = 'SAMEORIGIN'
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
 

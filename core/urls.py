@@ -10,5 +10,6 @@ urlpatterns = [
     path('payees/', views.payees, name='payees'),
     path('documents/', views.document_list, name='document_list'),
     path('documents/review/', views.document_review_list, name='document_review_list'),
+    path('debug/', views.debug_view, name='debug_view'),
     path('documents/review/<int:document_id>/', views.document_review_detail, name='document_review_detail'),
 ]
