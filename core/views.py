@@ -11,6 +11,9 @@ from dateutil.relativedelta import relativedelta
 from decimal import Decimal
 import json
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 from .models import Account, Booking, Category, RecurringBooking, Payee, DocumentUpload, TimeEntry
 from .services import (
@@ -549,16 +552,21 @@ def document_review_detail(request, document_id):
         try:
             account_id = request.POST.get('account')
             amount = request.POST.get('amount')
-            booking_date = request.POST.get('booking_date')
+            booking_date_str = request.POST.get('booking_date')
             description = request.POST.get('description', '')
             category_id = request.POST.get('category')
             payee_id = request.POST.get('payee')
             create_recurring = request.POST.get('create_recurring') == 'on'
+            status = request.POST.get('status', 'PLANNED')  # Default to PLANNED
             
             # Validate required fields
-            if not account_id or not amount or not booking_date:
+            if not account_id or not amount or not booking_date_str:
                 messages.error(request, 'Konto, Betrag und Datum sind erforderlich.')
                 return redirect('document_review_detail', document_id=document_id)
+            
+            # Parse booking date
+            from datetime import datetime
+            booking_date = datetime.strptime(booking_date_str, '%Y-%m-%d').date()
             
             # Get account
             account = get_object_or_404(Account, id=account_id, is_active=True)
@@ -572,15 +580,18 @@ def document_review_detail(request, document_id):
             if payee_id:
                 payee = get_object_or_404(Payee, id=payee_id, is_active=True)
             
+            # Invert amount (documents are typically invoices/expenses = money outflow)
+            booking_amount = -abs(Decimal(amount))
+            
             # Create booking
             booking = Booking.objects.create(
                 account=account,
-                amount=Decimal(amount),
+                amount=booking_amount,
                 booking_date=booking_date,
                 description=description,
                 category=category,
                 payee=payee,
-                status='POSTED'
+                status=status
             )
             
             # Update document
@@ -590,10 +601,10 @@ def document_review_detail(request, document_id):
             
             # Create recurring booking if requested
             if create_recurring and document.suggested_is_recurring:
-                # Create recurring booking
+                # Create recurring booking (also inverted)
                 recurring = RecurringBooking.objects.create(
                     account=account,
-                    amount=Decimal(amount),
+                    amount=booking_amount,
                     description=description,
                     category=category,
                     payee=payee,

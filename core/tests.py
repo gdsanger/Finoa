@@ -1361,6 +1361,143 @@ class DocumentViewTest(TestCase):
         self.assertContains(response, 'value="42.50"')
         # Ensure it doesn't contain the localized comma format
         self.assertNotContains(response, 'value="42,50"')
+    
+    def test_document_review_detail_amount_is_inverted(self):
+        """Test that amount is inverted (made negative) when creating booking from document"""
+        from .models import DocumentUpload
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        
+        file_content = b'test'
+        uploaded_file = SimpleUploadedFile('test.pdf', file_content)
+        
+        doc = DocumentUpload.objects.create(
+            file=uploaded_file,
+            original_filename='invoice.pdf',
+            status='REVIEW_PENDING',
+            suggested_amount=Decimal('99.99'),
+            suggested_date=date.today()
+        )
+        
+        # Submit with positive amount
+        response = self.client.post(f'/documents/review/{doc.id}/', {
+            'account': self.account.id,
+            'amount': '99.99',
+            'booking_date': date.today().isoformat(),
+            'description': 'Test invoice'
+        })
+        
+        self.assertEqual(response.status_code, 302)
+        doc.refresh_from_db()
+        
+        # Amount should be inverted (negative)
+        self.assertIsNotNone(doc.booking)
+        self.assertEqual(doc.booking.amount, Decimal('-99.99'))
+    
+    def test_document_review_detail_default_status_is_planned(self):
+        """Test that bookings are created with PLANNED status by default"""
+        from .models import DocumentUpload
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        
+        file_content = b'test'
+        uploaded_file = SimpleUploadedFile('test.pdf', file_content)
+        
+        doc = DocumentUpload.objects.create(
+            file=uploaded_file,
+            original_filename='test.pdf',
+            status='REVIEW_PENDING',
+            suggested_amount=Decimal('50.00'),
+            suggested_date=date.today()
+        )
+        
+        # Submit without explicit status (should default to PLANNED)
+        response = self.client.post(f'/documents/review/{doc.id}/', {
+            'account': self.account.id,
+            'amount': '50.00',
+            'booking_date': date.today().isoformat(),
+            'description': 'Test booking'
+        })
+        
+        self.assertEqual(response.status_code, 302)
+        doc.refresh_from_db()
+        
+        # Status should be PLANNED by default
+        self.assertIsNotNone(doc.booking)
+        self.assertEqual(doc.booking.status, 'PLANNED')
+    
+    def test_document_review_detail_status_can_be_set_to_posted(self):
+        """Test that status can be explicitly set to POSTED"""
+        from .models import DocumentUpload
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        
+        file_content = b'test'
+        uploaded_file = SimpleUploadedFile('test.pdf', file_content)
+        
+        doc = DocumentUpload.objects.create(
+            file=uploaded_file,
+            original_filename='test.pdf',
+            status='REVIEW_PENDING',
+            suggested_amount=Decimal('50.00'),
+            suggested_date=date.today()
+        )
+        
+        # Submit with explicit POSTED status
+        response = self.client.post(f'/documents/review/{doc.id}/', {
+            'account': self.account.id,
+            'amount': '50.00',
+            'booking_date': date.today().isoformat(),
+            'description': 'Test booking',
+            'status': 'POSTED'
+        })
+        
+        self.assertEqual(response.status_code, 302)
+        doc.refresh_from_db()
+        
+        # Status should be POSTED as specified
+        self.assertIsNotNone(doc.booking)
+        self.assertEqual(doc.booking.status, 'POSTED')
+    
+    def test_document_review_detail_recurring_booking_amount_inverted(self):
+        """Test that recurring booking amount is also inverted"""
+        from .models import DocumentUpload
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        
+        file_content = b'test'
+        uploaded_file = SimpleUploadedFile('test.pdf', file_content)
+        
+        doc = DocumentUpload.objects.create(
+            file=uploaded_file,
+            original_filename='subscription.pdf',
+            status='REVIEW_PENDING',
+            suggested_amount=Decimal('29.99'),
+            suggested_date=date.today(),
+            suggested_is_recurring=True
+        )
+        
+        # Create with recurring option
+        response = self.client.post(f'/documents/review/{doc.id}/', {
+            'account': self.account.id,
+            'amount': '29.99',
+            'booking_date': date.today().isoformat(),
+            'description': 'Monthly subscription',
+            'create_recurring': 'on',
+            'status': 'PLANNED'
+        })
+        
+        self.assertEqual(response.status_code, 302)
+        
+        # Check that both booking and recurring booking were created with inverted amount
+        doc.refresh_from_db()
+        self.assertIsNotNone(doc.booking)
+        self.assertEqual(doc.booking.amount, Decimal('-29.99'))
+        
+        from .models import RecurringBooking
+        recurring = RecurringBooking.objects.filter(
+            account=self.account,
+            description='Monthly subscription'
+        ).first()
+        
+        self.assertIsNotNone(recurring)
+        self.assertEqual(recurring.amount, Decimal('-29.99'))
 
 
 class DashboardDeficitCalculationTest(TestCase):

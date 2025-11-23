@@ -147,6 +147,17 @@
                         <textarea class="form-control" id="description" name="description" rows="2">{{ document.suggested_description }}</textarea>
                     </div>
 
+                    <div class="mb-3">
+                        <label for="status" class="form-label">Status</label>
+                        <select class="form-select" id="status" name="status">
+                            <option value="PLANNED" selected>Geplant</option>
+                            <option value="POSTED">Gebucht</option>
+                        </select>
+                        <div class="form-text">
+                            Standardmäßig wird die Buchung als "Geplant" erstellt.
+                        </div>
+                    </div>
+
                     {% if document.suggested_is_recurring %}
                     <div class="mb-3">
                         <div class="form-check">
