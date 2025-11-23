@@ -1363,6 +1363,124 @@ class DocumentViewTest(TestCase):
         self.assertNotContains(response, 'value="42,50"')
 
 
+class DashboardDeficitCalculationTest(TestCase):
+    """Test cases for dashboard deficit calculations"""
+    
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.user = User.objects.create_user(username='testuser', password='testpass')
+        self.client.login(username='testuser', password='testpass')
+        
+        self.account = Account.objects.create(
+            name='Test Account',
+            type='checking',
+            initial_balance=Decimal('1000.00'),
+            is_liquidity_relevant=True
+        )
+    
+    def test_dashboard_overdue_deficit_with_expenses(self):
+        """Test that overdue expenses correctly reduce liquidity deficit"""
+        from datetime import timedelta
+        
+        # Create overdue expense bookings
+        yesterday = date.today() - timedelta(days=1)
+        Booking.objects.create(
+            account=self.account,
+            booking_date=yesterday,
+            amount=Decimal('-100.00'),  # Expense
+            status='PLANNED'
+        )
+        Booking.objects.create(
+            account=self.account,
+            booking_date=yesterday - timedelta(days=1),
+            amount=Decimal('-50.00'),  # Expense
+            status='PLANNED'
+        )
+        
+        response = self.client.get('/')
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify overdue_sum is correctly summed
+        self.assertEqual(response.context['overdue_sum'], Decimal('-150.00'))
+        
+        # Verify deficit: liquidity_actual + overdue_sum
+        # 1000 + (-150) = 850 (remaining after paying)
+        expected_deficit = Decimal('850.00')
+        self.assertEqual(response.context['overdue_deficit'], expected_deficit)
+    
+    def test_dashboard_overdue_deficit_with_income(self):
+        """Test that overdue income correctly increases liquidity deficit"""
+        from datetime import timedelta
+        
+        # Create overdue income booking
+        yesterday = date.today() - timedelta(days=1)
+        Booking.objects.create(
+            account=self.account,
+            booking_date=yesterday,
+            amount=Decimal('500.00'),  # Income
+            status='PLANNED'
+        )
+        
+        response = self.client.get('/')
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify overdue_sum
+        self.assertEqual(response.context['overdue_sum'], Decimal('500.00'))
+        
+        # Verify deficit: liquidity_actual + overdue_sum
+        # 1000 + 500 = 1500 (total after receiving income)
+        expected_deficit = Decimal('1500.00')
+        self.assertEqual(response.context['overdue_deficit'], expected_deficit)
+    
+    def test_dashboard_upcoming_deficit_with_expenses(self):
+        """Test that upcoming expenses correctly reduce liquidity deficit"""
+        from datetime import timedelta
+        
+        # Create upcoming expense bookings
+        in_three_days = date.today() + timedelta(days=3)
+        Booking.objects.create(
+            account=self.account,
+            booking_date=in_three_days,
+            amount=Decimal('-200.00'),  # Expense
+            status='PLANNED'
+        )
+        
+        response = self.client.get('/')
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify upcoming_sum
+        self.assertEqual(response.context['upcoming_sum'], Decimal('-200.00'))
+        
+        # Verify deficit: liquidity_actual + upcoming_sum
+        # 1000 + (-200) = 800 (remaining after paying)
+        expected_deficit = Decimal('800.00')
+        self.assertEqual(response.context['upcoming_deficit'], expected_deficit)
+    
+    def test_dashboard_upcoming_deficit_with_income(self):
+        """Test that upcoming income correctly increases liquidity deficit"""
+        from datetime import timedelta
+        
+        # Create upcoming income booking
+        tomorrow = date.today() + timedelta(days=1)
+        Booking.objects.create(
+            account=self.account,
+            booking_date=tomorrow,
+            amount=Decimal('300.00'),  # Income
+            status='PLANNED'
+        )
+        
+        response = self.client.get('/')
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify upcoming_sum
+        self.assertEqual(response.context['upcoming_sum'], Decimal('300.00'))
+        
+        # Verify deficit: liquidity_actual + upcoming_sum
+        # 1000 + 300 = 1300 (total after receiving income)
+        expected_deficit = Decimal('1300.00')
+        self.assertEqual(response.context['upcoming_deficit'], expected_deficit)
+
+
 class DueBookingsViewTest(TestCase):
     """Test cases for due bookings overview"""
     
