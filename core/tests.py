@@ -528,6 +528,180 @@ class PayeeModelTest(TestCase):
         self.assertIsNone(booking.payee)
 
 
+class OverdueUpcomingBookingsTest(TestCase):
+    def setUp(self):
+        self.account = Account.objects.create(
+            name='Test Account',
+            type='checking',
+            initial_balance=Decimal('1000.00')
+        )
+        self.category = Category.objects.create(name='Test Category')
+    
+    def test_overdue_bookings_sum_empty(self):
+        """Test that overdue bookings sum is zero when no overdue bookings exist"""
+        from .services import get_overdue_bookings_sum
+        
+        overdue_sum = get_overdue_bookings_sum()
+        self.assertEqual(overdue_sum, Decimal('0.00'))
+    
+    def test_overdue_bookings_sum_with_overdue(self):
+        """Test that overdue bookings are correctly summed"""
+        from .services import get_overdue_bookings_sum
+        from datetime import timedelta
+        
+        # Create overdue bookings
+        yesterday = date.today() - timedelta(days=1)
+        three_days_ago = date.today() - timedelta(days=3)
+        
+        Booking.objects.create(
+            account=self.account,
+            booking_date=yesterday,
+            amount=Decimal('-100.00'),
+            status='PLANNED'
+        )
+        Booking.objects.create(
+            account=self.account,
+            booking_date=three_days_ago,
+            amount=Decimal('-50.00'),
+            status='PLANNED'
+        )
+        
+        overdue_sum = get_overdue_bookings_sum()
+        self.assertEqual(overdue_sum, Decimal('-150.00'))
+    
+    def test_overdue_bookings_sum_excludes_posted(self):
+        """Test that posted bookings are not included in overdue sum"""
+        from .services import get_overdue_bookings_sum
+        from datetime import timedelta
+        
+        yesterday = date.today() - timedelta(days=1)
+        
+        # Create posted booking in the past
+        Booking.objects.create(
+            account=self.account,
+            booking_date=yesterday,
+            amount=Decimal('-100.00'),
+            status='POSTED'
+        )
+        
+        overdue_sum = get_overdue_bookings_sum()
+        self.assertEqual(overdue_sum, Decimal('0.00'))
+    
+    def test_overdue_bookings_sum_excludes_today_and_future(self):
+        """Test that bookings from today or future are not included"""
+        from .services import get_overdue_bookings_sum
+        from datetime import timedelta
+        
+        today = date.today()
+        tomorrow = today + timedelta(days=1)
+        
+        Booking.objects.create(
+            account=self.account,
+            booking_date=today,
+            amount=Decimal('-100.00'),
+            status='PLANNED'
+        )
+        Booking.objects.create(
+            account=self.account,
+            booking_date=tomorrow,
+            amount=Decimal('-50.00'),
+            status='PLANNED'
+        )
+        
+        overdue_sum = get_overdue_bookings_sum()
+        self.assertEqual(overdue_sum, Decimal('0.00'))
+    
+    def test_upcoming_bookings_sum_empty(self):
+        """Test that upcoming bookings sum is zero when no upcoming bookings exist"""
+        from .services import get_upcoming_bookings_sum
+        
+        upcoming_sum = get_upcoming_bookings_sum(days=7)
+        self.assertEqual(upcoming_sum, Decimal('0.00'))
+    
+    def test_upcoming_bookings_sum_with_upcoming(self):
+        """Test that upcoming bookings are correctly summed"""
+        from .services import get_upcoming_bookings_sum
+        from datetime import timedelta
+        
+        today = date.today()
+        in_three_days = today + timedelta(days=3)
+        in_five_days = today + timedelta(days=5)
+        
+        Booking.objects.create(
+            account=self.account,
+            booking_date=today,
+            amount=Decimal('-100.00'),
+            status='PLANNED'
+        )
+        Booking.objects.create(
+            account=self.account,
+            booking_date=in_three_days,
+            amount=Decimal('-75.00'),
+            status='PLANNED'
+        )
+        Booking.objects.create(
+            account=self.account,
+            booking_date=in_five_days,
+            amount=Decimal('-25.00'),
+            status='PLANNED'
+        )
+        
+        upcoming_sum = get_upcoming_bookings_sum(days=7)
+        self.assertEqual(upcoming_sum, Decimal('-200.00'))
+    
+    def test_upcoming_bookings_sum_excludes_beyond_window(self):
+        """Test that bookings beyond the time window are not included"""
+        from .services import get_upcoming_bookings_sum
+        from datetime import timedelta
+        
+        today = date.today()
+        in_ten_days = today + timedelta(days=10)
+        
+        Booking.objects.create(
+            account=self.account,
+            booking_date=in_ten_days,
+            amount=Decimal('-100.00'),
+            status='PLANNED'
+        )
+        
+        upcoming_sum = get_upcoming_bookings_sum(days=7)
+        self.assertEqual(upcoming_sum, Decimal('0.00'))
+    
+    def test_upcoming_bookings_sum_excludes_past(self):
+        """Test that past bookings are not included in upcoming sum"""
+        from .services import get_upcoming_bookings_sum
+        from datetime import timedelta
+        
+        yesterday = date.today() - timedelta(days=1)
+        
+        Booking.objects.create(
+            account=self.account,
+            booking_date=yesterday,
+            amount=Decimal('-100.00'),
+            status='PLANNED'
+        )
+        
+        upcoming_sum = get_upcoming_bookings_sum(days=7)
+        self.assertEqual(upcoming_sum, Decimal('0.00'))
+    
+    def test_upcoming_bookings_sum_excludes_posted(self):
+        """Test that posted bookings are not included in upcoming sum"""
+        from .services import get_upcoming_bookings_sum
+        from datetime import timedelta
+        
+        tomorrow = date.today() + timedelta(days=1)
+        
+        Booking.objects.create(
+            account=self.account,
+            booking_date=tomorrow,
+            amount=Decimal('-100.00'),
+            status='POSTED'
+        )
+        
+        upcoming_sum = get_upcoming_bookings_sum(days=7)
+        self.assertEqual(upcoming_sum, Decimal('0.00'))
+
+
 class AccountLiquidityRelevanceTest(TestCase):
     def test_account_liquidity_relevance_default(self):
         """Test that accounts are liquidity-relevant by default"""

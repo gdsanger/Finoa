@@ -21,6 +21,8 @@ from .services import (
     get_total_liquidity,
     get_category_analysis,
     get_top_categories,
+    get_overdue_bookings_sum,
+    get_upcoming_bookings_sum,
 )
 from .services.document_processor import get_mime_type
 
@@ -104,6 +106,14 @@ def dashboard(request):
     if accounts.exists():
         assets_timeline_data = _build_total_liquidity_timeline(months=6, liquidity_relevant_only=False)
     
+    # Get overdue and upcoming bookings sums
+    overdue_sum = get_overdue_bookings_sum()
+    upcoming_sum = get_upcoming_bookings_sum(days=7)
+    
+    # Calculate deficit/surplus relative to liquidity actual
+    overdue_deficit = liquidity_actual - overdue_sum
+    upcoming_deficit = liquidity_actual - upcoming_sum
+    
     context = {
         'liquidity_actual': liquidity_actual,
         'liquidity_forecast': liquidity_forecast,
@@ -112,6 +122,10 @@ def dashboard(request):
         'account_summaries': account_summaries,
         'liquidity_timeline_data': liquidity_timeline_data,
         'assets_timeline_data': assets_timeline_data,
+        'overdue_sum': overdue_sum,
+        'upcoming_sum': upcoming_sum,
+        'overdue_deficit': overdue_deficit,
+        'upcoming_deficit': upcoming_deficit,
     }
     
     return render(request, 'core/dashboard.html', context)
