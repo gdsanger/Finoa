@@ -26,6 +26,10 @@ from .services import (
     get_overdue_bookings_sum,
     get_upcoming_bookings_sum,
     get_unbilled_time_entries_sum,
+    build_analysis_dataset,
+    create_agent_prompt,
+    parse_agent_response,
+    execute_agent,
 )
 from .services.document_processor import get_mime_type
 
@@ -1133,3 +1137,72 @@ def _show_billing_form(request, selected_ids):
     }
     
     return render(request, 'core/time_entry_billing.html', context)
+
+
+@login_required
+def ai_analysis(request):
+    """
+    AI-powered financial analysis view.
+    
+    Provides:
+    - Spending classification (MUSS, NICE_TO_HAVE, UNSINN)
+    - Trend analysis
+    - Forecasts for 6, 12, and 24 months
+    - Optimization recommendations
+    """
+    # Get time period from request (default: 6 months)
+    months = int(request.GET.get('months', 6))
+    
+    # Validate months parameter
+    if months not in [3, 6, 12, 24]:
+        months = 6
+    
+    # Initialize context
+    context = {
+        'selected_months': months,
+        'available_periods': [3, 6, 12, 24],
+        'analysis': None,
+        'error': None,
+        'dataset': None,
+    }
+    
+    # Only run analysis if explicitly requested (POST or with 'analyze' parameter)
+    if request.method == 'POST' or request.GET.get('analyze') == '1':
+        try:
+            # Build dataset
+            dataset = build_analysis_dataset(months)
+            context['dataset'] = dataset
+            
+            # Check if we have enough data
+            if not dataset['monthly_liquidity'] or not dataset['categories']:
+                context['error'] = 'Nicht genügend Daten für eine Analyse. Bitte erfassen Sie mehr Buchungen.'
+                return render(request, 'core/ai_analysis.html', context)
+            
+            # Create prompt for agent
+            prompt = create_agent_prompt(dataset)
+            
+            # Call KIGate agent
+            response = execute_agent(
+                prompt=prompt,
+                agent_name='financial-insights-de',
+                temperature=0.7,
+                max_tokens=2000
+            )
+            
+            if not response.success:
+                context['error'] = f'KI-Analyse fehlgeschlagen: {response.error}'
+                return render(request, 'core/ai_analysis.html', context)
+            
+            # Parse response
+            analysis = parse_agent_response(response.data)
+            
+            if not analysis:
+                context['error'] = 'Die KI-Antwort konnte nicht verarbeitet werden. Bitte versuchen Sie es erneut.'
+                return render(request, 'core/ai_analysis.html', context)
+            
+            context['analysis'] = analysis
+            
+        except Exception as e:
+            context['error'] = f'Fehler bei der Analyse: {str(e)}'
+    
+    return render(request, 'core/ai_analysis.html', context)

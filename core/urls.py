@@ -20,4 +20,5 @@ urlpatterns = [
     path('time-tracking/<int:entry_id>/update/', views.time_entry_update, name='time_entry_update'),
     path('time-tracking/<int:entry_id>/delete/', views.time_entry_delete, name='time_entry_delete'),
     path('time-tracking/billing/', views.time_entry_bulk_billing, name='time_entry_bulk_billing'),
+    path('analytics/ai-analysis/', views.ai_analysis, name='ai_analysis'),
 ]

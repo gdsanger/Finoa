@@ -1,0 +1,378 @@
+{% extends "core/base.html" %}
+{% load static %}
+
+{% block title %}KI-Analyse - Finoa{% endblock %}
+
+{% block extra_css %}
+<style>
+    .analysis-card {
+        border-left: 4px solid #39A77B;
+        transition: all 0.3s ease;
+    }
+    .analysis-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .classification-badge {
+        font-size: 0.9rem;
+        padding: 0.4rem 0.8rem;
+        border-radius: 20px;
+        font-weight: 500;
+    }
+    .badge-muss {
+        background-color: #dc3545;
+        color: white;
+    }
+    .badge-nice {
+        background-color: #ffc107;
+        color: #212529;
+    }
+    .badge-unsinn {
+        background-color: #6c757d;
+        color: white;
+    }
+    .trend-indicator {
+        display: inline-block;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.25rem;
+        font-size: 0.875rem;
+    }
+    .trend-up {
+        background-color: #d4edda;
+        color: #155724;
+    }
+    .trend-down {
+        background-color: #f8d7da;
+        color: #721c24;
+    }
+    .trend-stable {
+        background-color: #d1ecf1;
+        color: #0c5460;
+    }
+    .recommendation-item {
+        padding: 1rem;
+        margin-bottom: 0.5rem;
+        background-color: #f8f9fa;
+        border-left: 3px solid #39A77B;
+        border-radius: 0.25rem;
+    }
+    .forecast-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+    }
+    .loading-spinner {
+        display: inline-block;
+        width: 1.5rem;
+        height: 1.5rem;
+        border: 3px solid rgba(57, 167, 123, 0.3);
+        border-top-color: #39A77B;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1 class="h3 mb-3">
+                <i class="bi bi-lightning-charge-fill text-warning"></i>
+                KI-Finanzanalyse
+            </h1>
+            <p class="text-muted">
+                Intelligente Analyse Ihres Ausgabenverhaltens mit Trendermittlung und Zukunftsprognose
+            </p>
+        </div>
+    </div>
+
+    <!-- Period Selection -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Analysezeitraum wählen</h5>
+                    <form method="get" action="{% url 'ai_analysis' %}" id="period-form">
+                        <div class="row align-items-end">
+                            <div class="col-md-6">
+                                <label class="form-label">Zeitraum (Monate)</label>
+                                <div class="btn-group w-100" role="group">
+                                    {% for period in available_periods %}
+                                    <input type="radio" class="btn-check" name="months" 
+                                           id="months_{{ period }}" value="{{ period }}"
+                                           {% if period == selected_months %}checked{% endif %}>
+                                    <label class="btn btn-outline-primary" for="months_{{ period }}">
+                                        {{ period }} Monate
+                                    </label>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <button type="submit" name="analyze" value="1" class="btn btn-success w-100">
+                                    <i class="bi bi-play-circle"></i> Analyse starten
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Error Message -->
+    {% if error %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="alert alert-warning" role="alert">
+                <i class="bi bi-exclamation-triangle"></i> {{ error }}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Analysis Results -->
+    {% if analysis %}
+    <div class="row">
+        <!-- Classification -->
+        <div class="col-md-12 mb-4">
+            <div class="card analysis-card">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="bi bi-pie-chart-fill text-primary"></i>
+                        Ausgaben-Klassifikation
+                    </h5>
+                    <p class="text-muted">Kategorisierung Ihrer Ausgaben nach Notwendigkeit</p>
+                    
+                    <div class="row mt-3">
+                        <!-- MUSS -->
+                        <div class="col-md-4 mb-3">
+                            <h6 class="classification-badge badge-muss">
+                                <i class="bi bi-exclamation-circle"></i> MUSS
+                            </h6>
+                            <p class="small text-muted mt-2">Fixkosten & zwingende Ausgaben</p>
+                            <ul class="list-unstyled mt-2">
+                                {% for category in analysis.classification.MUSS %}
+                                <li class="mb-1">
+                                    <i class="bi bi-check-circle text-danger"></i> {{ category }}
+                                </li>
+                                {% empty %}
+                                <li class="text-muted"><em>Keine</em></li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+
+                        <!-- NICE_TO_HAVE -->
+                        <div class="col-md-4 mb-3">
+                            <h6 class="classification-badge badge-nice">
+                                <i class="bi bi-star"></i> NICE TO HAVE
+                            </h6>
+                            <p class="small text-muted mt-2">Freizeit, Komfort, Hobby</p>
+                            <ul class="list-unstyled mt-2">
+                                {% for category in analysis.classification.NICE_TO_HAVE %}
+                                <li class="mb-1">
+                                    <i class="bi bi-check-circle text-warning"></i> {{ category }}
+                                </li>
+                                {% empty %}
+                                <li class="text-muted"><em>Keine</em></li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+
+                        <!-- UNSINN -->
+                        <div class="col-md-4 mb-3">
+                            <h6 class="classification-badge badge-unsinn">
+                                <i class="bi bi-x-circle"></i> UNSINN / OPTIMIERBAR
+                            </h6>
+                            <p class="small text-muted mt-2">Impulskäufe, unnötige Ausgaben</p>
+                            <ul class="list-unstyled mt-2">
+                                {% for category in analysis.classification.UNSINN %}
+                                <li class="mb-1">
+                                    <i class="bi bi-x-circle text-secondary"></i> {{ category }}
+                                </li>
+                                {% empty %}
+                                <li class="text-muted"><em>Keine</em></li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Trends -->
+        <div class="col-md-12 mb-4">
+            <div class="card analysis-card">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="bi bi-graph-up-arrow text-info"></i>
+                        Trendanalyse
+                    </h5>
+                    <p class="text-muted">Entwicklung Ihrer Finanzen im Zeitverlauf</p>
+                    
+                    <!-- Liquidity Trend -->
+                    <div class="mt-3 p-3 bg-light rounded">
+                        <h6>📊 Liquiditätsentwicklung</h6>
+                        <p class="mb-2">
+                            <span class="trend-indicator 
+                                {% if analysis.trends.liquidity.direction == 'increasing' %}trend-up
+                                {% elif analysis.trends.liquidity.direction == 'decreasing' %}trend-down
+                                {% else %}trend-stable{% endif %}">
+                                {% if analysis.trends.liquidity.direction == 'increasing' %}
+                                    <i class="bi bi-arrow-up"></i> Steigend
+                                {% elif analysis.trends.liquidity.direction == 'decreasing' %}
+                                    <i class="bi bi-arrow-down"></i> Fallend
+                                {% else %}
+                                    <i class="bi bi-dash"></i> Stabil
+                                {% endif %}
+                            </span>
+                        </p>
+                        {% if analysis.trends.liquidity.comment %}
+                        <p class="small mb-0">{{ analysis.trends.liquidity.comment }}</p>
+                        {% endif %}
+                    </div>
+
+                    <!-- Category Trends -->
+                    <div class="row mt-3">
+                        {% if analysis.trends.top_growth_categories %}
+                        <div class="col-md-6 mb-3">
+                            <h6><i class="bi bi-arrow-up-circle text-danger"></i> Steigende Kategorien</h6>
+                            <ul class="list-unstyled">
+                                {% for item in analysis.trends.top_growth_categories %}
+                                <li class="mb-2">
+                                    <strong>{{ item.name }}</strong>
+                                    <span class="badge bg-danger ms-2">{{ item.trend }}</span>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+
+                        {% if analysis.trends.top_saving_categories %}
+                        <div class="col-md-6 mb-3">
+                            <h6><i class="bi bi-arrow-down-circle text-success"></i> Sinkende Kategorien</h6>
+                            <ul class="list-unstyled">
+                                {% for item in analysis.trends.top_saving_categories %}
+                                <li class="mb-2">
+                                    <strong>{{ item.name }}</strong>
+                                    <span class="badge bg-success ms-2">{{ item.trend }}</span>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Anomalies -->
+                    {% if analysis.trends.anomalies %}
+                    <div class="mt-3">
+                        <h6><i class="bi bi-exclamation-diamond text-warning"></i> Besondere Auffälligkeiten</h6>
+                        <ul class="list-unstyled">
+                            {% for anomaly in analysis.trends.anomalies %}
+                            <li class="mb-1">• {{ anomaly }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Forecast -->
+        <div class="col-md-12 mb-4">
+            <div class="card forecast-card">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="bi bi-crystal-ball"></i>
+                        Zukunftsprognose
+                    </h5>
+                    <p class="opacity-75">Vorsichtige Schätzung basierend auf Ihrem bisherigen Verhalten</p>
+                    
+                    <div class="row mt-3">
+                        <div class="col-md-4 mb-3">
+                            <div class="p-3 bg-white bg-opacity-10 rounded">
+                                <h6>📅 6 Monate</h6>
+                                <p class="mb-0">{{ analysis.forecast.6_months }}</p>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="p-3 bg-white bg-opacity-10 rounded">
+                                <h6>📅 12 Monate</h6>
+                                <p class="mb-0">{{ analysis.forecast.12_months }}</p>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="p-3 bg-white bg-opacity-10 rounded">
+                                <h6>📅 24 Monate</h6>
+                                <p class="mb-0">{{ analysis.forecast.24_months }}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recommendations -->
+        <div class="col-md-12 mb-4">
+            <div class="card analysis-card">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="bi bi-lightbulb-fill text-warning"></i>
+                        Empfehlungen
+                    </h5>
+                    <p class="text-muted">Konkrete Handlungsschritte zur Optimierung</p>
+                    
+                    <div class="mt-3">
+                        {% for recommendation in analysis.recommendations %}
+                        <div class="recommendation-item">
+                            <i class="bi bi-check2-circle text-success"></i>
+                            {{ recommendation }}
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% elif not error and request.GET.analyze %}
+    <!-- Loading state (if analysis is in progress) -->
+    <div class="row">
+        <div class="col-12 text-center py-5">
+            <div class="loading-spinner"></div>
+            <p class="mt-3 text-muted">Analyse läuft...</p>
+        </div>
+    </div>
+    {% else %}
+    <!-- Initial state -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body text-center py-5">
+                    <i class="bi bi-robot" style="font-size: 4rem; color: #39A77B;"></i>
+                    <h4 class="mt-3">Bereit für Ihre KI-Finanzanalyse</h4>
+                    <p class="text-muted">
+                        Wählen Sie oben einen Analysezeitraum und starten Sie die Analyse, 
+                        um Einblicke in Ihr Ausgabeverhalten zu erhalten.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Auto-submit form on period change
+    document.querySelectorAll('input[name="months"]').forEach(function(radio) {
+        radio.addEventListener('change', function() {
+            // Don't auto-submit, let user click the button
+            // document.getElementById('period-form').submit();
+        });
+    });
+</script>
+{% endblock %}
