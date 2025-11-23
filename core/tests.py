@@ -1837,3 +1837,412 @@ class ReconcileBalanceViewTest(TestCase):
             description__contains='Saldenabgleich'
         ).first()
         self.assertIsNone(booking)
+
+
+class TimeEntryModelTest(TestCase):
+    """Tests for TimeEntry model"""
+    
+    def setUp(self):
+        self.payee = Payee.objects.create(name='Test Customer', is_active=True)
+    
+    def test_time_entry_creation(self):
+        """Test basic TimeEntry creation"""
+        entry = TimeEntry.objects.create(
+            payee=self.payee,
+            date=date.today(),
+            duration_hours=Decimal('2.5'),
+            activity='Gartenarbeit',
+            hourly_rate=Decimal('25.00'),
+            billed=False
+        )
+        
+        self.assertEqual(entry.payee, self.payee)
+        self.assertEqual(entry.duration_hours, Decimal('2.5'))
+        self.assertEqual(entry.hourly_rate, Decimal('25.00'))
+        self.assertFalse(entry.billed)
+    
+    def test_time_entry_amount_calculation(self):
+        """Test that amount property correctly calculates total"""
+        entry = TimeEntry.objects.create(
+            payee=self.payee,
+            date=date.today(),
+            duration_hours=Decimal('3.5'),
+            activity='Reparatur',
+            hourly_rate=Decimal('30.00'),
+            billed=False
+        )
+        
+        expected_amount = Decimal('3.5') * Decimal('30.00')
+        self.assertEqual(entry.amount, expected_amount)
+    
+    def test_time_entry_str_representation(self):
+        """Test string representation"""
+        entry = TimeEntry.objects.create(
+            payee=self.payee,
+            date=date(2025, 1, 15),
+            duration_hours=Decimal('2.0'),
+            activity='Test Activity',
+            hourly_rate=Decimal('25.00'),
+            billed=False
+        )
+        
+        str_repr = str(entry)
+        self.assertIn('2025-01-15', str_repr)
+        self.assertIn('Test Customer', str_repr)
+        self.assertIn('2.0', str_repr)
+
+
+class TimeTrackingViewTest(TestCase):
+    """Tests for time tracking views"""
+    
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.user = User.objects.create_user(username='testuser', password='testpass')
+        self.client.login(username='testuser', password='testpass')
+        
+        self.payee = Payee.objects.create(name='Test Customer', is_active=True)
+        self.account = Account.objects.create(
+            name='Test Account',
+            type='checking',
+            initial_balance=Decimal('1000.00')
+        )
+        self.category = Category.objects.create(
+            name='Dienstleistungseinnahmen',
+            type='income'
+        )
+    
+    def test_time_tracking_view_accessible(self):
+        """Test that time tracking view is accessible"""
+        response = self.client.get('/time-tracking/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Zeiterfassung')
+    
+    def test_create_time_entry(self):
+        """Test creating a new time entry"""
+        response = self.client.post('/time-tracking/create/', {
+            'payee': self.payee.id,
+            'date': date.today().isoformat(),
+            'duration_hours': '2.5',
+            'activity': 'Gartenarbeit',
+            'hourly_rate': '25.00'
+        })
+        
+        self.assertEqual(response.status_code, 302)  # Redirect
+        
+        entry = TimeEntry.objects.first()
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry.payee, self.payee)
+        self.assertEqual(entry.duration_hours, Decimal('2.5'))
+        self.assertFalse(entry.billed)
+    
+    def test_update_time_entry(self):
+        """Test updating an existing time entry"""
+        entry = TimeEntry.objects.create(
+            payee=self.payee,
+            date=date.today(),
+            duration_hours=Decimal('2.0'),
+            activity='Original Activity',
+            hourly_rate=Decimal('20.00'),
+            billed=False
+        )
+        
+        response = self.client.post(f'/time-tracking/{entry.id}/update/', {
+            'payee': self.payee.id,
+            'date': date.today().isoformat(),
+            'duration_hours': '3.0',
+            'activity': 'Updated Activity',
+            'hourly_rate': '30.00'
+        })
+        
+        self.assertEqual(response.status_code, 302)
+        
+        entry.refresh_from_db()
+        self.assertEqual(entry.duration_hours, Decimal('3.0'))
+        self.assertEqual(entry.activity, 'Updated Activity')
+        self.assertEqual(entry.hourly_rate, Decimal('30.00'))
+    
+    def test_cannot_update_billed_entry(self):
+        """Test that billed entries cannot be updated"""
+        entry = TimeEntry.objects.create(
+            payee=self.payee,
+            date=date.today(),
+            duration_hours=Decimal('2.0'),
+            activity='Billed Activity',
+            hourly_rate=Decimal('20.00'),
+            billed=True
+        )
+        
+        response = self.client.post(f'/time-tracking/{entry.id}/update/', {
+            'payee': self.payee.id,
+            'date': date.today().isoformat(),
+            'duration_hours': '3.0',
+            'activity': 'Updated Activity',
+            'hourly_rate': '30.00'
+        })
+        
+        entry.refresh_from_db()
+        self.assertEqual(entry.duration_hours, Decimal('2.0'))  # Should not change
+    
+    def test_delete_time_entry(self):
+        """Test deleting a time entry"""
+        entry = TimeEntry.objects.create(
+            payee=self.payee,
+            date=date.today(),
+            duration_hours=Decimal('2.0'),
+            activity='To Delete',
+            hourly_rate=Decimal('20.00'),
+            billed=False
+        )
+        
+        response = self.client.post(f'/time-tracking/{entry.id}/delete/')
+        self.assertEqual(response.status_code, 302)
+        
+        self.assertFalse(TimeEntry.objects.filter(id=entry.id).exists())
+    
+    def test_cannot_delete_billed_entry(self):
+        """Test that billed entries cannot be deleted"""
+        entry = TimeEntry.objects.create(
+            payee=self.payee,
+            date=date.today(),
+            duration_hours=Decimal('2.0'),
+            activity='Billed Activity',
+            hourly_rate=Decimal('20.00'),
+            billed=True
+        )
+        
+        response = self.client.post(f'/time-tracking/{entry.id}/delete/')
+        
+        # Entry should still exist
+        self.assertTrue(TimeEntry.objects.filter(id=entry.id).exists())
+
+
+class TimeEntryBulkBillingTest(TestCase):
+    """Tests for bulk billing functionality"""
+    
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.user = User.objects.create_user(username='testuser', password='testpass')
+        self.client.login(username='testuser', password='testpass')
+        
+        self.payee = Payee.objects.create(name='Test Customer', is_active=True)
+        self.payee2 = Payee.objects.create(name='Another Customer', is_active=True)
+        
+        self.account = Account.objects.create(
+            name='Test Account',
+            type='checking',
+            initial_balance=Decimal('1000.00')
+        )
+        self.category = Category.objects.create(
+            name='Dienstleistungseinnahmen',
+            type='income'
+        )
+        
+        # Create test entries
+        self.entry1 = TimeEntry.objects.create(
+            payee=self.payee,
+            date=date.today() - relativedelta(days=5),
+            duration_hours=Decimal('2.0'),
+            activity='Activity 1',
+            hourly_rate=Decimal('25.00'),
+            billed=False
+        )
+        self.entry2 = TimeEntry.objects.create(
+            payee=self.payee,
+            date=date.today() - relativedelta(days=3),
+            duration_hours=Decimal('3.0'),
+            activity='Activity 2',
+            hourly_rate=Decimal('25.00'),
+            billed=False
+        )
+    
+    def test_billing_form_loads(self):
+        """Test that billing form loads with selected entries"""
+        response = self.client.get('/time-tracking/billing/', {
+            'entries': [self.entry1.id, self.entry2.id]
+        })
+        
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Sammelabrechnung')
+        self.assertContains(response, 'Test Customer')
+    
+    def test_bulk_billing_creates_booking(self):
+        """Test that bulk billing creates a booking and marks entries as billed"""
+        response = self.client.post('/time-tracking/billing/', {
+            'selected_entries': [self.entry1.id, self.entry2.id],
+            'account': self.account.id,
+            'category': self.category.id,
+            'billing_date': date.today().isoformat()
+        })
+        
+        self.assertEqual(response.status_code, 302)
+        
+        # Check booking was created
+        booking = Booking.objects.filter(
+            account=self.account,
+            payee=self.payee
+        ).first()
+        
+        self.assertIsNotNone(booking)
+        self.assertEqual(booking.amount, Decimal('125.00'))  # 2*25 + 3*25
+        self.assertEqual(booking.category, self.category)
+        self.assertEqual(booking.status, 'POSTED')
+        
+        # Check entries are marked as billed
+        self.entry1.refresh_from_db()
+        self.entry2.refresh_from_db()
+        self.assertTrue(self.entry1.billed)
+        self.assertTrue(self.entry2.billed)
+    
+    def test_billing_requires_same_payee(self):
+        """Test that billing fails if entries have different payees"""
+        entry3 = TimeEntry.objects.create(
+            payee=self.payee2,
+            date=date.today(),
+            duration_hours=Decimal('2.0'),
+            activity='Different Payee',
+            hourly_rate=Decimal('25.00'),
+            billed=False
+        )
+        
+        response = self.client.post('/time-tracking/billing/', {
+            'selected_entries': [self.entry1.id, entry3.id],
+            'account': self.account.id,
+            'category': self.category.id,
+            'billing_date': date.today().isoformat()
+        })
+        
+        # Should redirect with error
+        self.assertEqual(response.status_code, 302)
+        
+        # No booking should be created
+        booking = Booking.objects.filter(account=self.account).first()
+        self.assertIsNone(booking)
+        
+        # Entries should not be marked as billed
+        self.entry1.refresh_from_db()
+        self.assertFalse(self.entry1.billed)
+    
+    def test_billing_requires_unbilled_entries(self):
+        """Test that billing only processes unbilled entries"""
+        self.entry1.billed = True
+        self.entry1.save()
+        
+        response = self.client.post('/time-tracking/billing/', {
+            'selected_entries': [self.entry1.id, self.entry2.id],
+            'account': self.account.id,
+            'category': self.category.id,
+            'billing_date': date.today().isoformat()
+        })
+        
+        # Should only process unbilled entry
+        booking = Booking.objects.filter(account=self.account).first()
+        if booking:
+            # If booking was created, it should only include entry2
+            self.assertEqual(booking.amount, Decimal('75.00'))  # 3*25
+    
+    def test_billing_requires_category(self):
+        """Test that billing requires a category (mandatory field)"""
+        response = self.client.post('/time-tracking/billing/', {
+            'selected_entries': [self.entry1.id, self.entry2.id],
+            'account': self.account.id,
+            'billing_date': date.today().isoformat()
+            # No category provided
+        })
+        
+        # Should fail validation
+        # No booking should be created
+        booking = Booking.objects.filter(account=self.account).first()
+        self.assertIsNone(booking)
+    
+    def test_billing_description_single_date(self):
+        """Test billing description when all entries on same date"""
+        today = date.today()
+        entry_a = TimeEntry.objects.create(
+            payee=self.payee,
+            date=today,
+            duration_hours=Decimal('2.0'),
+            activity='Activity A',
+            hourly_rate=Decimal('25.00'),
+            billed=False
+        )
+        entry_b = TimeEntry.objects.create(
+            payee=self.payee,
+            date=today,
+            duration_hours=Decimal('1.0'),
+            activity='Activity B',
+            hourly_rate=Decimal('25.00'),
+            billed=False
+        )
+        
+        response = self.client.post('/time-tracking/billing/', {
+            'selected_entries': [entry_a.id, entry_b.id],
+            'account': self.account.id,
+            'category': self.category.id,
+            'billing_date': date.today().isoformat()
+        })
+        
+        booking = Booking.objects.filter(account=self.account).first()
+        self.assertIsNotNone(booking)
+        
+        # Description should mention single date
+        self.assertIn('vom', booking.description)
+        self.assertNotIn('bis', booking.description)
+    
+    def test_billing_description_date_range(self):
+        """Test billing description with date range"""
+        response = self.client.post('/time-tracking/billing/', {
+            'selected_entries': [self.entry1.id, self.entry2.id],
+            'account': self.account.id,
+            'category': self.category.id,
+            'billing_date': date.today().isoformat()
+        })
+        
+        booking = Booking.objects.filter(account=self.account).first()
+        self.assertIsNotNone(booking)
+        
+        # Description should mention date range
+        self.assertIn('vom', booking.description)
+        self.assertIn('bis', booking.description)
+        self.assertIn('Test Customer', booking.description)
+from django.test import TestCase
+from decimal import Decimal
+from datetime import date
+from dateutil.relativedelta import relativedelta
+from core.models import TimeEntry, Payee, Account, Category, Booking
+
+
+class TimeEntryModelTest(TestCase):
+    """Tests for TimeEntry model"""
+    
+    def setUp(self):
+        self.payee = Payee.objects.create(name='Test Customer', is_active=True)
+    
+    def test_time_entry_creation(self):
+        """Test basic TimeEntry creation"""
+        entry = TimeEntry.objects.create(
+            payee=self.payee,
+            date=date.today(),
+            duration_hours=Decimal('2.5'),
+            activity='Gartenarbeit',
+            hourly_rate=Decimal('25.00'),
+            billed=False
+        )
+        
+        self.assertEqual(entry.payee, self.payee)
+        self.assertEqual(entry.duration_hours, Decimal('2.5'))
+        self.assertEqual(entry.hourly_rate, Decimal('25.00'))
+        self.assertFalse(entry.billed)
+    
+    def test_time_entry_amount_calculation(self):
+        """Test that amount property correctly calculates total"""
+        entry = TimeEntry.objects.create(
+            payee=self.payee,
+            date=date.today(),
+            duration_hours=Decimal('3.5'),
+            activity='Reparatur',
+            hourly_rate=Decimal('30.00'),
+            billed=False
+        )
+        
+        expected_amount = Decimal('3.5') * Decimal('30.00')
+        self.assertEqual(entry.amount, expected_amount)
