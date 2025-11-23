@@ -213,41 +213,48 @@ def get_total_liquidity(as_of_date=None, include_forecast=False, liquidity_relev
     return total
 
 
-def get_overdue_bookings_sum():
+def get_overdue_bookings_sum(as_of_date=None):
     """
     Calculate the sum of all overdue planned bookings.
     
-    Overdue bookings are those with status='PLANNED' and booking_date < today.
+    Overdue bookings are those with status='PLANNED' and booking_date < as_of_date.
+    
+    Args:
+        as_of_date: Reference date for determining what is overdue (default: today)
     
     Returns:
         Decimal: Sum of amounts for overdue bookings
     """
-    today = date.today()
+    if as_of_date is None:
+        as_of_date = date.today()
     
     overdue_sum = Booking.objects.filter(
         status='PLANNED',
-        booking_date__lt=today
+        booking_date__lt=as_of_date
     ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
     
     return overdue_sum
 
 
-def get_upcoming_bookings_sum(days=7):
+def get_upcoming_bookings_sum(days=7, as_of_date=None):
     """
     Calculate the sum of all planned bookings due within the specified number of days.
     
     Args:
         days: Number of days to look ahead (default: 7)
+        as_of_date: Reference date for determining the time window (default: today)
     
     Returns:
         Decimal: Sum of amounts for upcoming bookings
     """
-    today = date.today()
-    window_end = today + timedelta(days=days)
+    if as_of_date is None:
+        as_of_date = date.today()
+    
+    window_end = as_of_date + timedelta(days=days)
     
     upcoming_sum = Booking.objects.filter(
         status='PLANNED',
-        booking_date__gte=today,
+        booking_date__gte=as_of_date,
         booking_date__lte=window_end
     ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
     
