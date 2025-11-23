@@ -44,10 +44,18 @@
                             <i class="bi bi-calendar-month"></i> Monatsansicht
                         </a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'category_analytics' %}">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="analyticsDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="bi bi-bar-chart"></i> Auswertungen
                         </a>
+                        <ul class="dropdown-menu" aria-labelledby="analyticsDropdown">
+                            <li><a class="dropdown-item" href="{% url 'category_analytics' %}">
+                                <i class="bi bi-pie-chart"></i> Kategorien-Auswertung
+                            </a></li>
+                            <li><a class="dropdown-item" href="{% url 'ai_analysis' %}">
+                                <i class="bi bi-lightning-charge-fill text-warning"></i> KI-Analyse
+                            </a></li>
+                        </ul>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'due_bookings' %}">

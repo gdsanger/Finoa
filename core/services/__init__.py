@@ -26,6 +26,11 @@ from .openai_client import (
     get_active_openai_config,
     call_openai_chat,
 )
+from .financial_insights_engine import (
+    build_analysis_dataset,
+    create_agent_prompt,
+    parse_agent_response,
+)
 
 __all__ = [
     'calculate_actual_balance',
@@ -46,4 +51,7 @@ __all__ = [
     'OpenAIResponse',
     'get_active_openai_config',
     'call_openai_chat',
+    'build_analysis_dataset',
+    'create_agent_prompt',
+    'parse_agent_response',
 ]

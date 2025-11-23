@@ -2524,3 +2524,236 @@ class UnbilledTimeEntriesSumTest(TestCase):
         sum_value = self.get_unbilled_time_entries_sum()
         expected = Decimal('110.00')
         self.assertEqual(sum_value, expected)  # 50 + 60 = 110
+
+
+class FinancialInsightsEngineTest(TestCase):
+    """Tests for Financial Insights Engine"""
+    
+    def setUp(self):
+        self.account = Account.objects.create(
+            name='Test Account',
+            type='checking',
+            initial_balance=Decimal('1000.00'),
+            is_liquidity_relevant=True
+        )
+        self.income_category = Category.objects.create(name='Gehalt', type='income')
+        self.expense_category1 = Category.objects.create(name='Miete', type='expense')
+        self.expense_category2 = Category.objects.create(name='Freizeit', type='expense')
+        
+        # Create some test bookings
+        for i in range(3):
+            # Create monthly income
+            Booking.objects.create(
+                account=self.account,
+                booking_date=date.today() - relativedelta(months=i),
+                amount=Decimal('3000.00'),
+                category=self.income_category,
+                status='POSTED'
+            )
+            # Create monthly rent
+            Booking.objects.create(
+                account=self.account,
+                booking_date=date.today() - relativedelta(months=i),
+                amount=Decimal('-1000.00'),
+                category=self.expense_category1,
+                status='POSTED'
+            )
+            # Create variable leisure spending
+            Booking.objects.create(
+                account=self.account,
+                booking_date=date.today() - relativedelta(months=i),
+                amount=Decimal('-200.00') * (i + 1),  # Increasing trend
+                category=self.expense_category2,
+                status='POSTED'
+            )
+    
+    def test_aggregate_monthly_liquidity(self):
+        """Test monthly liquidity aggregation"""
+        from core.services.financial_insights_engine import aggregate_monthly_liquidity
+        
+        result = aggregate_monthly_liquidity(months=3)
+        
+        # Should have 3 months of data
+        self.assertEqual(len(result), 3)
+        
+        # Each entry should have month and ist keys
+        for entry in result:
+            self.assertIn('month', entry)
+            self.assertIn('ist', entry)
+            self.assertIsInstance(entry['ist'], float)
+    
+    def test_aggregate_category_summaries(self):
+        """Test category summaries aggregation"""
+        from core.services.financial_insights_engine import aggregate_category_summaries
+        
+        result = aggregate_category_summaries(months=3)
+        
+        # Should have categories
+        self.assertGreater(len(result), 0)
+        
+        # Find Miete category
+        miete_data = next((cat for cat in result if cat['name'] == 'Miete'), None)
+        self.assertIsNotNone(miete_data)
+        
+        # Miete should have total and monthly data
+        self.assertIn('total', miete_data)
+        self.assertIn('monthly', miete_data)
+        self.assertIsInstance(miete_data['total'], float)
+        
+        # Should have 3 months of data
+        self.assertEqual(len(miete_data['monthly']), 3)
+    
+    def test_aggregate_booking_entries(self):
+        """Test booking entries aggregation"""
+        from core.services.financial_insights_engine import aggregate_booking_entries
+        
+        result = aggregate_booking_entries(months=3, limit=10)
+        
+        # Should have some entries
+        self.assertGreater(len(result), 0)
+        
+        # Each entry should have required fields
+        for entry in result:
+            self.assertIn('date', entry)
+            self.assertIn('amount', entry)
+            self.assertIn('category', entry)
+    
+    def test_build_analysis_dataset(self):
+        """Test complete dataset building"""
+        from core.services.financial_insights_engine import build_analysis_dataset
+        
+        dataset = build_analysis_dataset(months=3)
+        
+        # Should have all required keys
+        self.assertIn('period_months', dataset)
+        self.assertIn('monthly_liquidity', dataset)
+        self.assertIn('categories', dataset)
+        self.assertIn('entries', dataset)
+        
+        # Verify period
+        self.assertEqual(dataset['period_months'], 3)
+    
+    def test_create_agent_prompt(self):
+        """Test agent prompt creation"""
+        from core.services.financial_insights_engine import create_agent_prompt
+        
+        dataset = {
+            'period_months': 3,
+            'monthly_liquidity': [{'month': '2025-01', 'ist': 1000.0}],
+            'categories': [{'name': 'Test', 'total': 100.0, 'monthly': []}],
+            'entries': []
+        }
+        
+        prompt = create_agent_prompt(dataset)
+        
+        # Prompt should contain key instructions
+        self.assertIn('Analysiere', prompt)
+        self.assertIn('Klassifiziere', prompt)
+        self.assertIn('MUSS', prompt)
+        self.assertIn('NICE_TO_HAVE', prompt)
+        self.assertIn('UNSINN', prompt)
+    
+    def test_parse_agent_response_valid(self):
+        """Test parsing valid agent response"""
+        from core.services.financial_insights_engine import parse_agent_response
+        import json
+        
+        valid_response = {
+            'result': json.dumps({
+                'classification': {
+                    'MUSS': ['Miete'],
+                    'NICE_TO_HAVE': ['Freizeit'],
+                    'UNSINN': []
+                },
+                'trends': {
+                    'liquidity': {
+                        'direction': 'stable',
+                        'avg_change': 0.0,
+                        'comment': 'Test'
+                    }
+                },
+                'forecast': {
+                    '6_months': 'Test forecast',
+                    '12_months': 'Test forecast',
+                    '24_months': 'Test forecast'
+                },
+                'recommendations': ['Test recommendation']
+            })
+        }
+        
+        result = parse_agent_response(valid_response)
+        
+        self.assertIsNotNone(result)
+        self.assertIn('classification', result)
+        self.assertIn('trends', result)
+        self.assertIn('forecast', result)
+        self.assertIn('recommendations', result)
+    
+    def test_parse_agent_response_invalid(self):
+        """Test parsing invalid agent response"""
+        from core.services.financial_insights_engine import parse_agent_response
+        
+        invalid_response = {'result': 'not valid json'}
+        
+        result = parse_agent_response(invalid_response)
+        
+        self.assertIsNone(result)
+
+
+class AIAnalysisViewTest(TestCase):
+    """Tests for AI Analysis view"""
+    
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.user = User.objects.create_user(username='testuser', password='testpass')
+        self.client.login(username='testuser', password='testpass')
+        
+        self.account = Account.objects.create(
+            name='Test Account',
+            type='checking',
+            initial_balance=Decimal('1000.00'),
+            is_liquidity_relevant=True
+        )
+    
+    def test_ai_analysis_view_accessible(self):
+        """Test that AI analysis view is accessible"""
+        response = self.client.get('/analytics/ai-analysis/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'KI-Finanzanalyse')
+    
+    def test_ai_analysis_view_requires_login(self):
+        """Test that AI analysis view requires login"""
+        self.client.logout()
+        response = self.client.get('/analytics/ai-analysis/')
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.url.startswith('/login/'))
+    
+    def test_ai_analysis_view_initial_state(self):
+        """Test initial state without analysis"""
+        response = self.client.get('/analytics/ai-analysis/')
+        self.assertEqual(response.status_code, 200)
+        
+        # Should show period selection
+        self.assertContains(response, 'Analysezeitraum')
+        self.assertContains(response, '3 Monate')
+        self.assertContains(response, '6 Monate')
+        self.assertContains(response, '12 Monate')
+        self.assertContains(response, '24 Monate')
+    
+    def test_ai_analysis_view_with_insufficient_data(self):
+        """Test behavior with insufficient data"""
+        # Try to analyze with no bookings
+        response = self.client.get('/analytics/ai-analysis/?analyze=1&months=6')
+        self.assertEqual(response.status_code, 200)
+        
+        # Should show error message
+        self.assertContains(response, 'Nicht genügend Daten')
+    
+    def test_ai_analysis_view_period_validation(self):
+        """Test that invalid period is corrected"""
+        # Try with invalid period
+        response = self.client.get('/analytics/ai-analysis/?months=999')
+        self.assertEqual(response.status_code, 200)
+        
+        # Should default to 6 months
+        self.assertEqual(response.context['selected_months'], 6)
