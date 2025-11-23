@@ -1,0 +1,195 @@
+{% extends "core/base.html" %}
+
+{% block title %}Fällige Rechnungen - Finoa{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="mb-4">
+                <i class="bi bi-exclamation-triangle-fill text-danger"></i>
+                Fällige Rechnungen
+            </h1>
+            
+            <!-- Overdue Bookings -->
+            <div class="card mb-4">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-exclamation-circle-fill"></i>
+                        Überfällige Rechnungen
+                        <span class="badge bg-light text-danger">{{ overdue_bookings.count }}</span>
+                    </h5>
+                </div>
+                <div class="card-body p-0">
+                    {% if overdue_bookings %}
+                    <div class="table-responsive">
+                        <table class="table table-hover table-danger mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Datum</th>
+                                    <th>Beschreibung</th>
+                                    <th>Konto</th>
+                                    <th>Kategorie</th>
+                                    <th>Zahlungsempfänger</th>
+                                    <th class="text-end">Betrag</th>
+                                    <th class="text-center">Aktion</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for booking in overdue_bookings %}
+                                <tr id="booking-row-{{ booking.id }}">
+                                    <td>
+                                        <strong>{{ booking.booking_date|date:"d.m.Y" }}</strong>
+                                        <br>
+                                        <small class="text-muted">
+                                            {{ booking.booking_date|timesince }} überfällig
+                                        </small>
+                                    </td>
+                                    <td>{{ booking.description|default:"-" }}</td>
+                                    <td>
+                                        <a href="{% url 'account_detail' booking.account.id %}">
+                                            {{ booking.account.name }}
+                                        </a>
+                                    </td>
+                                    <td>
+                                        {% if booking.category %}
+                                            {{ booking.category.name }}
+                                        {% else %}
+                                            <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if booking.payee %}
+                                            {{ booking.payee.name }}
+                                        {% else %}
+                                            <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end">
+                                        {% if booking.amount >= 0 %}
+                                            <span class="text-success fw-bold">+{{ booking.amount }} €</span>
+                                        {% else %}
+                                            <span class="text-danger fw-bold">{{ booking.amount }} €</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">
+                                        <button 
+                                            class="btn btn-sm btn-success"
+                                            hx-post="{% url 'mark_booking_as_booked' booking.id %}"
+                                            hx-target="#booking-row-{{ booking.id }}"
+                                            hx-swap="outerHTML swap:0.5s"
+                                            hx-confirm="Buchung als gebucht markieren?"
+                                        >
+                                            <i class="bi bi-check-circle"></i>
+                                            Als gebucht markieren
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="p-4 text-center text-muted">
+                        <i class="bi bi-check-circle fs-1"></i>
+                        <p class="mb-0">Keine überfälligen Rechnungen</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Upcoming Bookings (Due within 7 days) -->
+            <div class="card mb-4">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0">
+                        <i class="bi bi-clock-fill"></i>
+                        Fällig innerhalb der nächsten 7 Tage
+                        <span class="badge bg-dark">{{ upcoming_bookings.count }}</span>
+                    </h5>
+                </div>
+                <div class="card-body p-0">
+                    {% if upcoming_bookings %}
+                    <div class="table-responsive">
+                        <table class="table table-hover table-warning mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Datum</th>
+                                    <th>Beschreibung</th>
+                                    <th>Konto</th>
+                                    <th>Kategorie</th>
+                                    <th>Zahlungsempfänger</th>
+                                    <th class="text-end">Betrag</th>
+                                    <th class="text-center">Aktion</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for booking in upcoming_bookings %}
+                                <tr id="booking-row-{{ booking.id }}">
+                                    <td>
+                                        <strong>{{ booking.booking_date|date:"d.m.Y" }}</strong>
+                                        <br>
+                                        <small class="text-muted">
+                                            {% if booking.booking_date == today %}
+                                                Heute fällig
+                                            {% else %}
+                                                In {{ booking.booking_date|timeuntil }} fällig
+                                            {% endif %}
+                                        </small>
+                                    </td>
+                                    <td>{{ booking.description|default:"-" }}</td>
+                                    <td>
+                                        <a href="{% url 'account_detail' booking.account.id %}">
+                                            {{ booking.account.name }}
+                                        </a>
+                                    </td>
+                                    <td>
+                                        {% if booking.category %}
+                                            {{ booking.category.name }}
+                                        {% else %}
+                                            <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if booking.payee %}
+                                            {{ booking.payee.name }}
+                                        {% else %}
+                                            <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end">
+                                        {% if booking.amount >= 0 %}
+                                            <span class="text-success fw-bold">+{{ booking.amount }} €</span>
+                                        {% else %}
+                                            <span class="text-danger fw-bold">{{ booking.amount }} €</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">
+                                        <button 
+                                            class="btn btn-sm btn-success"
+                                            hx-post="{% url 'mark_booking_as_booked' booking.id %}"
+                                            hx-target="#booking-row-{{ booking.id }}"
+                                            hx-swap="outerHTML swap:0.5s"
+                                            hx-confirm="Buchung als gebucht markieren?"
+                                        >
+                                            <i class="bi bi-check-circle"></i>
+                                            Als gebucht markieren
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="p-4 text-center text-muted">
+                        <i class="bi bi-check-circle fs-1"></i>
+                        <p class="mb-0">Keine Rechnungen in den nächsten 7 Tagen fällig</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}
