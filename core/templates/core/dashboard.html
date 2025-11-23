@@ -86,6 +86,26 @@
         </div>
     </div>
 
+    <!-- Time Tracking Summary -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card card-finoa summary-card">
+                <div class="card-body">
+                    <div class="label">Summe offener Zeiterfassungen</div>
+                    <div class="value {% if unbilled_time_sum >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
+                        {{ unbilled_time_sum|floatformat:2 }} €
+                    </div>
+                    <small class="text-muted">
+                        Noch nicht abgerechnete Stunden
+                        <a href="{% url 'time_tracking' %}?status=unbilled" class="ms-2">
+                            <i class="bi bi-arrow-right-circle"></i> Zur Zeiterfassung
+                        </a>
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- 6-Month Forecast Charts -->
     <div class="row mb-4">
         <div class="col-lg-6">

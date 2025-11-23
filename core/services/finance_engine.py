@@ -9,7 +9,7 @@ from dateutil.relativedelta import relativedelta
 from django.db.models import Sum
 import uuid
 
-from core.models import Account, Booking
+from core.models import Account, Booking, TimeEntry
 
 
 def calculate_actual_balance(account, as_of_date=None):
@@ -259,3 +259,24 @@ def get_upcoming_bookings_sum(days=7, as_of_date=None):
     ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
     
     return upcoming_sum
+
+
+def get_unbilled_time_entries_sum():
+    """
+    Calculate the sum of all unbilled time entries.
+    
+    Returns the total amount (duration_hours * hourly_rate) for all time entries
+    where billed=False.
+    
+    Returns:
+        Decimal: Sum of amounts for unbilled time entries
+    """
+    from django.db.models import F, DecimalField, ExpressionWrapper
+    
+    unbilled_sum = TimeEntry.objects.filter(
+        billed=False
+    ).aggregate(
+        total=Sum(ExpressionWrapper(F('duration_hours') * F('hourly_rate'), output_field=DecimalField()))
+    )['total'] or Decimal('0.00')
+    
+    return unbilled_sum

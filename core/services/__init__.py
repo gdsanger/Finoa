@@ -6,6 +6,7 @@ from .finance_engine import (
     get_total_liquidity,
     get_overdue_bookings_sum,
     get_upcoming_bookings_sum,
+    get_unbilled_time_entries_sum,
 )
 from .recurrence_engine import (
     generate_virtual_bookings,
@@ -34,6 +35,7 @@ __all__ = [
     'get_total_liquidity',
     'get_overdue_bookings_sum',
     'get_upcoming_bookings_sum',
+    'get_unbilled_time_entries_sum',
     'generate_virtual_bookings',
     'get_virtual_bookings_for_month',
     'get_category_analysis',
