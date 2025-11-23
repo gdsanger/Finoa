@@ -7,7 +7,7 @@ import os
 
 import fitz  # PyMuPDF
 
-from .models import Account, Category, Booking, RecurringBooking, Payee, KIGateConfig, OpenAIConfig, DocumentUpload
+from .models import Account, Category, Booking, RecurringBooking, Payee, KIGateConfig, OpenAIConfig, DocumentUpload, TimeEntry
 from .services import (
     calculate_actual_balance,
     calculate_forecast_balance,
@@ -2204,45 +2204,3 @@ class TimeEntryBulkBillingTest(TestCase):
         self.assertIn('vom', booking.description)
         self.assertIn('bis', booking.description)
         self.assertIn('Test Customer', booking.description)
-from django.test import TestCase
-from decimal import Decimal
-from datetime import date
-from dateutil.relativedelta import relativedelta
-from core.models import TimeEntry, Payee, Account, Category, Booking
-
-
-class TimeEntryModelTest(TestCase):
-    """Tests for TimeEntry model"""
-    
-    def setUp(self):
-        self.payee = Payee.objects.create(name='Test Customer', is_active=True)
-    
-    def test_time_entry_creation(self):
-        """Test basic TimeEntry creation"""
-        entry = TimeEntry.objects.create(
-            payee=self.payee,
-            date=date.today(),
-            duration_hours=Decimal('2.5'),
-            activity='Gartenarbeit',
-            hourly_rate=Decimal('25.00'),
-            billed=False
-        )
-        
-        self.assertEqual(entry.payee, self.payee)
-        self.assertEqual(entry.duration_hours, Decimal('2.5'))
-        self.assertEqual(entry.hourly_rate, Decimal('25.00'))
-        self.assertFalse(entry.billed)
-    
-    def test_time_entry_amount_calculation(self):
-        """Test that amount property correctly calculates total"""
-        entry = TimeEntry.objects.create(
-            payee=self.payee,
-            date=date.today(),
-            duration_hours=Decimal('3.5'),
-            activity='Reparatur',
-            hourly_rate=Decimal('30.00'),
-            billed=False
-        )
-        
-        expected_amount = Decimal('3.5') * Decimal('30.00')
-        self.assertEqual(entry.amount, expected_amount)

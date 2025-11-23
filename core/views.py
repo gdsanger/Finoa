@@ -835,8 +835,11 @@ def time_tracking(request):
     # Get all active payees for filter dropdown
     payees = Payee.objects.filter(is_active=True).order_by('name')
     
-    # Calculate total for filtered entries
-    total_amount = sum(entry.amount for entry in entries)
+    # Calculate total for filtered entries using database aggregation
+    from django.db.models import F, Sum, DecimalField, ExpressionWrapper
+    total_amount = entries.aggregate(
+        total=Sum(ExpressionWrapper(F('duration_hours') * F('hourly_rate'), output_field=DecimalField()))
+    )['total'] or Decimal('0.00')
     
     context = {
         'entries': entries,
@@ -873,10 +876,13 @@ def time_entry_create(request):
         # Get payee
         payee = get_object_or_404(Payee, id=payee_id, is_active=True)
         
+        # Parse and validate date
+        parsed_date = date.fromisoformat(entry_date)
+        
         # Create time entry
         TimeEntry.objects.create(
             payee=payee,
-            date=entry_date,
+            date=parsed_date,
             duration_hours=Decimal(duration),
             activity=activity,
             hourly_rate=Decimal(hourly_rate),
@@ -919,9 +925,12 @@ def time_entry_update(request, entry_id):
         # Get payee
         payee = get_object_or_404(Payee, id=payee_id, is_active=True)
         
+        # Parse and validate date
+        parsed_date = date.fromisoformat(entry_date)
+        
         # Update time entry
         entry.payee = payee
-        entry.date = entry_date
+        entry.date = parsed_date
         entry.duration_hours = Decimal(duration)
         entry.activity = activity
         entry.hourly_rate = Decimal(hourly_rate)
@@ -1002,9 +1011,12 @@ def time_entry_bulk_billing(request):
             category = get_object_or_404(Category, id=category_id)
             billing_date = date.fromisoformat(billing_date_str)
             
-            # Calculate totals
-            total_amount = sum(entry.amount for entry in entries)
-            dates = [entry.date for entry in entries]
+            # Calculate totals and dates in a single iteration
+            total_amount = Decimal('0.00')
+            dates = []
+            for entry in entries:
+                total_amount += entry.amount
+                dates.append(entry.date)
             start_date = min(dates)
             end_date = max(dates)
             
@@ -1067,9 +1079,12 @@ def _show_billing_form(request, selected_ids):
     
     payee = entries.first().payee
     
-    # Calculate totals
-    total_amount = sum(entry.amount for entry in entries)
-    dates = [entry.date for entry in entries]
+    # Calculate totals and dates in a single iteration
+    total_amount = Decimal('0.00')
+    dates = []
+    for entry in entries:
+        total_amount += entry.amount
+        dates.append(entry.date)
     start_date = min(dates)
     end_date = max(dates)
     
