@@ -56,6 +56,36 @@
         </div>
     </div>
 
+    <!-- Overdue & Upcoming Bookings Summary -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card card-finoa summary-card">
+                <div class="card-body">
+                    <div class="label">Überfällige Buchungen</div>
+                    <div class="value {% if overdue_sum >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
+                        {{ overdue_sum|floatformat:2 }} €
+                    </div>
+                    <small class="{% if overdue_deficit >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
+                        Fehlbetrag zu Liquidität (Ist): {{ overdue_deficit|floatformat:2 }} €
+                    </small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card card-finoa summary-card">
+                <div class="card-body">
+                    <div class="label">Fällig in den nächsten 7 Tagen</div>
+                    <div class="value {% if upcoming_sum >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
+                        {{ upcoming_sum|floatformat:2 }} €
+                    </div>
+                    <small class="{% if upcoming_deficit >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
+                        Fehlbetrag zu Liquidität (Ist): {{ upcoming_deficit|floatformat:2 }} €
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- 6-Month Forecast Charts -->
     <div class="row mb-4">
         <div class="col-lg-6">

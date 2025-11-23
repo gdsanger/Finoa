@@ -211,3 +211,44 @@ def get_total_liquidity(as_of_date=None, include_forecast=False, liquidity_relev
         total += balance
     
     return total
+
+
+def get_overdue_bookings_sum():
+    """
+    Calculate the sum of all overdue planned bookings.
+    
+    Overdue bookings are those with status='PLANNED' and booking_date < today.
+    
+    Returns:
+        Decimal: Sum of amounts for overdue bookings
+    """
+    today = date.today()
+    
+    overdue_sum = Booking.objects.filter(
+        status='PLANNED',
+        booking_date__lt=today
+    ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+    
+    return overdue_sum
+
+
+def get_upcoming_bookings_sum(days=7):
+    """
+    Calculate the sum of all planned bookings due within the specified number of days.
+    
+    Args:
+        days: Number of days to look ahead (default: 7)
+    
+    Returns:
+        Decimal: Sum of amounts for upcoming bookings
+    """
+    today = date.today()
+    window_end = today + timedelta(days=days)
+    
+    upcoming_sum = Booking.objects.filter(
+        status='PLANNED',
+        booking_date__gte=today,
+        booking_date__lte=window_end
+    ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+    
+    return upcoming_sum
