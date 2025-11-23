@@ -68,6 +68,20 @@
         </div>
     </div>
 
+    <!-- Balance Reconciliation Button -->
+    <div class="d-flex justify-content-end mb-4">
+        <button 
+            class="btn btn-finoa-primary" 
+            data-bs-toggle="modal" 
+            data-bs-target="#reconcileBalanceModal"
+            hx-get="{% url 'reconcile_balance' account.id %}"
+            hx-target="#reconcileBalanceModal"
+            hx-swap="innerHTML"
+        >
+            <i class="bi bi-calculator"></i> Saldenabgleich
+        </button>
+    </div>
+
     <!-- 6-Month Forecast Chart -->
     <div class="card card-finoa mb-4">
         <div class="card-header">
@@ -360,6 +374,11 @@
             </div>
         </div>
     </div>
+</div>
+
+<!-- Balance Reconciliation Modal (HTMX loads content dynamically) -->
+<div class="modal fade" id="reconcileBalanceModal" tabindex="-1" aria-labelledby="reconcileBalanceModalLabel" aria-hidden="true">
+    <!-- Modal content loaded via HTMX -->
 </div>
 {% endblock %}
 

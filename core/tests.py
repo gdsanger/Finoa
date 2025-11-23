@@ -1347,3 +1347,201 @@ class DueBookingsViewTest(TestCase):
         
         response = self.client.get(f'/bookings/{booking.id}/mark-booked/')
         self.assertEqual(response.status_code, 405)  # Method Not Allowed
+
+
+class ReconcileBalanceViewTest(TestCase):
+    """Tests for balance reconciliation feature"""
+    
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.user = User.objects.create_user(username='testuser', password='testpass')
+        self.client.login(username='testuser', password='testpass')
+        
+        self.account = Account.objects.create(
+            name='Test Giro',
+            type='checking',
+            initial_balance=Decimal('1000.00')
+        )
+        
+        # Create reconciliation categories
+        self.cat_correction = Category.objects.create(name='Korrektur')
+        self.cat_unrealized = Category.objects.create(name='Unrealisierte Gewinne/Verluste')
+        self.cat_roundup = Category.objects.create(name='RoundUp')
+        self.cat_saveback = Category.objects.create(name='SaveBack')
+    
+    def test_reconcile_balance_view_get_requires_login(self):
+        """Test that reconciliation view requires login"""
+        self.client.logout()
+        response = self.client.get(f'/accounts/{self.account.id}/reconcile/')
+        self.assertEqual(response.status_code, 302)  # Redirect to login
+    
+    def test_reconcile_balance_view_get_shows_form(self):
+        """Test that GET request shows reconciliation form"""
+        response = self.client.get(f'/accounts/{self.account.id}/reconcile/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Aktueller Finoa-Saldo')
+        # Balance could be formatted as "1000.00" or "1.000,00" or similar
+        self.assertContains(response, '1000')
+        self.assertContains(response, 'Neuer externer Saldo')
+    
+    def test_reconcile_balance_creates_positive_difference_booking(self):
+        """Test creating a reconciliation booking with positive difference"""
+        # Add a booking to increase balance
+        Booking.objects.create(
+            account=self.account,
+            booking_date=date.today(),
+            amount=Decimal('500.00'),
+            status='POSTED'
+        )
+        
+        # Current balance should be 1500.00
+        current_balance = calculate_actual_balance(self.account)
+        self.assertEqual(current_balance, Decimal('1500.00'))
+        
+        # Reconcile to 2000.00 (difference +500)
+        response = self.client.post(f'/accounts/{self.account.id}/reconcile/', {
+            'new_balance': '2000.00',
+            'date': date.today().isoformat(),
+            'diff_type': 'correction',
+            'category_id': self.cat_correction.id,
+        })
+        
+        # Should redirect back to account detail
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(f'/accounts/{self.account.id}/', response.url)
+        
+        # Check that reconciliation booking was created
+        reconciliation_booking = Booking.objects.filter(
+            account=self.account,
+            description__contains='Saldenabgleich'
+        ).first()
+        
+        self.assertIsNotNone(reconciliation_booking)
+        self.assertEqual(reconciliation_booking.amount, Decimal('500.00'))
+        self.assertEqual(reconciliation_booking.category, self.cat_correction)
+        self.assertEqual(reconciliation_booking.status, 'POSTED')
+        
+        # Verify final balance
+        final_balance = calculate_actual_balance(self.account)
+        self.assertEqual(final_balance, Decimal('2000.00'))
+    
+    def test_reconcile_balance_creates_negative_difference_booking(self):
+        """Test creating a reconciliation booking with negative difference"""
+        # Add a booking
+        Booking.objects.create(
+            account=self.account,
+            booking_date=date.today(),
+            amount=Decimal('500.00'),
+            status='POSTED'
+        )
+        
+        # Current balance: 1500.00
+        # Reconcile to 1200.00 (difference -300)
+        response = self.client.post(f'/accounts/{self.account.id}/reconcile/', {
+            'new_balance': '1200.00',
+            'date': date.today().isoformat(),
+            'diff_type': 'correction',
+            'category_id': self.cat_correction.id,
+        })
+        
+        self.assertEqual(response.status_code, 302)
+        
+        # Check reconciliation booking
+        reconciliation_booking = Booking.objects.filter(
+            account=self.account,
+            description__contains='Saldenabgleich'
+        ).first()
+        
+        self.assertIsNotNone(reconciliation_booking)
+        self.assertEqual(reconciliation_booking.amount, Decimal('-300.00'))
+        
+        # Verify final balance
+        final_balance = calculate_actual_balance(self.account)
+        self.assertEqual(final_balance, Decimal('1200.00'))
+    
+    def test_reconcile_balance_no_difference_no_booking(self):
+        """Test that no booking is created when there's no difference"""
+        # Current balance is 1000.00
+        # Reconcile to same balance
+        initial_booking_count = Booking.objects.filter(account=self.account).count()
+        
+        response = self.client.post(f'/accounts/{self.account.id}/reconcile/', {
+            'new_balance': '1000.00',
+            'date': date.today().isoformat(),
+            'diff_type': 'correction',
+            'category_id': self.cat_correction.id,
+        })
+        
+        self.assertEqual(response.status_code, 302)
+        
+        # No new booking should be created
+        final_booking_count = Booking.objects.filter(account=self.account).count()
+        self.assertEqual(initial_booking_count, final_booking_count)
+    
+    def test_reconcile_balance_different_diff_types(self):
+        """Test reconciliation with different difference types"""
+        diff_types_and_categories = [
+            ('unrealized', self.cat_unrealized, 'Unrealisierte Gewinne/Verluste'),
+            ('roundup', self.cat_roundup, 'RoundUp'),
+            ('saveback', self.cat_saveback, 'SaveBack'),
+        ]
+        
+        for diff_type, category, expected_desc_part in diff_types_and_categories:
+            # Reset account for each test
+            Booking.objects.filter(account=self.account).delete()
+            
+            response = self.client.post(f'/accounts/{self.account.id}/reconcile/', {
+                'new_balance': '1100.00',
+                'date': date.today().isoformat(),
+                'diff_type': diff_type,
+                'category_id': category.id,
+            })
+            
+            self.assertEqual(response.status_code, 302)
+            
+            booking = Booking.objects.filter(
+                account=self.account,
+                description__contains=expected_desc_part
+            ).first()
+            
+            self.assertIsNotNone(booking, f"No booking found for {diff_type}")
+            self.assertEqual(booking.category, category)
+            self.assertEqual(booking.amount, Decimal('100.00'))
+    
+    def test_reconcile_balance_with_decimal_input(self):
+        """Test reconciliation with decimal values"""
+        response = self.client.post(f'/accounts/{self.account.id}/reconcile/', {
+            'new_balance': '1234.56',
+            'date': date.today().isoformat(),
+            'diff_type': 'correction',
+            'category_id': self.cat_correction.id,
+        })
+        
+        self.assertEqual(response.status_code, 302)
+        
+        booking = Booking.objects.filter(
+            account=self.account,
+            description__contains='Saldenabgleich'
+        ).first()
+        
+        self.assertIsNotNone(booking)
+        self.assertEqual(booking.amount, Decimal('234.56'))
+    
+    def test_reconcile_balance_invalid_input(self):
+        """Test reconciliation with invalid input"""
+        response = self.client.post(f'/accounts/{self.account.id}/reconcile/', {
+            'new_balance': '',  # Empty balance
+            'date': date.today().isoformat(),
+            'diff_type': 'correction',
+            'category_id': self.cat_correction.id,
+        })
+        
+        # Should redirect with error message
+        self.assertEqual(response.status_code, 302)
+        
+        # No booking should be created
+        booking = Booking.objects.filter(
+            account=self.account,
+            description__contains='Saldenabgleich'
+        ).first()
+        self.assertIsNone(booking)

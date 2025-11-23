@@ -640,3 +640,122 @@ def mark_booking_as_booked(request, booking_id):
     
     # Return error status for non-planned bookings
     return HttpResponse('Booking is not planned', status=400)
+
+
+@login_required
+def reconcile_balance(request, account_id):
+    """
+    Balance reconciliation view for aligning Finoa balance with external balance.
+    
+    GET: Displays reconciliation form with current balance
+    POST: Creates a booking to reconcile the difference
+    
+    The user provides:
+    - New external balance
+    - Date for the reconciliation booking
+    - Difference type (correction, unrealized, roundup, saveback)
+    - Category (pre-filled based on difference type, but changeable)
+    """
+    account = get_object_or_404(Account, pk=account_id, is_active=True)
+    current_balance = calculate_actual_balance(account)
+    
+    # Define default categories for each difference type
+    diff_type_defaults = {
+        'correction': 'Korrektur',
+        'unrealized': 'Unrealisierte Gewinne/Verluste',
+        'roundup': 'RoundUp',
+        'saveback': 'SaveBack',
+    }
+    
+    # Define descriptions for each difference type
+    diff_type_descriptions = {
+        'correction': 'Saldenabgleich (Korrektur)',
+        'unrealized': 'Saldenabgleich (Unrealisierte Gewinne/Verluste)',
+        'roundup': 'Saldenabgleich (RoundUp)',
+        'saveback': 'Saldenabgleich (SaveBack)',
+    }
+    
+    if request.method == 'POST':
+        try:
+            # Parse form data
+            new_balance_str = request.POST.get('new_balance', '').strip()
+            if not new_balance_str:
+                messages.error(request, 'Bitte geben Sie den neuen Saldo ein.')
+                return redirect('account_detail', account_id=account.id)
+            
+            new_balance = Decimal(new_balance_str.replace(',', '.'))
+            
+            booking_date_str = request.POST.get('date', '').strip()
+            if booking_date_str:
+                booking_date = date.fromisoformat(booking_date_str)
+            else:
+                booking_date = date.today()
+            
+            diff_type = request.POST.get('diff_type', 'correction')
+            category_id = request.POST.get('category_id')
+            
+            # Calculate difference
+            diff = new_balance - current_balance
+            
+            # Only create booking if there's a difference
+            if diff != 0:
+                # Get category
+                category = None
+                if category_id:
+                    try:
+                        category = Category.objects.get(pk=category_id)
+                    except Category.DoesNotExist:
+                        pass
+                
+                # Get description based on diff type
+                description = diff_type_descriptions.get(diff_type, 'Saldenabgleich')
+                
+                # Create the reconciliation booking
+                Booking.objects.create(
+                    account=account,
+                    amount=diff,
+                    booking_date=booking_date,
+                    status='POSTED',
+                    category=category,
+                    description=description,
+                )
+                
+                messages.success(
+                    request, 
+                    f'Saldenabgleich erfolgreich durchgeführt. Differenz: {diff:+.2f} €'
+                )
+            else:
+                messages.info(
+                    request,
+                    'Keine Differenz gefunden. Finoa-Saldo stimmt bereits mit externem Saldo überein.'
+                )
+            
+            # Redirect back to account detail
+            return redirect('account_detail', account_id=account.id)
+            
+        except (ValueError, TypeError) as e:
+            messages.error(request, f'Ungültige Eingabe: {str(e)}')
+            return redirect('account_detail', account_id=account.id)
+    
+    # GET request: Show form
+    # Get all categories for dropdown
+    categories = Category.objects.all().order_by('name')
+    
+    # Prepare default category IDs for each diff type
+    default_category_ids = {}
+    for diff_type_key, cat_name in diff_type_defaults.items():
+        try:
+            cat = Category.objects.get(name=cat_name)
+            default_category_ids[diff_type_key] = cat.id
+        except Category.DoesNotExist:
+            default_category_ids[diff_type_key] = None
+    
+    context = {
+        'account': account,
+        'current_balance': current_balance,
+        'categories': categories,
+        'default_category_ids': default_category_ids,
+        'today': date.today().isoformat(),
+    }
+    
+    return render(request, 'core/reconcile_balance_modal.html', context)
