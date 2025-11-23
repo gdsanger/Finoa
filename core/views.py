@@ -6,14 +6,11 @@ from django.contrib import messages
 from django.db.models import Count, F, Sum, DecimalField, ExpressionWrapper, Min, Max
 from django.db import transaction
 from django.core.exceptions import ValidationError
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from decimal import Decimal
 import json
 import os
-import logging
-
-logger = logging.getLogger(__name__)
 
 from .models import Account, Booking, Category, RecurringBooking, Payee, DocumentUpload, TimeEntry
 from .services import (
@@ -565,7 +562,6 @@ def document_review_detail(request, document_id):
                 return redirect('document_review_detail', document_id=document_id)
             
             # Parse booking date
-            from datetime import datetime
             booking_date = datetime.strptime(booking_date_str, '%Y-%m-%d').date()
             
             # Get account
@@ -581,6 +577,8 @@ def document_review_detail(request, document_id):
                 payee = get_object_or_404(Payee, id=payee_id, is_active=True)
             
             # Invert amount (documents are typically invoices/expenses = money outflow)
+            # Note: This assumes documents represent outgoing payments. For income documents,
+            # users should manually adjust the sign or the amount should be handled differently.
             booking_amount = -abs(Decimal(amount))
             
             # Create booking
