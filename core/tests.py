@@ -1187,3 +1187,164 @@ class DocumentViewTest(TestCase):
         self.assertContains(response, 'value="42.50"')
         # Ensure it doesn't contain the localized comma format
         self.assertNotContains(response, 'value="42,50"')
+
+
+class DueBookingsViewTest(TestCase):
+    """Test cases for due bookings overview"""
+    
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.user = User.objects.create_user(username='testuser', password='testpass')
+        self.client.login(username='testuser', password='testpass')
+        
+        self.account = Account.objects.create(
+            name='Test Account',
+            type='checking',
+            initial_balance=Decimal('1000.00')
+        )
+        self.category = Category.objects.create(name='Test Category')
+    
+    def test_due_bookings_view_requires_login(self):
+        """Test that due bookings view requires login"""
+        self.client.logout()
+        response = self.client.get('/due-bookings/')
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.url.startswith('/login/'))
+    
+    def test_due_bookings_view_shows_overdue(self):
+        """Test that overdue bookings are shown"""
+        from datetime import timedelta
+        
+        # Create an overdue booking
+        overdue_date = date.today() - timedelta(days=5)
+        booking = Booking.objects.create(
+            account=self.account,
+            booking_date=overdue_date,
+            amount=Decimal('-100.00'),
+            description='Overdue payment',
+            status='PLANNED'
+        )
+        
+        response = self.client.get('/due-bookings/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Overdue payment')
+        self.assertContains(response, 'Überfällige Rechnungen')
+    
+    def test_due_bookings_view_shows_upcoming(self):
+        """Test that upcoming bookings are shown"""
+        from datetime import timedelta
+        
+        # Create an upcoming booking (3 days from now)
+        upcoming_date = date.today() + timedelta(days=3)
+        booking = Booking.objects.create(
+            account=self.account,
+            booking_date=upcoming_date,
+            amount=Decimal('-200.00'),
+            description='Upcoming payment',
+            status='PLANNED'
+        )
+        
+        response = self.client.get('/due-bookings/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Upcoming payment')
+        self.assertContains(response, 'Fällig innerhalb der nächsten 7 Tage')
+    
+    def test_due_bookings_view_excludes_posted(self):
+        """Test that posted bookings are not shown"""
+        from datetime import timedelta
+        
+        # Create a posted booking
+        booking = Booking.objects.create(
+            account=self.account,
+            booking_date=date.today() - timedelta(days=2),
+            amount=Decimal('-100.00'),
+            description='Posted payment',
+            status='POSTED'
+        )
+        
+        response = self.client.get('/due-bookings/')
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'Posted payment')
+    
+    def test_due_bookings_view_excludes_far_future(self):
+        """Test that bookings more than 7 days in future are not shown"""
+        from datetime import timedelta
+        
+        # Create a booking 10 days from now
+        far_future_date = date.today() + timedelta(days=10)
+        booking = Booking.objects.create(
+            account=self.account,
+            booking_date=far_future_date,
+            amount=Decimal('-100.00'),
+            description='Far future payment',
+            status='PLANNED'
+        )
+        
+        response = self.client.get('/due-bookings/')
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'Far future payment')
+    
+    def test_mark_booking_as_booked_success(self):
+        """Test marking a planned booking as booked"""
+        booking = Booking.objects.create(
+            account=self.account,
+            booking_date=date.today(),
+            amount=Decimal('-100.00'),
+            description='Test payment',
+            status='PLANNED'
+        )
+        
+        response = self.client.post(f'/bookings/{booking.id}/mark-booked/')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['booking_id'], booking.id)
+        
+        # Verify booking status changed
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, 'POSTED')
+    
+    def test_mark_booking_as_booked_already_posted(self):
+        """Test marking an already posted booking returns error"""
+        booking = Booking.objects.create(
+            account=self.account,
+            booking_date=date.today(),
+            amount=Decimal('-100.00'),
+            description='Test payment',
+            status='POSTED'
+        )
+        
+        response = self.client.post(f'/bookings/{booking.id}/mark-booked/')
+        self.assertEqual(response.status_code, 400)
+        
+        data = response.json()
+        self.assertFalse(data['success'])
+    
+    def test_mark_booking_as_booked_requires_login(self):
+        """Test that marking booking as booked requires login"""
+        booking = Booking.objects.create(
+            account=self.account,
+            booking_date=date.today(),
+            amount=Decimal('-100.00'),
+            description='Test payment',
+            status='PLANNED'
+        )
+        
+        self.client.logout()
+        response = self.client.post(f'/bookings/{booking.id}/mark-booked/')
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.url.startswith('/login/'))
+    
+    def test_mark_booking_as_booked_only_post(self):
+        """Test that marking booking only accepts POST requests"""
+        booking = Booking.objects.create(
+            account=self.account,
+            booking_date=date.today(),
+            amount=Decimal('-100.00'),
+            description='Test payment',
+            status='PLANNED'
+        )
+        
+        response = self.client.get(f'/bookings/{booking.id}/mark-booked/')
+        self.assertEqual(response.status_code, 405)  # Method Not Allowed

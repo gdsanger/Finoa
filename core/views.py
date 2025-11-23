@@ -586,3 +586,53 @@ def document_review_detail(request, document_id):
     }
     
     return render(request, 'core/document_review_detail.html', context)
+
+
+@login_required
+def due_bookings(request):
+    """
+    Due bookings overview showing:
+    - Overdue bookings (status=PLANNED, date < today)
+    - Upcoming bookings (status=PLANNED, today <= date <= today+7)
+    """
+    from datetime import timedelta
+    
+    today = date.today()
+    window_end = today + timedelta(days=7)
+    
+    # Get overdue bookings
+    overdue_bookings = Booking.objects.filter(
+        status='PLANNED',
+        booking_date__lt=today
+    ).select_related('account', 'category', 'payee').order_by('booking_date')
+    
+    # Get upcoming bookings (due within 7 days)
+    upcoming_bookings = Booking.objects.filter(
+        status='PLANNED',
+        booking_date__gte=today,
+        booking_date__lte=window_end
+    ).select_related('account', 'category', 'payee').order_by('booking_date')
+    
+    context = {
+        'overdue_bookings': overdue_bookings,
+        'upcoming_bookings': upcoming_bookings,
+        'today': today,
+    }
+    
+    return render(request, 'core/due_bookings.html', context)
+
+
+@login_required
+@require_http_methods(['POST'])
+def mark_booking_as_booked(request, booking_id):
+    """
+    Mark a planned booking as booked via HTMX
+    """
+    booking = get_object_or_404(Booking, id=booking_id)
+    
+    if booking.status == 'PLANNED':
+        booking.status = 'POSTED'
+        booking.save()
+        return JsonResponse({'success': True, 'booking_id': booking_id})
+    
+    return JsonResponse({'success': False, 'error': 'Booking is not planned'}, status=400)

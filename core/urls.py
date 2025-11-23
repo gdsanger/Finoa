@@ -11,4 +11,6 @@ urlpatterns = [
     path('documents/', views.document_list, name='document_list'),
     path('documents/review/', views.document_review_list, name='document_review_list'),
     path('documents/review/<int:document_id>/', views.document_review_detail, name='document_review_detail'),
+    path('due-bookings/', views.due_bookings, name='due_bookings'),
+    path('bookings/<int:booking_id>/mark-booked/', views.mark_booking_as_booked, name='mark_booking_as_booked'),
 ]
