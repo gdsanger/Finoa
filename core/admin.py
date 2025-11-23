@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Account, Category, Booking, RecurringBooking, Payee, KIGateConfig, OpenAIConfig, DocumentUpload
+from .models import Account, Category, Booking, RecurringBooking, Payee, KIGateConfig, OpenAIConfig, DocumentUpload, TimeEntry
 
 
 @admin.register(Payee)
@@ -108,5 +108,35 @@ class DocumentUploadAdmin(admin.ModelAdmin):
         }),
         ('Booking', {
             'fields': ('booking',)
+        }),
+    )
+
+
+@admin.register(TimeEntry)
+class TimeEntryAdmin(admin.ModelAdmin):
+    list_display = ['date', 'payee', 'activity', 'duration_hours', 'hourly_rate', 'amount_display', 'billed']
+    list_filter = ['billed', 'payee', 'date']
+    search_fields = ['activity', 'payee__name']
+    date_hierarchy = 'date'
+    readonly_fields = ['created_at', 'updated_at', 'amount_display']
+    
+    def amount_display(self, obj):
+        """Display calculated amount"""
+        return f"{obj.amount:.2f} €"
+    amount_display.short_description = 'Amount'
+    
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('payee', 'date', 'activity')
+        }),
+        ('Time & Rate', {
+            'fields': ('duration_hours', 'hourly_rate', 'amount_display')
+        }),
+        ('Status', {
+            'fields': ('billed',)
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
         }),
     )

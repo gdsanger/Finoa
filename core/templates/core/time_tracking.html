@@ -1,0 +1,330 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Zeiterfassung - Finoa{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1 class="mb-4">
+        <i class="bi bi-clock-history"></i> Zeiterfassung
+    </h1>
+
+    <!-- Messages -->
+    {% if messages %}
+    <div class="mt-3">
+        {% for message in messages %}
+        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Filter Card -->
+    <div class="card card-finoa mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">
+                <i class="bi bi-funnel"></i> Filter
+            </h5>
+        </div>
+        <div class="card-body">
+            <form method="get" action="{% url 'time_tracking' %}">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label for="status" class="form-label">Status</label>
+                        <select name="status" id="status" class="form-select">
+                            <option value="all" {% if filter_status == 'all' %}selected{% endif %}>Alle</option>
+                            <option value="unbilled" {% if filter_status == 'unbilled' %}selected{% endif %}>Nicht abgerechnet</option>
+                            <option value="billed" {% if filter_status == 'billed' %}selected{% endif %}>Abgerechnet</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="payee" class="form-label">Kunde / Payee</label>
+                        <select name="payee" id="payee" class="form-select">
+                            <option value="">Alle</option>
+                            {% for payee in payees %}
+                            <option value="{{ payee.id }}" {% if filter_payee_id == payee.id|stringformat:"s" %}selected{% endif %}>
+                                {{ payee.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="year" class="form-label">Jahr</label>
+                        <input type="number" name="year" id="year" class="form-control" value="{{ filter_year }}" min="2020" max="2050" placeholder="z.B. 2025">
+                    </div>
+                    <div class="col-md-2">
+                        <label for="month" class="form-label">Monat</label>
+                        <input type="number" name="month" id="month" class="form-control" value="{{ filter_month }}" min="1" max="12" placeholder="1-12">
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="submit" class="btn btn-finoa-primary w-100">
+                            <i class="bi bi-search"></i> Filtern
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Time Entries List -->
+    <div class="card card-finoa">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Zeiteinträge</h5>
+            <div>
+                <button type="button" class="btn btn-finoa-primary btn-sm" data-bs-toggle="modal" data-bs-target="#createEntryModal">
+                    <i class="bi bi-plus-circle"></i> Neuer Eintrag
+                </button>
+                <button type="button" class="btn btn-success btn-sm" onclick="submitBilling()">
+                    <i class="bi bi-receipt"></i> Abgerechnet (Sammelabrechnung)
+                </button>
+            </div>
+        </div>
+        <div class="card-body">
+            <form id="billingForm" method="get" action="{% url 'time_entry_bulk_billing' %}">
+                <div class="table-responsive">
+                    <table class="table table-finoa">
+                        <thead>
+                            <tr>
+                                <th class="text-center">
+                                    <input type="checkbox" id="selectAll" onclick="toggleSelectAll()">
+                                </th>
+                                <th>Datum</th>
+                                <th>Kunde (Payee)</th>
+                                <th>Tätigkeit</th>
+                                <th class="text-end">Dauer (h)</th>
+                                <th class="text-end">€/Std</th>
+                                <th class="text-end">Betrag</th>
+                                <th class="text-center">Status</th>
+                                <th class="text-center">Aktionen</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for entry in entries %}
+                            <tr class="{% if entry.billed %}text-muted{% endif %}">
+                                <td class="text-center">
+                                    {% if not entry.billed %}
+                                    <input type="checkbox" name="entries" value="{{ entry.id }}" class="entry-checkbox" data-payee="{{ entry.payee.id }}">
+                                    {% endif %}
+                                </td>
+                                <td>{{ entry.date|date:"d.m.Y" }}</td>
+                                <td><strong>{{ entry.payee.name }}</strong></td>
+                                <td>{{ entry.activity }}</td>
+                                <td class="text-end">{{ entry.duration_hours }}</td>
+                                <td class="text-end">{{ entry.hourly_rate }} €</td>
+                                <td class="text-end"><strong>{{ entry.amount }} €</strong></td>
+                                <td class="text-center">
+                                    {% if entry.billed %}
+                                        <span class="badge bg-success">Abgerechnet</span>
+                                    {% else %}
+                                        <span class="badge bg-warning text-dark">Offen</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    {% if not entry.billed %}
+                                    <button type="button" class="btn btn-sm btn-finoa-secondary" 
+                                            onclick="editEntry({{ entry.id }}, '{{ entry.payee.id }}', '{{ entry.date|date:"Y-m-d" }}', '{{ entry.duration_hours }}', '{{ entry.activity|escapejs }}', '{{ entry.hourly_rate }}')"
+                                            title="Bearbeiten">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <form method="post" action="{% url 'time_entry_delete' entry.id %}" style="display: inline;" 
+                                          onsubmit="return confirm('Eintrag wirklich löschen?')">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-sm btn-danger" title="Löschen">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="9" class="text-center text-muted py-4">
+                                    <i class="bi bi-inbox" style="font-size: 2rem;"></i>
+                                    <p class="mt-2">Keine Zeiteinträge vorhanden</p>
+                                    <button type="button" class="btn btn-finoa-primary" data-bs-toggle="modal" data-bs-target="#createEntryModal">
+                                        <i class="bi bi-plus-circle"></i> Ersten Eintrag anlegen
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        {% if entries %}
+                        <tfoot>
+                            <tr class="table-secondary">
+                                <td colspan="6" class="text-end"><strong>Summe (gefiltert):</strong></td>
+                                <td class="text-end"><strong>{{ total_amount }} €</strong></td>
+                                <td colspan="2"></td>
+                            </tr>
+                        </tfoot>
+                        {% endif %}
+                    </table>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Info Box -->
+    <div class="card card-finoa mt-4">
+        <div class="card-header">
+            <h5 class="mb-0">
+                <i class="bi bi-info-circle"></i> Über Zeiterfassung
+            </h5>
+        </div>
+        <div class="card-body">
+            <p class="mb-2">
+                <strong>Zeiterfassung</strong> ermöglicht die Erfassung abrechenbarer Tätigkeiten (z.B. Hausmeister-Jobs, Side-Jobs).
+            </p>
+            <ul class="mb-0">
+                <li>Erfassen Sie Zeit, Tätigkeit und Stundensatz für jeden Einsatz</li>
+                <li>Wählen Sie mehrere Einträge des gleichen Kunden aus und rechnen Sie diese gesammelt ab</li>
+                <li>Die Sammelabrechnung erstellt automatisch eine Einnahme-Buchung in Finoa</li>
+                <li>Abgerechnete Einträge können nicht mehr bearbeitet oder gelöscht werden</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- Create Entry Modal -->
+<div class="modal fade" id="createEntryModal" tabindex="-1" aria-labelledby="createEntryModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" action="{% url 'time_entry_create' %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title" id="createEntryModalLabel">
+                        <i class="bi bi-plus-circle"></i> Neuer Zeiteintrag
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="create_payee" class="form-label">Kunde / Payee *</label>
+                        <select name="payee" id="create_payee" class="form-select" required>
+                            <option value="">Bitte wählen...</option>
+                            {% for payee in payees %}
+                            <option value="{{ payee.id }}">{{ payee.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="create_date" class="form-label">Datum der Leistung *</label>
+                        <input type="date" name="date" id="create_date" class="form-control" value="{{ today|date:'Y-m-d' }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="create_duration" class="form-label">Dauer (Stunden) *</label>
+                        <input type="number" name="duration_hours" id="create_duration" class="form-control" step="0.1" min="0.1" placeholder="z.B. 2.5" required>
+                        <small class="text-muted">In 0,1-Schritten (z.B. 0.5, 1.0, 2.3)</small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="create_activity" class="form-label">Tätigkeit *</label>
+                        <input type="text" name="activity" id="create_activity" class="form-control" placeholder="z.B. Gartenarbeit, Reparatur" maxlength="255" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="create_hourly_rate" class="form-label">Stundensatz (€/Std) *</label>
+                        <input type="number" name="hourly_rate" id="create_hourly_rate" class="form-control" step="0.01" min="0" placeholder="z.B. 25.00" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                    <button type="submit" class="btn btn-finoa-primary">
+                        <i class="bi bi-save"></i> Speichern
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Entry Modal -->
+<div class="modal fade" id="editEntryModal" tabindex="-1" aria-labelledby="editEntryModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" id="editEntryForm">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title" id="editEntryModalLabel">
+                        <i class="bi bi-pencil"></i> Zeiteintrag bearbeiten
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="edit_payee" class="form-label">Kunde / Payee *</label>
+                        <select name="payee" id="edit_payee" class="form-select" required>
+                            <option value="">Bitte wählen...</option>
+                            {% for payee in payees %}
+                            <option value="{{ payee.id }}">{{ payee.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_date" class="form-label">Datum der Leistung *</label>
+                        <input type="date" name="date" id="edit_date" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_duration" class="form-label">Dauer (Stunden) *</label>
+                        <input type="number" name="duration_hours" id="edit_duration" class="form-control" step="0.1" min="0.1" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_activity" class="form-label">Tätigkeit *</label>
+                        <input type="text" name="activity" id="edit_activity" class="form-control" maxlength="255" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_hourly_rate" class="form-label">Stundensatz (€/Std) *</label>
+                        <input type="number" name="hourly_rate" id="edit_hourly_rate" class="form-control" step="0.01" min="0" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                    <button type="submit" class="btn btn-finoa-primary">
+                        <i class="bi bi-save"></i> Speichern
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function toggleSelectAll() {
+    const selectAll = document.getElementById('selectAll');
+    const checkboxes = document.querySelectorAll('.entry-checkbox');
+    checkboxes.forEach(cb => cb.checked = selectAll.checked);
+}
+
+function submitBilling() {
+    const checkboxes = document.querySelectorAll('.entry-checkbox:checked');
+    
+    if (checkboxes.length === 0) {
+        alert('Bitte wählen Sie mindestens einen Eintrag aus.');
+        return;
+    }
+    
+    // Check if all selected entries have the same payee
+    const payees = new Set();
+    checkboxes.forEach(cb => payees.add(cb.dataset.payee));
+    
+    if (payees.size > 1) {
+        alert('Sammelabrechnung ist nur für Einträge mit demselben Kunden (Payee) möglich.');
+        return;
+    }
+    
+    document.getElementById('billingForm').submit();
+}
+
+function editEntry(id, payeeId, date, duration, activity, hourlyRate) {
+    const form = document.getElementById('editEntryForm');
+    form.action = `/time-tracking/${id}/update/`;
+    
+    document.getElementById('edit_payee').value = payeeId;
+    document.getElementById('edit_date').value = date;
+    document.getElementById('edit_duration').value = duration;
+    document.getElementById('edit_activity').value = activity;
+    document.getElementById('edit_hourly_rate').value = hourlyRate;
+    
+    const modal = new bootstrap.Modal(document.getElementById('editEntryModal'));
+    modal.show();
+}
+</script>
+{% endblock %}
