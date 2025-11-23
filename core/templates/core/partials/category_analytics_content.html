@@ -154,10 +154,10 @@
 {% if expense_labels %}
 <script>
 (function() {
-    // Wait for Chart.js to be loaded
+    // Wait for Chart.js to be loaded (polls every 100ms)
     function initExpenseChart() {
         if (typeof Chart === 'undefined') {
-            setTimeout(initExpenseChart, 50);
+            setTimeout(initExpenseChart, 100);
             return;
         }
         
@@ -232,10 +232,10 @@
 {% if top_labels %}
 <script>
 (function() {
-    // Wait for Chart.js to be loaded
+    // Wait for Chart.js to be loaded (polls every 100ms)
     function initTopChart() {
         if (typeof Chart === 'undefined') {
-            setTimeout(initTopChart, 50);
+            setTimeout(initTopChart, 100);
             return;
         }
         

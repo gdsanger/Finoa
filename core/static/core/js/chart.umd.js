@@ -1,3 +1,12 @@
+/**
+ * Chart.js v4.4.0
+ * https://www.chartjs.org
+ * 
+ * Local copy maintained to avoid CDN dependencies and ensure availability.
+ * Update by running: npm install chart.js@4.4.0 && cp node_modules/chart.js/dist/chart.umd.js core/static/core/js/
+ * 
+ * License: MIT
+ */
 /*!
  * Chart.js v4.4.0
  * https://www.chartjs.org
