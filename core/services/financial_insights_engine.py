@@ -56,6 +56,10 @@ def aggregate_category_summaries(months: int = 6) -> List[Dict[str, Any]]:
     """
     Aggregate expenses and income by category for specified period.
     
+    Filters out:
+    - Bookings without a category (cost-neutral, no liquidity impact)
+    - Bookings without a payee (cost-neutral, no liquidity impact)
+    
     Args:
         months: Number of months to look back from today
         
@@ -66,10 +70,13 @@ def aggregate_category_summaries(months: int = 6) -> List[Dict[str, Any]]:
     start_date = today - relativedelta(months=months)
     
     # Get all posted bookings in the period
+    # Exclude bookings without category or without payee
     bookings = Booking.objects.filter(
         booking_date__gte=start_date,
         booking_date__lte=today,
-        status='POSTED'
+        status='POSTED',
+        category__isnull=False,  # Exclude bookings without category
+        payee__isnull=False      # Exclude bookings without payee
     ).exclude(
         is_transfer=True  # Exclude transfers
     ).select_related('category')
@@ -81,7 +88,7 @@ def aggregate_category_summaries(months: int = 6) -> List[Dict[str, Any]]:
     })
     
     for booking in bookings:
-        category_name = booking.category.name if booking.category else 'Ohne Kategorie'
+        category_name = booking.category.name
         month_key = booking.booking_date.strftime('%Y-%m')
         
         category_data[category_name]['total'] += booking.amount
@@ -115,6 +122,10 @@ def aggregate_booking_entries(months: int = 6, limit: int = 100) -> List[Dict[st
     Get abstract representation of individual bookings for AI analysis.
     Limited to most significant bookings to reduce token usage.
     
+    Filters out:
+    - Bookings without a category (cost-neutral, no liquidity impact)
+    - Bookings without a payee (cost-neutral, no liquidity impact)
+    
     Args:
         months: Number of months to look back from today
         limit: Maximum number of bookings to return
@@ -126,10 +137,13 @@ def aggregate_booking_entries(months: int = 6, limit: int = 100) -> List[Dict[st
     start_date = today - relativedelta(months=months)
     
     # Get posted bookings, exclude transfers
+    # Also exclude bookings without category or without payee
     bookings = Booking.objects.filter(
         booking_date__gte=start_date,
         booking_date__lte=today,
-        status='POSTED'
+        status='POSTED',
+        category__isnull=False,  # Exclude bookings without category
+        payee__isnull=False      # Exclude bookings without payee
     ).exclude(
         is_transfer=True
     ).select_related('category', 'payee').order_by('-booking_date')[:limit]
@@ -139,9 +153,74 @@ def aggregate_booking_entries(months: int = 6, limit: int = 100) -> List[Dict[st
         entries.append({
             'date': booking.booking_date.strftime('%Y-%m-%d'),
             'amount': float(booking.amount),
-            'category': booking.category.name if booking.category else 'Ohne Kategorie',
-            'payee': booking.payee.name if booking.payee else None,
+            'category': booking.category.name,
+            'payee': booking.payee.name,
             'description': booking.description[:100] if booking.description else None
+        })
+    
+    return entries
+
+
+def aggregate_recurring_bookings() -> List[Dict[str, Any]]:
+    """
+    Get recurring bookings for AI analysis.
+    
+    Returns:
+        List of recurring booking entries with frequency and interval
+    """
+    from core.models import RecurringBooking
+    
+    # Get active recurring bookings, exclude transfers
+    recurring_bookings = RecurringBooking.objects.filter(
+        is_active=True,
+        is_transfer=False
+    ).select_related('category', 'payee')
+    
+    entries = []
+    for recurring in recurring_bookings:
+        entries.append({
+            'amount': float(recurring.amount),
+            'category': recurring.category.name if recurring.category else None,
+            'payee': recurring.payee.name if recurring.payee else None,
+            'description': recurring.description[:100] if recurring.description else None,
+            'frequency': recurring.get_frequency_display(),
+            'interval': recurring.interval,
+            'start_date': recurring.start_date.strftime('%Y-%m-%d'),
+            'end_date': recurring.end_date.strftime('%Y-%m-%d') if recurring.end_date else None,
+        })
+    
+    return entries
+
+
+def aggregate_planned_bookings() -> List[Dict[str, Any]]:
+    """
+    Get planned future bookings for AI analysis.
+    
+    Returns:
+        List of planned booking entries (one-time future bookings)
+    """
+    today = date.today()
+    
+    # Get planned bookings in the future
+    # Exclude transfers and bookings without category or payee
+    planned_bookings = Booking.objects.filter(
+        booking_date__gt=today,
+        status='PLANNED',
+        category__isnull=False,
+        payee__isnull=False
+    ).exclude(
+        is_transfer=True
+    ).select_related('category', 'payee').order_by('booking_date')
+    
+    entries = []
+    for booking in planned_bookings:
+        entries.append({
+            'date': booking.booking_date.strftime('%Y-%m-%d'),
+            'amount': float(booking.amount),
+            'category': booking.category.name,
+            'payee': booking.payee.name,
+            'description': booking.description[:100] if booking.description else None,
+            'is_one_time': True,  # Explicitly mark as one-time booking
         })
     
     return entries
@@ -155,13 +234,15 @@ def build_analysis_dataset(months: int = 6) -> Dict[str, Any]:
         months: Number of months to analyze
         
     Returns:
-        Complete dataset with liquidity, categories, and entries
+        Complete dataset with liquidity, categories, entries, recurring bookings, and planned bookings
     """
     return {
         'period_months': months,
         'monthly_liquidity': aggregate_monthly_liquidity(months),
         'categories': aggregate_category_summaries(months),
-        'entries': aggregate_booking_entries(months, limit=100)
+        'entries': aggregate_booking_entries(months, limit=100),
+        'recurring_bookings': aggregate_recurring_bookings(),
+        'planned_bookings': aggregate_planned_bookings()
     }
 
 
@@ -186,6 +267,11 @@ def create_agent_prompt(dataset: Dict[str, Any]) -> str:
 {json.dumps(dataset, indent=2, ensure_ascii=False)}
 ```
 
+**Hinweis zu den Daten:**
+- "entries" enthält nur historische Buchungen mit Kategorie und Zahlungsempfänger (kostenwirksam)
+- "recurring_bookings" enthält regelmäßige wiederkehrende Buchungen mit Frequenz und Intervall
+- "planned_bookings" enthält geplante einmalige Buchungen in der Zukunft
+
 **Aufgabe:**
 1. Klassifiziere die Kategorien in:
    - "MUSS" (Fixkosten, zwingende Ausgaben wie Miete, Versicherungen)
@@ -197,8 +283,11 @@ def create_agent_prompt(dataset: Dict[str, Any]) -> str:
    - Top 3 Kategorien mit steigendem Trend
    - Top 3 Kategorien mit fallendem Trend
    - Besondere Ausreißer oder Muster
+   - Berücksichtige dabei die wiederkehrenden Buchungen für zukünftige Entwicklungen
 
-3. Erstelle vorsichtige Prognosen für 6, 12 und 24 Monate.
+3. Erstelle vorsichtige Prognosen für 6, 12 und 24 Monate unter Berücksichtigung der:
+   - Wiederkehrenden Buchungen (recurring_bookings)
+   - Geplanten Buchungen (planned_bookings)
 
 4. Gib konkrete Empfehlungen zur Optimierung.
 
