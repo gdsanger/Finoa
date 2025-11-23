@@ -232,6 +232,7 @@ def account_detail(request, account_id):
         'categories': Category.objects.all(),
         'all_accounts': Account.objects.filter(is_active=True),
         'payees': Payee.objects.filter(is_active=True),
+        'today': date.today(),
     }
     
     return render(request, 'core/account_detail.html', context)

@@ -74,9 +74,6 @@
             class="btn btn-finoa-primary" 
             data-bs-toggle="modal" 
             data-bs-target="#reconcileBalanceModal"
-            hx-get="{% url 'reconcile_balance' account.id %}"
-            hx-target="#reconcileBalanceModal"
-            hx-swap="innerHTML"
         >
             <i class="bi bi-calculator"></i> Saldenabgleich
         </button>
@@ -376,10 +373,200 @@
     </div>
 </div>
 
-<!-- Balance Reconciliation Modal (HTMX loads content dynamically) -->
+<!-- Balance Reconciliation Modal -->
 <div class="modal fade" id="reconcileBalanceModal" tabindex="-1" aria-labelledby="reconcileBalanceModalLabel" aria-hidden="true">
-    <!-- Modal content loaded via HTMX -->
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="reconcileBalanceModalLabel">
+                    <i class="bi bi-calculator"></i> Saldenabgleich – {{ account.name }}
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="post" action="{% url 'reconcile_balance' account.id %}" id="reconcileForm">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <!-- Current Balance Display -->
+                    <div class="alert alert-info">
+                        <strong>Aktueller Finoa-Saldo:</strong> 
+                        <span class="{% if actual_balance >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
+                            <strong>{{ actual_balance|floatformat:2 }} €</strong>
+                        </span>
+                    </div>
+
+                    <!-- New External Balance Input -->
+                    <div class="mb-3">
+                        <label for="new_balance" class="form-label">
+                            Neuer externer Saldo <span class="text-danger">*</span>
+                        </label>
+                        <div class="input-group">
+                            <input 
+                                type="number" 
+                                class="form-control" 
+                                id="new_balance" 
+                                name="new_balance" 
+                                step="0.01" 
+                                required
+                                placeholder="z.B. 1234.56"
+                            >
+                            <span class="input-group-text">€</span>
+                        </div>
+                        <small class="text-muted">Geben Sie den aktuellen Saldo laut Bank/externer Quelle ein.</small>
+                    </div>
+
+                    <!-- Date Input -->
+                    <div class="mb-3">
+                        <label for="date" class="form-label">
+                            Datum der Buchung <span class="text-danger">*</span>
+                        </label>
+                        <input 
+                            type="date" 
+                            class="form-control" 
+                            id="date" 
+                            name="date" 
+                            value="{{ today.isoformat }}" 
+                            required
+                        >
+                    </div>
+
+                    <!-- Difference Type Selection -->
+                    <div class="mb-3">
+                        <label class="form-label">
+                            Art der Differenz <span class="text-danger">*</span>
+                        </label>
+                        <div class="form-check">
+                            <input 
+                                class="form-check-input diff-type-radio" 
+                                type="radio" 
+                                name="diff_type" 
+                                id="diff_type_correction" 
+                                value="correction"
+                                checked
+                                data-default-category="{% if categories %}{% for cat in categories %}{% if cat.name == 'Korrektur' %}{{ cat.id }}{% endif %}{% endfor %}{% endif %}"
+                            >
+                            <label class="form-check-label" for="diff_type_correction">
+                                <strong>Korrektur</strong> – Allgemeine Abweichungen, Erfassungsfehler
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input 
+                                class="form-check-input diff-type-radio" 
+                                type="radio" 
+                                name="diff_type" 
+                                id="diff_type_unrealized" 
+                                value="unrealized"
+                                data-default-category="{% if categories %}{% for cat in categories %}{% if cat.name == 'Unrealisierte Gewinne/Verluste' %}{{ cat.id }}{% endif %}{% endfor %}{% endif %}"
+                            >
+                            <label class="form-check-label" for="diff_type_unrealized">
+                                <strong>Unrealisierte Gewinne/Verluste</strong> – Depot-/Kursbewertungen
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input 
+                                class="form-check-input diff-type-radio" 
+                                type="radio" 
+                                name="diff_type" 
+                                id="diff_type_roundup" 
+                                value="roundup"
+                                data-default-category="{% if categories %}{% for cat in categories %}{% if cat.name == 'RoundUp' %}{{ cat.id }}{% endif %}{% endfor %}{% endif %}"
+                            >
+                            <label class="form-check-label" for="diff_type_roundup">
+                                <strong>RoundUp</strong> – Trade Republic Aufrundungsbeträge
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input 
+                                class="form-check-input diff-type-radio" 
+                                type="radio" 
+                                name="diff_type" 
+                                id="diff_type_saveback" 
+                                value="saveback"
+                                data-default-category="{% if categories %}{% for cat in categories %}{% if cat.name == 'SaveBack' %}{{ cat.id }}{% endif %}{% endfor %}{% endif %}"
+                            >
+                            <label class="form-check-label" for="diff_type_saveback">
+                                <strong>SaveBack</strong> – Trade Republic 1% Cashback
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Category Selection -->
+                    <div class="mb-3">
+                        <label for="category_id" class="form-label">Kategorie</label>
+                        <select class="form-select" id="category_id" name="category_id">
+                            <option value="">– Keine Kategorie –</option>
+                            {% for category in categories %}
+                            <option value="{{ category.id }}"
+                                    {% if category.name == 'Korrektur' %}selected{% endif %}>
+                                {{ category.name }}
+                                {% if category.type %} ({{ category.get_type_display }}){% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">Die Kategorie wird basierend auf der Art der Differenz vorgeschlagen, kann aber geändert werden.</small>
+                    </div>
+
+                    <!-- Difference Preview -->
+                    <div class="alert alert-secondary" id="differencePreview" style="display: none;">
+                        <strong>Berechnete Differenz:</strong> 
+                        <span id="differenceAmount" class="fw-bold"></span>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-finoa-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle"></i> Abbrechen
+                    </button>
+                    <button type="submit" class="btn btn-finoa-primary">
+                        <i class="bi bi-check-circle"></i> Differenz buchen
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
 </div>
+
+<script>
+    // Update category dropdown when diff type changes
+    document.querySelectorAll('.diff-type-radio').forEach(radio => {
+        radio.addEventListener('change', function() {
+            const defaultCategoryId = this.getAttribute('data-default-category');
+            const categorySelect = document.getElementById('category_id');
+            if (defaultCategoryId && defaultCategoryId !== '' && defaultCategoryId !== 'None') {
+                categorySelect.value = defaultCategoryId;
+            }
+        });
+    });
+
+    // Calculate and display difference when new balance is entered
+    const newBalanceInput = document.getElementById('new_balance');
+    const currentBalance = {{ actual_balance|floatformat:2 }};
+    const differencePreview = document.getElementById('differencePreview');
+    const differenceAmount = document.getElementById('differenceAmount');
+
+    function updateDifference() {
+        const newBalance = parseFloat(newBalanceInput.value);
+        if (!isNaN(newBalance)) {
+            const diff = newBalance - currentBalance;
+            differencePreview.style.display = 'block';
+            
+            // Format difference with + or - sign and color
+            const diffFormatted = diff >= 0 ? `+${diff.toFixed(2)} €` : `${diff.toFixed(2)} €`;
+            differenceAmount.textContent = diffFormatted;
+            
+            if (diff > 0) {
+                differenceAmount.className = 'fw-bold balance-positive';
+            } else if (diff < 0) {
+                differenceAmount.className = 'fw-bold balance-negative';
+            } else {
+                differenceAmount.className = 'fw-bold text-muted';
+            }
+        } else {
+            differencePreview.style.display = 'none';
+        }
+    }
+
+    newBalanceInput.addEventListener('input', updateDifference);
+    newBalanceInput.addEventListener('change', updateDifference);
+</script>
 {% endblock %}
 
 {% block extra_js %}
