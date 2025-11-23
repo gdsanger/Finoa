@@ -2540,6 +2540,11 @@ class FinancialInsightsEngineTest(TestCase):
         self.expense_category1 = Category.objects.create(name='Miete', type='expense')
         self.expense_category2 = Category.objects.create(name='Freizeit', type='expense')
         
+        # Create payees for test bookings
+        self.employer_payee = Payee.objects.create(name='Employer')
+        self.landlord_payee = Payee.objects.create(name='Landlord')
+        self.leisure_payee = Payee.objects.create(name='Leisure Co')
+        
         # Create some test bookings
         for i in range(3):
             # Create monthly income
@@ -2548,6 +2553,7 @@ class FinancialInsightsEngineTest(TestCase):
                 booking_date=date.today() - relativedelta(months=i),
                 amount=Decimal('3000.00'),
                 category=self.income_category,
+                payee=self.employer_payee,
                 status='POSTED'
             )
             # Create monthly rent
@@ -2556,6 +2562,7 @@ class FinancialInsightsEngineTest(TestCase):
                 booking_date=date.today() - relativedelta(months=i),
                 amount=Decimal('-1000.00'),
                 category=self.expense_category1,
+                payee=self.landlord_payee,
                 status='POSTED'
             )
             # Create variable leisure spending
@@ -2564,6 +2571,7 @@ class FinancialInsightsEngineTest(TestCase):
                 booking_date=date.today() - relativedelta(months=i),
                 amount=Decimal('-200.00') * (i + 1),  # Increasing trend
                 category=self.expense_category2,
+                payee=self.leisure_payee,
                 status='POSTED'
             )
     
@@ -2698,6 +2706,312 @@ class FinancialInsightsEngineTest(TestCase):
         result = parse_agent_response(invalid_response)
         
         self.assertIsNone(result)
+    
+    def test_aggregate_booking_entries_excludes_no_category(self):
+        """Test that bookings without category are excluded"""
+        from core.services.financial_insights_engine import aggregate_booking_entries
+        
+        payee = Payee.objects.create(name='Test Payee')
+        
+        # Create booking without category but with payee
+        Booking.objects.create(
+            account=self.account,
+            booking_date=date.today(),
+            amount=Decimal('-100.00'),
+            category=None,  # No category
+            payee=payee,
+            status='POSTED'
+        )
+        
+        result = aggregate_booking_entries(months=1, limit=10)
+        
+        # Should not include the booking without category
+        self.assertEqual(len([e for e in result if e.get('payee') == 'Test Payee']), 0)
+    
+    def test_aggregate_booking_entries_excludes_no_payee(self):
+        """Test that bookings without payee are excluded"""
+        from core.services.financial_insights_engine import aggregate_booking_entries
+        
+        # Create booking with category but without payee
+        Booking.objects.create(
+            account=self.account,
+            booking_date=date.today(),
+            amount=Decimal('-100.00'),
+            category=self.expense_category1,
+            payee=None,  # No payee
+            status='POSTED'
+        )
+        
+        result = aggregate_booking_entries(months=1, limit=10)
+        
+        # Count bookings for the expense category
+        expense_bookings = [e for e in result if e.get('category') == 'Miete' and e.get('payee') is None]
+        
+        # Should not include the booking without payee
+        self.assertEqual(len(expense_bookings), 0)
+    
+    def test_aggregate_booking_entries_includes_valid(self):
+        """Test that bookings with both category and payee are included"""
+        from core.services.financial_insights_engine import aggregate_booking_entries
+        
+        payee = Payee.objects.create(name='Valid Payee')
+        
+        # Create valid booking with both category and payee
+        Booking.objects.create(
+            account=self.account,
+            booking_date=date.today(),
+            amount=Decimal('-100.00'),
+            category=self.expense_category1,
+            payee=payee,
+            status='POSTED'
+        )
+        
+        result = aggregate_booking_entries(months=1, limit=10)
+        
+        # Should include the valid booking
+        valid_bookings = [e for e in result if e.get('payee') == 'Valid Payee']
+        self.assertEqual(len(valid_bookings), 1)
+        self.assertEqual(valid_bookings[0]['category'], 'Miete')
+    
+    def test_aggregate_category_summaries_excludes_no_category(self):
+        """Test that category summaries exclude bookings without category"""
+        from core.services.financial_insights_engine import aggregate_category_summaries
+        
+        payee = Payee.objects.create(name='Test Payee')
+        
+        # Create booking without category
+        Booking.objects.create(
+            account=self.account,
+            booking_date=date.today(),
+            amount=Decimal('-500.00'),
+            category=None,
+            payee=payee,
+            status='POSTED'
+        )
+        
+        result = aggregate_category_summaries(months=1)
+        
+        # Should not have "Ohne Kategorie" in results
+        categories = [cat['name'] for cat in result]
+        self.assertNotIn('Ohne Kategorie', categories)
+    
+    def test_aggregate_category_summaries_excludes_no_payee(self):
+        """Test that category summaries exclude bookings without payee"""
+        from core.services.financial_insights_engine import aggregate_category_summaries
+        
+        # Get initial total for Miete category
+        initial_result = aggregate_category_summaries(months=3)
+        initial_miete = next((cat for cat in initial_result if cat['name'] == 'Miete'), None)
+        initial_total = initial_miete['total'] if initial_miete else 0.0
+        
+        # Create booking with category but without payee
+        Booking.objects.create(
+            account=self.account,
+            booking_date=date.today(),
+            amount=Decimal('-500.00'),
+            category=self.expense_category1,
+            payee=None,
+            status='POSTED'
+        )
+        
+        result = aggregate_category_summaries(months=3)
+        miete_data = next((cat for cat in result if cat['name'] == 'Miete'), None)
+        
+        # Total should not have increased by 500
+        self.assertIsNotNone(miete_data)
+        self.assertAlmostEqual(miete_data['total'], initial_total, places=2)
+    
+    def test_aggregate_recurring_bookings(self):
+        """Test recurring bookings aggregation"""
+        from core.services.financial_insights_engine import aggregate_recurring_bookings
+        
+        payee = Payee.objects.create(name='Landlord')
+        
+        # Create a recurring booking
+        RecurringBooking.objects.create(
+            account=self.account,
+            amount=Decimal('-1200.00'),
+            category=self.expense_category1,
+            payee=payee,
+            description='Monthly Rent',
+            start_date=date(2025, 1, 1),
+            frequency='MONTHLY',
+            interval=1,
+            day_of_month=1,
+            is_active=True
+        )
+        
+        result = aggregate_recurring_bookings()
+        
+        # Should have one recurring booking
+        self.assertEqual(len(result), 1)
+        
+        # Check fields
+        self.assertEqual(result[0]['amount'], -1200.0)
+        self.assertEqual(result[0]['category'], 'Miete')
+        self.assertEqual(result[0]['payee'], 'Landlord')
+        self.assertEqual(result[0]['frequency'], 'Monatlich')
+        self.assertEqual(result[0]['interval'], 1)
+    
+    def test_aggregate_recurring_bookings_excludes_transfers(self):
+        """Test that recurring transfers are excluded"""
+        from core.services.financial_insights_engine import aggregate_recurring_bookings
+        
+        account2 = Account.objects.create(
+            name='Savings',
+            type='checking',
+            initial_balance=Decimal('0.00')
+        )
+        
+        # Create a recurring transfer
+        RecurringBooking.objects.create(
+            account=self.account,
+            amount=Decimal('-200.00'),
+            description='Monthly Savings',
+            start_date=date(2025, 1, 1),
+            frequency='MONTHLY',
+            interval=1,
+            day_of_month=1,
+            is_active=True,
+            is_transfer=True,
+            transfer_partner_account=account2
+        )
+        
+        result = aggregate_recurring_bookings()
+        
+        # Should not include transfers
+        self.assertEqual(len(result), 0)
+    
+    def test_aggregate_planned_bookings(self):
+        """Test planned future bookings aggregation"""
+        from core.services.financial_insights_engine import aggregate_planned_bookings
+        
+        payee = Payee.objects.create(name='Insurance Co')
+        
+        # Create planned future booking
+        future_date = date.today() + relativedelta(months=1)
+        Booking.objects.create(
+            account=self.account,
+            booking_date=future_date,
+            amount=Decimal('-500.00'),
+            category=self.expense_category1,
+            payee=payee,
+            description='Insurance payment',
+            status='PLANNED'
+        )
+        
+        result = aggregate_planned_bookings()
+        
+        # Should have one planned booking
+        self.assertEqual(len(result), 1)
+        
+        # Check fields
+        self.assertEqual(result[0]['amount'], -500.0)
+        self.assertEqual(result[0]['category'], 'Miete')
+        self.assertEqual(result[0]['payee'], 'Insurance Co')
+        self.assertTrue(result[0]['is_one_time'])
+    
+    def test_aggregate_planned_bookings_excludes_past(self):
+        """Test that planned bookings in the past are excluded"""
+        from core.services.financial_insights_engine import aggregate_planned_bookings
+        
+        payee = Payee.objects.create(name='Past Payee')
+        
+        # Create planned booking in the past
+        past_date = date.today() - relativedelta(months=1)
+        Booking.objects.create(
+            account=self.account,
+            booking_date=past_date,
+            amount=Decimal('-100.00'),
+            category=self.expense_category1,
+            payee=payee,
+            status='PLANNED'
+        )
+        
+        result = aggregate_planned_bookings()
+        
+        # Should not include past bookings
+        past_bookings = [b for b in result if b['payee'] == 'Past Payee']
+        self.assertEqual(len(past_bookings), 0)
+    
+    def test_aggregate_planned_bookings_excludes_no_category(self):
+        """Test that planned bookings without category are excluded"""
+        from core.services.financial_insights_engine import aggregate_planned_bookings
+        
+        payee = Payee.objects.create(name='Test Payee')
+        
+        # Create planned booking without category
+        future_date = date.today() + relativedelta(months=1)
+        Booking.objects.create(
+            account=self.account,
+            booking_date=future_date,
+            amount=Decimal('-100.00'),
+            category=None,
+            payee=payee,
+            status='PLANNED'
+        )
+        
+        result = aggregate_planned_bookings()
+        
+        # Should not include booking without category
+        no_cat_bookings = [b for b in result if b['payee'] == 'Test Payee']
+        self.assertEqual(len(no_cat_bookings), 0)
+    
+    def test_aggregate_planned_bookings_excludes_no_payee(self):
+        """Test that planned bookings without payee are excluded"""
+        from core.services.financial_insights_engine import aggregate_planned_bookings
+        
+        # Create planned booking without payee
+        future_date = date.today() + relativedelta(months=1)
+        Booking.objects.create(
+            account=self.account,
+            booking_date=future_date,
+            amount=Decimal('-100.00'),
+            category=self.expense_category1,
+            payee=None,
+            status='PLANNED'
+        )
+        
+        result = aggregate_planned_bookings()
+        
+        # Should not include booking without payee
+        no_payee_bookings = [b for b in result if b.get('category') == 'Miete' and b.get('payee') is None]
+        self.assertEqual(len(no_payee_bookings), 0)
+    
+    def test_build_analysis_dataset_includes_new_sections(self):
+        """Test that dataset includes recurring_bookings and planned_bookings"""
+        from core.services.financial_insights_engine import build_analysis_dataset
+        
+        dataset = build_analysis_dataset(months=3)
+        
+        # Should have new keys
+        self.assertIn('recurring_bookings', dataset)
+        self.assertIn('planned_bookings', dataset)
+        
+        # Should be lists
+        self.assertIsInstance(dataset['recurring_bookings'], list)
+        self.assertIsInstance(dataset['planned_bookings'], list)
+    
+    def test_create_agent_prompt_mentions_new_sections(self):
+        """Test that prompt explains the new data sections"""
+        from core.services.financial_insights_engine import create_agent_prompt
+        
+        dataset = {
+            'period_months': 3,
+            'monthly_liquidity': [],
+            'categories': [],
+            'entries': [],
+            'recurring_bookings': [],
+            'planned_bookings': []
+        }
+        
+        prompt = create_agent_prompt(dataset)
+        
+        # Prompt should mention the new sections
+        self.assertIn('recurring_bookings', prompt)
+        self.assertIn('planned_bookings', prompt)
+        self.assertIn('wiederkehrende', prompt.lower())
+        self.assertIn('einmalige', prompt.lower())
 
 
 class AIAnalysisViewTest(TestCase):
