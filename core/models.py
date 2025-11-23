@@ -388,3 +388,45 @@ class DocumentUpload(models.Model):
 
     def __str__(self):
         return f"{self.original_filename} - {self.get_status_display()}"
+
+
+class TimeEntry(models.Model):
+    """
+    Represents a billable time entry for side jobs and service work.
+    Multiple entries can be billed together per payee.
+    """
+    payee = models.ForeignKey(
+        Payee,
+        on_delete=models.CASCADE,
+        related_name='time_entries',
+        help_text='Customer / Payment recipient'
+    )
+    date = models.DateField(help_text='Date of service')
+    duration_hours = models.DecimalField(
+        max_digits=4,
+        decimal_places=1,
+        help_text='Duration in hours (e.g. 0.5, 1.0, 2.3)'
+    )
+    activity = models.CharField(max_length=255, help_text='Description of activity')
+    hourly_rate = models.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        help_text='Hourly rate in €/hour'
+    )
+    billed = models.BooleanField(default=False, help_text='Whether this has been billed')
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-date', '-created_at']
+        verbose_name = 'Time Entry'
+        verbose_name_plural = 'Time Entries'
+    
+    @property
+    def amount(self):
+        """Calculate total amount for this time entry"""
+        return self.duration_hours * self.hourly_rate
+    
+    def __str__(self):
+        return f"{self.date} - {self.payee.name} - {self.duration_hours}h @ {self.hourly_rate}€/h"

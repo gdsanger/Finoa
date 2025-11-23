@@ -3,14 +3,16 @@ from django.http import JsonResponse, HttpResponse
 from django.views.decorators.http import require_http_methods
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from django.db.models import Count
+from django.db.models import Count, F, Sum, DecimalField, ExpressionWrapper, Min, Max
+from django.db import transaction
+from django.core.exceptions import ValidationError
 from datetime import date, timedelta
 from dateutil.relativedelta import relativedelta
 from decimal import Decimal
 import json
 import os
 
-from .models import Account, Booking, Category, RecurringBooking, Payee, DocumentUpload
+from .models import Account, Booking, Category, RecurringBooking, Payee, DocumentUpload, TimeEntry
 from .services import (
     calculate_actual_balance,
     calculate_forecast_balance,
@@ -799,3 +801,315 @@ def reconcile_balance(request, account_id):
     }
     
     return render(request, 'core/reconcile_balance_modal.html', context)
+
+
+@login_required
+def time_tracking(request):
+    """
+    Time tracking overview showing all time entries with filtering options.
+    """
+    # Get filter parameters
+    filter_status = request.GET.get('status', 'all')  # 'all', 'billed', 'unbilled'
+    filter_payee_id = request.GET.get('payee')
+    filter_year = request.GET.get('year')
+    filter_month = request.GET.get('month')
+    
+    # Start with all time entries
+    entries = TimeEntry.objects.select_related('payee').all()
+    
+    # Apply filters
+    if filter_status == 'billed':
+        entries = entries.filter(billed=True)
+    elif filter_status == 'unbilled':
+        entries = entries.filter(billed=False)
+    
+    if filter_payee_id:
+        entries = entries.filter(payee_id=filter_payee_id)
+    
+    if filter_year and filter_month:
+        try:
+            year = int(filter_year)
+            month = int(filter_month)
+            entries = entries.filter(date__year=year, date__month=month)
+        except ValueError:
+            pass
+    
+    # Get all active payees for filter dropdown
+    payees = Payee.objects.filter(is_active=True).order_by('name')
+    
+    # Calculate total for filtered entries using database aggregation
+    total_amount = entries.aggregate(
+        total=Sum(ExpressionWrapper(F('duration_hours') * F('hourly_rate'), output_field=DecimalField()))
+    )['total'] or Decimal('0.00')
+    
+    context = {
+        'entries': entries,
+        'payees': payees,
+        'filter_status': filter_status,
+        'filter_payee_id': filter_payee_id,
+        'filter_year': filter_year,
+        'filter_month': filter_month,
+        'total_amount': total_amount,
+        'today': date.today(),
+    }
+    
+    return render(request, 'core/time_tracking.html', context)
+
+
+@login_required
+@require_http_methods(['POST'])
+def time_entry_create(request):
+    """
+    Create a new time entry via HTMX.
+    """
+    try:
+        payee_id = request.POST.get('payee')
+        entry_date = request.POST.get('date')
+        duration = request.POST.get('duration_hours')
+        activity = request.POST.get('activity')
+        hourly_rate = request.POST.get('hourly_rate')
+        
+        # Validate required fields
+        if not all([payee_id, entry_date, duration, activity, hourly_rate]):
+            messages.error(request, 'Alle Felder sind erforderlich.')
+            return redirect('time_tracking')
+        
+        # Get payee
+        payee = get_object_or_404(Payee, id=payee_id, is_active=True)
+        
+        # Parse and validate date
+        parsed_date = date.fromisoformat(entry_date)
+        
+        # Create time entry
+        TimeEntry.objects.create(
+            payee=payee,
+            date=parsed_date,
+            duration_hours=Decimal(duration),
+            activity=activity,
+            hourly_rate=Decimal(hourly_rate),
+            billed=False
+        )
+        
+        messages.success(request, 'Zeiteintrag erfolgreich erstellt.')
+        return redirect('time_tracking')
+        
+    except (ValueError, ValidationError) as e:
+        messages.error(request, f'Fehler beim Erstellen: {str(e)}')
+        return redirect('time_tracking')
+
+
+@login_required
+@require_http_methods(['POST'])
+def time_entry_update(request, entry_id):
+    """
+    Update an existing time entry via HTMX.
+    """
+    entry = get_object_or_404(TimeEntry, id=entry_id)
+    
+    # Don't allow editing billed entries
+    if entry.billed:
+        messages.error(request, 'Abgerechnete Einträge können nicht bearbeitet werden.')
+        return redirect('time_tracking')
+    
+    try:
+        payee_id = request.POST.get('payee')
+        entry_date = request.POST.get('date')
+        duration = request.POST.get('duration_hours')
+        activity = request.POST.get('activity')
+        hourly_rate = request.POST.get('hourly_rate')
+        
+        # Validate required fields
+        if not all([payee_id, entry_date, duration, activity, hourly_rate]):
+            messages.error(request, 'Alle Felder sind erforderlich.')
+            return redirect('time_tracking')
+        
+        # Get payee
+        payee = get_object_or_404(Payee, id=payee_id, is_active=True)
+        
+        # Parse and validate date
+        parsed_date = date.fromisoformat(entry_date)
+        
+        # Update time entry
+        entry.payee = payee
+        entry.date = parsed_date
+        entry.duration_hours = Decimal(duration)
+        entry.activity = activity
+        entry.hourly_rate = Decimal(hourly_rate)
+        entry.save()
+        
+        messages.success(request, 'Zeiteintrag erfolgreich aktualisiert.')
+        return redirect('time_tracking')
+        
+    except (ValueError, ValidationError) as e:
+        messages.error(request, f'Fehler beim Aktualisieren: {str(e)}')
+        return redirect('time_tracking')
+
+
+@login_required
+@require_http_methods(['POST'])
+def time_entry_delete(request, entry_id):
+    """
+    Delete a time entry via HTMX.
+    """
+    entry = get_object_or_404(TimeEntry, id=entry_id)
+    
+    # Don't allow deleting billed entries
+    if entry.billed:
+        messages.error(request, 'Abgerechnete Einträge können nicht gelöscht werden.')
+        return redirect('time_tracking')
+    
+    entry.delete()
+    messages.success(request, 'Zeiteintrag erfolgreich gelöscht.')
+    return redirect('time_tracking')
+
+
+@login_required
+def time_entry_bulk_billing(request):
+    """
+    Bulk billing view for creating a collective booking from selected time entries.
+    
+    GET: Show billing form with selected entries
+    POST: Create booking and mark entries as billed
+    """
+    if request.method == 'POST':
+        try:
+            # Get selected entry IDs
+            selected_ids = request.POST.getlist('selected_entries')
+            if not selected_ids:
+                messages.error(request, 'Keine Einträge ausgewählt.')
+                return redirect('time_tracking')
+            
+            # Get entries
+            entries = TimeEntry.objects.filter(id__in=selected_ids, billed=False).select_related('payee')
+            
+            if not entries.exists():
+                messages.error(request, 'Keine gültigen Einträge gefunden.')
+                return redirect('time_tracking')
+            
+            # Validate: all entries must have same payee
+            payee_ids = entries.values_list('payee_id', flat=True).distinct()
+            if payee_ids.count() != 1:
+                messages.error(request, 'Sammelabrechnung ist nur für Einträge mit demselben Kunden (Payee) möglich.')
+                return redirect('time_tracking')
+            
+            payee = entries.first().payee
+            
+            # Get form data
+            account_id = request.POST.get('account')
+            category_id = request.POST.get('category')
+            billing_date_str = request.POST.get('billing_date')
+            
+            # Validate required fields
+            if not account_id or not category_id or not billing_date_str:
+                messages.error(request, 'Konto, Kategorie und Datum sind Pflichtfelder.')
+                # Return to form with data
+                return _show_billing_form(request, selected_ids)
+            
+            # Get account and category
+            account = get_object_or_404(Account, id=account_id, is_active=True)
+            category = get_object_or_404(Category, id=category_id)
+            billing_date = date.fromisoformat(billing_date_str)
+            
+            # Calculate totals and dates using database aggregation
+            aggregates = entries.aggregate(
+                total=Sum(ExpressionWrapper(F('duration_hours') * F('hourly_rate'), output_field=DecimalField())),
+                min_date=Min('date'),
+                max_date=Max('date')
+            )
+            total_amount = aggregates['total'] or Decimal('0.00')
+            start_date = aggregates['min_date']
+            end_date = aggregates['max_date']
+            
+            # Generate description
+            if start_date == end_date:
+                description = f"Stundenabrechnung vom {start_date.strftime('%d.%m.%Y')} bei {payee.name}"
+            else:
+                description = f"Stundenabrechnung vom {start_date.strftime('%d.%m.%Y')} bis {end_date.strftime('%d.%m.%Y')} bei {payee.name}"
+            
+            # Create booking and mark entries as billed in a transaction
+            with transaction.atomic():
+                booking = Booking.objects.create(
+                    account=account,
+                    amount=total_amount,
+                    booking_date=billing_date,
+                    status='POSTED',
+                    category=category,
+                    payee=payee,
+                    description=description
+                )
+                
+                # Mark all entries as billed
+                entries.update(billed=True)
+            
+            messages.success(
+                request,
+                f'Sammelabrechnung erfolgreich erstellt. {entries.count()} Einträge abgerechnet. Summe: {total_amount:.2f} €'
+            )
+            return redirect('time_tracking')
+            
+        except (ValueError, ValidationError) as e:
+            messages.error(request, f'Fehler beim Erstellen der Sammelabrechnung: {str(e)}')
+            return redirect('time_tracking')
+    
+    # GET request: Show form
+    selected_ids = request.GET.getlist('entries')
+    return _show_billing_form(request, selected_ids)
+
+
+def _show_billing_form(request, selected_ids):
+    """
+    Helper function to show the billing form.
+    """
+    if not selected_ids:
+        messages.error(request, 'Keine Einträge ausgewählt.')
+        return redirect('time_tracking')
+    
+    # Get entries
+    entries = TimeEntry.objects.filter(id__in=selected_ids, billed=False).select_related('payee')
+    
+    if not entries.exists():
+        messages.error(request, 'Keine gültigen Einträge gefunden.')
+        return redirect('time_tracking')
+    
+    # Validate: all entries must have same payee
+    payee_ids = entries.values_list('payee_id', flat=True).distinct()
+    if payee_ids.count() != 1:
+        messages.error(request, 'Sammelabrechnung ist nur für Einträge mit demselben Kunden (Payee) und Status "nicht abgerechnet" möglich.')
+        return redirect('time_tracking')
+    
+    payee = entries.first().payee
+    
+    # Calculate totals and dates using database aggregation
+    aggregates = entries.aggregate(
+        total=Sum(ExpressionWrapper(F('duration_hours') * F('hourly_rate'), output_field=DecimalField())),
+        min_date=Min('date'),
+        max_date=Max('date')
+    )
+    total_amount = aggregates['total'] or Decimal('0.00')
+    start_date = aggregates['min_date']
+    end_date = aggregates['max_date']
+    
+    # Generate default description
+    if start_date == end_date:
+        default_description = f"Stundenabrechnung vom {start_date.strftime('%d.%m.%Y')} bei {payee.name}"
+    else:
+        default_description = f"Stundenabrechnung vom {start_date.strftime('%d.%m.%Y')} bis {end_date.strftime('%d.%m.%Y')} bei {payee.name}"
+    
+    # Get accounts and categories
+    accounts = Account.objects.filter(is_active=True).order_by('name')
+    categories = Category.objects.all().order_by('name')
+    
+    context = {
+        'entries': entries,
+        'payee': payee,
+        'total_amount': total_amount,
+        'start_date': start_date,
+        'end_date': end_date,
+        'default_description': default_description,
+        'accounts': accounts,
+        'categories': categories,
+        'today': date.today(),
+        'selected_ids': selected_ids,
+    }
+    
+    return render(request, 'core/time_entry_billing.html', context)
