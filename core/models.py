@@ -430,3 +430,58 @@ class TimeEntry(models.Model):
     
     def __str__(self):
         return f"{self.date} - {self.payee.name} - {self.duration_hours}h @ {self.hourly_rate}€/h"
+
+
+class IgBrokerConfig(models.Model):
+    """
+    Configuration for IG Broker API integration.
+    Used for trading operations via IG Web API.
+    """
+    ACCOUNT_TYPE_CHOICES = [
+        ('DEMO', 'Demo'),
+        ('LIVE', 'Live'),
+    ]
+    
+    name = models.CharField(max_length=200, help_text='Configuration name for identification')
+    api_key = models.CharField(max_length=500, help_text='IG API key')
+    username = models.CharField(max_length=200, help_text='IG account username/identifier')
+    password = models.CharField(max_length=500, help_text='IG account password')
+    account_type = models.CharField(
+        max_length=10,
+        choices=ACCOUNT_TYPE_CHOICES,
+        default='DEMO',
+        help_text='Account type (Demo or Live)'
+    )
+    account_id = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text='Specific account ID (if multiple accounts)'
+    )
+    api_base_url = models.URLField(
+        blank=True,
+        help_text='Custom API base URL (optional, auto-detected based on account type)'
+    )
+    default_oil_epic = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text='Default EPIC for oil trading (e.g., CC.D.CL.UNC.IP for WTI Crude)'
+    )
+    timeout_seconds = models.PositiveIntegerField(
+        default=30,
+        help_text='Request timeout in seconds'
+    )
+    is_active = models.BooleanField(
+        default=False,
+        help_text='Whether this configuration is active'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-is_active', 'name']
+        verbose_name = 'IG Broker Configuration'
+        verbose_name_plural = 'IG Broker Configurations'
+    
+    def __str__(self):
+        status = '✓' if self.is_active else '✗'
+        return f"{status} {self.name} ({self.get_account_type_display()})"
