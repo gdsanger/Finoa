@@ -5,9 +5,11 @@ High-level broker service that uses IgApiClient to provide a clean,
 abstracted interface for trading operations via IG.
 """
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import List, Optional
+
+from dateutil import parser as dateutil_parser
 
 from .broker_service import BrokerService, BrokerError, AuthenticationError
 from .ig_api_client import IgApiClient, IgSession
@@ -156,7 +158,7 @@ class IgBrokerService(BrokerService):
                 margin_available=Decimal(str(balance_data.get("available", 0))),
                 unrealized_pnl=Decimal(str(balance_data.get("profitLoss", 0))),
                 currency=account_data.get("currency", "EUR"),
-                timestamp=datetime.now(),
+                timestamp=datetime.now(timezone.utc),
             )
         except BrokerError:
             raise
@@ -201,7 +203,7 @@ class IgBrokerService(BrokerService):
                     take_profit=Decimal(str(position_data.get("limitLevel"))) if position_data.get("limitLevel") else None,
                     unrealized_pnl=Decimal(str(position_data.get("profit", 0))),
                     currency=position_data.get("currency", "EUR"),
-                    created_at=datetime.fromisoformat(position_data["createdDateUTC"].replace("Z", "+00:00")) if position_data.get("createdDateUTC") else None,
+                    created_at=dateutil_parser.parse(position_data["createdDateUTC"]) if position_data.get("createdDateUTC") else None,
                 )
                 positions.append(position)
             
@@ -244,7 +246,7 @@ class IgBrokerService(BrokerService):
                 low=Decimal(str(snapshot.get("low"))) if snapshot.get("low") else None,
                 change=Decimal(str(snapshot.get("netChange"))) if snapshot.get("netChange") else None,
                 change_percent=Decimal(str(snapshot.get("percentageChange"))) if snapshot.get("percentageChange") else None,
-                timestamp=datetime.now(),
+                timestamp=datetime.now(timezone.utc),
             )
         except BrokerError:
             raise

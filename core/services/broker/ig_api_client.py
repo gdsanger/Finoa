@@ -8,7 +8,7 @@ Handles low-level communication with IG Web API including:
 """
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional, Dict, Any, List
 import requests
@@ -39,7 +39,7 @@ class IgSession:
 
     def __post_init__(self):
         if self.created_at is None:
-            self.created_at = datetime.now()
+            self.created_at = datetime.now(timezone.utc)
 
 
 class IgApiClient:

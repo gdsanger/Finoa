@@ -5,7 +5,7 @@ These models represent broker-related entities and are independent of the
 specific broker implementation (IG, etc.).
 """
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from enum import Enum
 from typing import Optional
@@ -71,7 +71,7 @@ class AccountState:
     def __post_init__(self):
         """Ensure timestamp is set and values are Decimal."""
         if self.timestamp is None:
-            self.timestamp = datetime.now()
+            self.timestamp = datetime.now(timezone.utc)
         # Convert numeric values to Decimal if needed
         for field_name in ['balance', 'available', 'equity', 'margin_used',
                            'margin_available', 'unrealized_pnl', 'realized_pnl']:
@@ -209,7 +209,7 @@ class OrderResult:
     def __post_init__(self):
         """Ensure timestamp is set."""
         if self.timestamp is None:
-            self.timestamp = datetime.now()
+            self.timestamp = datetime.now(timezone.utc)
         if isinstance(self.status, str):
             self.status = OrderStatus(self.status)
 
@@ -259,7 +259,7 @@ class SymbolPrice:
         if self.change_percent is not None and not isinstance(self.change_percent, Decimal):
             self.change_percent = Decimal(str(self.change_percent))
         if self.timestamp is None:
-            self.timestamp = datetime.now()
+            self.timestamp = datetime.now(timezone.utc)
 
     @property
     def mid_price(self) -> Decimal:
