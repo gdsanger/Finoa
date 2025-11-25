@@ -26,6 +26,8 @@ from .ig_broker_service import IgBrokerService
 
 from .config import get_active_ig_broker_config, create_ig_broker_service
 
+from .ig_market_state_provider import IGMarketStateProvider
+
 __all__ = [
     # Data models
     'AccountState',
@@ -49,4 +51,6 @@ __all__ = [
     # Config utilities
     'get_active_ig_broker_config',
     'create_ig_broker_service',
+    # Market State Provider
+    'IGMarketStateProvider',
 ]
