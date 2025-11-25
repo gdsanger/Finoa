@@ -344,6 +344,113 @@
         opacity: 0.5;
     }
     
+    /* Account Info Card */
+    .account-info-card {
+        background-color: var(--fiona-card-dark);
+        border: 1px solid var(--fiona-border);
+        border-radius: 12px;
+        padding: 1rem 1.25rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    .account-info-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.75rem;
+    }
+    
+    .account-info-header h5 {
+        margin: 0;
+        color: var(--fiona-text-light);
+        font-size: 0.875rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .account-info-status {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.75rem;
+    }
+    
+    .account-info-status.connected {
+        color: var(--signal-long);
+    }
+    
+    .account-info-status.disconnected {
+        color: var(--signal-short);
+    }
+    
+    .account-info-status.loading {
+        color: var(--fiona-text-muted);
+    }
+    
+    .account-info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 1rem;
+    }
+    
+    .account-info-item {
+        text-align: center;
+        padding: 0.5rem;
+        background-color: rgba(0, 0, 0, 0.2);
+        border-radius: 8px;
+    }
+    
+    .account-info-value {
+        font-size: 1.25rem;
+        font-weight: 700;
+        font-family: 'Roboto Mono', monospace;
+        color: var(--fiona-text-light);
+    }
+    
+    .account-info-value.positive {
+        color: var(--signal-long);
+    }
+    
+    .account-info-value.negative {
+        color: var(--signal-short);
+    }
+    
+    .account-info-label {
+        font-size: 0.75rem;
+        color: var(--fiona-text-muted);
+        text-transform: uppercase;
+        margin-top: 0.25rem;
+    }
+    
+    .account-info-error {
+        color: var(--signal-short);
+        font-size: 0.875rem;
+        text-align: center;
+        padding: 1rem;
+    }
+    
+    .refresh-btn {
+        background: transparent;
+        border: none;
+        color: var(--fiona-text-muted);
+        cursor: pointer;
+        padding: 0.25rem;
+        transition: color 0.2s;
+    }
+    
+    .refresh-btn:hover {
+        color: var(--fiona-text-light);
+    }
+    
+    .refresh-btn.spinning i {
+        animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+    
     /* Responsive */
     @media (max-width: 768px) {
         .signal-card-header {
@@ -357,6 +464,10 @@
         }
         
         .stats-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+        
+        .account-info-grid {
             grid-template-columns: repeat(2, 1fr);
         }
     }
@@ -378,6 +489,46 @@
                 <a href="{% url 'trade_history' %}" class="btn btn-sm btn-outline-light">
                     <i class="bi bi-clock-history"></i> Historie
                 </a>
+            </div>
+        </div>
+        
+        <!-- Account Info Card -->
+        <div class="account-info-card" id="account-info">
+            <div class="account-info-header">
+                <h5><i class="bi bi-bank"></i> Konto &amp; Margin</h5>
+                <div class="d-flex align-items-center gap-2">
+                    <span id="account-status" class="account-info-status loading">
+                        <i class="bi bi-circle-fill"></i>
+                        <span>Lädt...</span>
+                    </span>
+                    <button class="refresh-btn" id="refresh-account-btn" onclick="refreshAccountState()" title="Aktualisieren">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
+            </div>
+            <div id="account-info-content">
+                <div class="account-info-grid">
+                    <div class="account-info-item">
+                        <div class="account-info-value" id="account-balance">--</div>
+                        <div class="account-info-label">Kontostand</div>
+                    </div>
+                    <div class="account-info-item">
+                        <div class="account-info-value" id="account-available">--</div>
+                        <div class="account-info-label">Verfügbar</div>
+                    </div>
+                    <div class="account-info-item">
+                        <div class="account-info-value" id="account-margin-used">--</div>
+                        <div class="account-info-label">Margin (genutzt)</div>
+                    </div>
+                    <div class="account-info-item">
+                        <div class="account-info-value" id="account-margin-available">--</div>
+                        <div class="account-info-label">Margin (verfügbar)</div>
+                    </div>
+                    <div class="account-info-item">
+                        <div class="account-info-value" id="account-pnl">--</div>
+                        <div class="account-info-label">Unrealisiert P&amp;L</div>
+                    </div>
+                </div>
             </div>
         </div>
         
@@ -579,5 +730,184 @@
             alert('Ein Fehler ist aufgetreten.');
         });
     }
+    
+    // Account state auto-refresh functionality
+    let accountRefreshInterval = null;
+    const REFRESH_INTERVAL = 30000; // 30 seconds
+    
+    function formatCurrency(value, currency) {
+        const num = parseFloat(value);
+        if (isNaN(num)) return '--';
+        return new Intl.NumberFormat('de-DE', {
+            style: 'currency',
+            currency: currency || 'EUR',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }).format(num);
+    }
+    
+    function updateAccountStatus(status, text) {
+        const statusEl = document.getElementById('account-status');
+        if (!statusEl) return;
+        
+        statusEl.className = 'account-info-status ' + status;
+        statusEl.innerHTML = '<i class="bi bi-circle-fill"></i> <span>' + text + '</span>';
+    }
+    
+    function setRefreshButtonLoading(loading) {
+        const btn = document.getElementById('refresh-account-btn');
+        if (!btn) return;
+        
+        if (loading) {
+            btn.classList.add('spinning');
+            btn.disabled = true;
+        } else {
+            btn.classList.remove('spinning');
+            btn.disabled = false;
+        }
+    }
+    
+    function updateAccountInfo(data) {
+        const currency = data.currency || 'EUR';
+        
+        // Update balance
+        const balanceEl = document.getElementById('account-balance');
+        if (balanceEl) {
+            balanceEl.textContent = formatCurrency(data.balance, currency);
+        }
+        
+        // Update available
+        const availableEl = document.getElementById('account-available');
+        if (availableEl) {
+            availableEl.textContent = formatCurrency(data.available, currency);
+        }
+        
+        // Update margin used
+        const marginUsedEl = document.getElementById('account-margin-used');
+        if (marginUsedEl) {
+            marginUsedEl.textContent = formatCurrency(data.margin_used, currency);
+        }
+        
+        // Update margin available
+        const marginAvailableEl = document.getElementById('account-margin-available');
+        if (marginAvailableEl) {
+            marginAvailableEl.textContent = formatCurrency(data.margin_available, currency);
+        }
+        
+        // Update P&L with color coding
+        const pnlEl = document.getElementById('account-pnl');
+        if (pnlEl) {
+            const pnlValue = parseFloat(data.unrealized_pnl);
+            pnlEl.textContent = formatCurrency(data.unrealized_pnl, currency);
+            pnlEl.classList.remove('positive', 'negative');
+            if (!isNaN(pnlValue)) {
+                if (pnlValue > 0) {
+                    pnlEl.classList.add('positive');
+                } else if (pnlValue < 0) {
+                    pnlEl.classList.add('negative');
+                }
+            }
+        }
+    }
+    
+    function showAccountError(errorMessage) {
+        const contentEl = document.getElementById('account-info-content');
+        if (contentEl) {
+            contentEl.innerHTML = '<div class="account-info-error"><i class="bi bi-exclamation-triangle"></i> ' + errorMessage + '</div>';
+        }
+    }
+    
+    // Account info grid template - used for both initial render and reset
+    const ACCOUNT_INFO_GRID_TEMPLATE = `
+        <div class="account-info-grid">
+            <div class="account-info-item">
+                <div class="account-info-value" id="account-balance">--</div>
+                <div class="account-info-label">Kontostand</div>
+            </div>
+            <div class="account-info-item">
+                <div class="account-info-value" id="account-available">--</div>
+                <div class="account-info-label">Verfügbar</div>
+            </div>
+            <div class="account-info-item">
+                <div class="account-info-value" id="account-margin-used">--</div>
+                <div class="account-info-label">Margin (genutzt)</div>
+            </div>
+            <div class="account-info-item">
+                <div class="account-info-value" id="account-margin-available">--</div>
+                <div class="account-info-label">Margin (verfügbar)</div>
+            </div>
+            <div class="account-info-item">
+                <div class="account-info-value" id="account-pnl">--</div>
+                <div class="account-info-label">Unrealisiert P&L</div>
+            </div>
+        </div>
+    `;
+    
+    function resetAccountInfoGrid() {
+        const contentEl = document.getElementById('account-info-content');
+        if (contentEl) {
+            contentEl.innerHTML = ACCOUNT_INFO_GRID_TEMPLATE;
+        }
+    }
+    
+    function refreshAccountState() {
+        updateAccountStatus('loading', 'Lädt...');
+        setRefreshButtonLoading(true);
+        resetAccountInfoGrid();
+        
+        fetch('/fiona/api/account-state/', {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        })
+        .then(response => response.json())
+        .then(data => {
+            setRefreshButtonLoading(false);
+            
+            if (data.success) {
+                updateAccountStatus('connected', 'Verbunden');
+                updateAccountInfo(data.data);
+            } else {
+                updateAccountStatus('disconnected', 'Nicht verbunden');
+                showAccountError(data.error || 'Verbindung fehlgeschlagen');
+            }
+        })
+        .catch(error => {
+            console.error('Account state error:', error);
+            setRefreshButtonLoading(false);
+            updateAccountStatus('disconnected', 'Fehler');
+            showAccountError('Verbindungsfehler');
+        });
+    }
+    
+    function startAutoRefresh() {
+        // Initial load
+        refreshAccountState();
+        
+        // Set up interval for auto-refresh
+        accountRefreshInterval = setInterval(refreshAccountState, REFRESH_INTERVAL);
+    }
+    
+    function stopAutoRefresh() {
+        if (accountRefreshInterval) {
+            clearInterval(accountRefreshInterval);
+            accountRefreshInterval = null;
+        }
+    }
+    
+    // Start auto-refresh when page loads
+    document.addEventListener('DOMContentLoaded', function() {
+        startAutoRefresh();
+    });
+    
+    // Stop auto-refresh when page is hidden to save resources
+    document.addEventListener('visibilitychange', function() {
+        if (document.hidden) {
+            stopAutoRefresh();
+        } else {
+            startAutoRefresh();
+        }
+    });
 </script>
 {% endblock %}

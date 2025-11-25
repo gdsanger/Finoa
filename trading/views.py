@@ -1,11 +1,17 @@
+import logging
+
 from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
+from django.core.exceptions import ImproperlyConfigured
 from django.utils import timezone
 
 from .models import Signal, Trade
+from core.services.broker import create_ig_broker_service, BrokerError, AuthenticationError
+
+logger = logging.getLogger(__name__)
 
 
 @login_required
@@ -209,3 +215,80 @@ def api_signal_detail(request, signal_id):
         return JsonResponse(data)
     except Signal.DoesNotExist:
         return JsonResponse({'error': 'Signal nicht gefunden.'}, status=404)
+
+
+@login_required
+def api_account_state(request):
+    """
+    GET /api/account-state - Return current account state (balance, margin) from IG Broker.
+    
+    Returns JSON with account information including:
+    - balance: Current account balance
+    - available: Available funds for trading
+    - equity: Total equity including open positions
+    - margin_used: Margin currently in use
+    - margin_available: Available margin
+    - unrealized_pnl: Unrealized profit/loss
+    - currency: Account currency
+    - account_name: Account name
+    - account_id: Account ID
+    - timestamp: When the data was fetched
+    - connected: Whether the broker is connected
+    """
+    try:
+        # Create and connect to broker
+        broker = create_ig_broker_service()
+        broker.connect()
+        
+        try:
+            # Get account state
+            account_state = broker.get_account_state()
+            
+            return JsonResponse({
+                'success': True,
+                'data': {
+                    'account_id': account_state.account_id,
+                    'account_name': account_state.account_name,
+                    'balance': str(account_state.balance),
+                    'available': str(account_state.available),
+                    'equity': str(account_state.equity),
+                    'margin_used': str(account_state.margin_used),
+                    'margin_available': str(account_state.margin_available),
+                    'unrealized_pnl': str(account_state.unrealized_pnl),
+                    'currency': account_state.currency,
+                    'timestamp': account_state.timestamp.isoformat() if account_state.timestamp else None,
+                },
+                'connected': True,
+            })
+        finally:
+            # Always disconnect
+            broker.disconnect()
+            
+    except ImproperlyConfigured as e:
+        logger.warning(f"IG Broker not configured: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': 'Broker nicht konfiguriert. Bitte IG Broker im Admin-Bereich konfigurieren.',
+            'connected': False,
+        }, status=503)
+    except AuthenticationError as e:
+        logger.error(f"IG Broker authentication failed: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': 'Broker-Authentifizierung fehlgeschlagen.',
+            'connected': False,
+        }, status=401)
+    except (BrokerError, ConnectionError) as e:
+        logger.error(f"IG Broker error: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': f'Broker-Fehler: {str(e)}',
+            'connected': False,
+        }, status=503)
+    except Exception as e:
+        logger.error(f"Unexpected error fetching account state: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': 'Ein unerwarteter Fehler ist aufgetreten.',
+            'connected': False,
+        }, status=500)

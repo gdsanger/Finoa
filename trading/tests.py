@@ -147,6 +147,17 @@ class SignalDashboardViewTest(TestCase):
         response = self.client.get('/fiona/signals/')
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Keine aktiven Signale')
+    
+    def test_signal_dashboard_shows_account_info_section(self):
+        """Test that dashboard shows account info section with balance and margin."""
+        response = self.client.get('/fiona/signals/')
+        self.assertEqual(response.status_code, 200)
+        # Check for account info card elements
+        self.assertContains(response, 'Konto &amp; Margin')
+        self.assertContains(response, 'Kontostand')
+        self.assertContains(response, 'Margin (genutzt)')
+        self.assertContains(response, 'Margin (verfügbar)')
+        self.assertContains(response, 'account-info')
 
 
 class SignalDetailViewTest(TestCase):
@@ -314,4 +325,25 @@ class APIEndpointsTest(TestCase):
         
         data = response.json()
         self.assertEqual(data['setup_type'], 'BREAKOUT')
+    
+    def test_api_account_state_returns_json(self):
+        """Test that account state API returns JSON when broker not configured."""
+        response = self.client.get('/fiona/api/account-state/')
+        # Should return 503 when broker is not configured
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response['Content-Type'], 'application/json')
+        
+        data = response.json()
+        self.assertIn('success', data)
+        self.assertFalse(data['success'])
+        self.assertIn('error', data)
+        self.assertIn('connected', data)
+        self.assertFalse(data['connected'])
+    
+    def test_api_account_state_requires_login(self):
+        """Test that account state API requires login."""
+        self.client.logout()
+        response = self.client.get('/fiona/api/account-state/')
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.url.startswith('/login/'))
 
