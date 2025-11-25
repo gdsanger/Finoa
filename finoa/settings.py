@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.0/ref/settings/
 """
 
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -139,7 +140,6 @@ LOGOUT_REDIRECT_URL = 'login'
 # Weaviate configuration
 # Set WEAVIATE_URL to connect to a real Weaviate instance
 # If not set or empty, InMemoryWeaviateClient is used
-import os
 WEAVIATE_URL = os.environ.get('WEAVIATE_URL', '')
 WEAVIATE_API_KEY = os.environ.get('WEAVIATE_API_KEY', '')
 WEAVIATE_GRPC_PORT = int(os.environ.get('WEAVIATE_GRPC_PORT', '50051'))

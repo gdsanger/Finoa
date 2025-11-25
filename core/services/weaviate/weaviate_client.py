@@ -140,6 +140,7 @@ class RealWeaviateClient:
                 return int(port_str)
             except ValueError:
                 pass
+        # Default to 443 for HTTPS, 8080 for HTTP (Weaviate's default port)
         return 443 if self._is_https() else 8080
     
     def _get_grpc_port(self) -> int:
@@ -346,16 +347,25 @@ class RealWeaviateClient:
         Note: In Weaviate v4, properties are auto-created when data is inserted.
         This method creates the collections with their descriptions. Cross-references
         are set up during data insertion operations.
+        
+        Raises:
+            ConnectionError: If not connected to Weaviate.
+            RuntimeError: If schema initialization fails.
         """
         self._ensure_connected()
         
         from .weaviate_service import WeaviateService
         
         schema = WeaviateService.get_schema_definition()
-        existing_collections = {
-            c.name for c in self._client.collections.list_all().values()
-        }
+        try:
+            existing_collections = {
+                c.name for c in self._client.collections.list_all().values()
+            }
+        except Exception as e:
+            logger.error(f"Failed to list existing collections: {e}")
+            raise RuntimeError(f"Failed to list Weaviate collections: {e}") from e
         
+        failed_collections = []
         for class_def in schema['classes']:
             class_name = class_def['class']
             
@@ -363,14 +373,23 @@ class RealWeaviateClient:
                 logger.debug(f"Collection {class_name} already exists")
                 continue
             
-            logger.info(f"Creating collection {class_name}")
-            
-            # Create collection with description
-            # Note: In Weaviate v4, properties are auto-created on first insert.
-            # References are handled through the add_reference method.
-            self._client.collections.create(
-                name=class_name,
-                description=class_def.get('description', ''),
+            try:
+                logger.info(f"Creating collection {class_name}")
+                
+                # Create collection with description
+                # Note: In Weaviate v4, properties are auto-created on first insert.
+                # References are handled through the add_reference method.
+                self._client.collections.create(
+                    name=class_name,
+                    description=class_def.get('description', ''),
+                )
+            except Exception as e:
+                logger.error(f"Failed to create collection {class_name}: {e}")
+                failed_collections.append(class_name)
+        
+        if failed_collections:
+            raise RuntimeError(
+                f"Failed to create collections: {', '.join(failed_collections)}"
             )
 
 
@@ -390,6 +409,9 @@ def get_weaviate_client(
         
     Returns:
         Weaviate client instance (Real or InMemory).
+        
+    Raises:
+        ConnectionError: If real client is requested but connection fails.
     """
     from .weaviate_service import InMemoryWeaviateClient
     
@@ -406,7 +428,16 @@ def get_weaviate_client(
             return InMemoryWeaviateClient()
         
         client = RealWeaviateClient(url=url, api_key=api_key)
-        client.connect()
-        return client
+        try:
+            client.connect()
+            return client
+        except ConnectionError as e:
+            logger.error(f"Failed to connect to Weaviate: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error connecting to Weaviate: {e}")
+            raise ConnectionError(
+                f"Failed to connect to Weaviate at {url or 'configured URL'}: {e}"
+            ) from e
     else:
         return InMemoryWeaviateClient()
