@@ -34,6 +34,9 @@ class Account(models.Model):
         ('loan', 'Darlehen'),
         ('liability', 'Verbindlichkeit'),
         ('receivable', 'Forderung'),
+        ('depot', 'Wertpapierdepot'),
+        ('savings', 'Sparen'),
+        ('insurance', 'Versicherungen'),
     ]
     
     name = models.CharField(max_length=200)
