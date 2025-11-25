@@ -9,6 +9,9 @@ from datetime import datetime
 from enum import Enum
 from typing import Literal, Optional
 
+# Current schema version for all models
+SCHEMA_VERSION = "1.0"
+
 
 class SetupKind(str, Enum):
     """Type of trading setup identified by the Strategy Engine."""
@@ -171,6 +174,7 @@ class SetupCandidate:
         breakout: Breakout context (if setup_kind is BREAKOUT).
         eia: EIA context (if setup_kind is EIA_*).
         quality_flags: Additional quality indicators.
+        schema_version: Schema version for compatibility.
     """
     id: str
     created_at: datetime
@@ -182,6 +186,7 @@ class SetupCandidate:
     breakout: Optional[BreakoutContext] = None
     eia: Optional[EiaContext] = None
     quality_flags: Optional[dict] = field(default_factory=dict)
+    schema_version: str = SCHEMA_VERSION
 
     def to_dict(self) -> dict:
         """Convert to dictionary for serialization."""
@@ -196,4 +201,70 @@ class SetupCandidate:
             'breakout': self.breakout.to_dict() if self.breakout else None,
             'eia': self.eia.to_dict() if self.eia else None,
             'quality_flags': self.quality_flags,
+            'schema_version': self.schema_version,
         }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'SetupCandidate':
+        """
+        Create instance from dictionary.
+        
+        Args:
+            data: Dictionary with field values.
+            
+        Returns:
+            SetupCandidate: New instance.
+        """
+        created_at = data.get('created_at')
+        if isinstance(created_at, str):
+            created_at = datetime.fromisoformat(created_at)
+        
+        setup_kind = data.get('setup_kind')
+        if isinstance(setup_kind, str):
+            setup_kind = SetupKind(setup_kind)
+        
+        phase = data.get('phase')
+        if isinstance(phase, str):
+            phase = SessionPhase(phase)
+        
+        breakout = None
+        if data.get('breakout'):
+            breakout_data = data['breakout']
+            breakout = BreakoutContext(
+                range_high=breakout_data['range_high'],
+                range_low=breakout_data['range_low'],
+                range_height=breakout_data['range_height'],
+                trigger_price=breakout_data['trigger_price'],
+                direction=breakout_data['direction'],
+                atr=breakout_data.get('atr'),
+                vwap=breakout_data.get('vwap'),
+                volume_spike=breakout_data.get('volume_spike'),
+            )
+        
+        eia = None
+        if data.get('eia'):
+            eia_data = data['eia']
+            eia_timestamp = eia_data.get('eia_timestamp')
+            if isinstance(eia_timestamp, str):
+                eia_timestamp = datetime.fromisoformat(eia_timestamp)
+            eia = EiaContext(
+                eia_timestamp=eia_timestamp,
+                first_impulse_direction=eia_data.get('first_impulse_direction'),
+                impulse_range_high=eia_data.get('impulse_range_high'),
+                impulse_range_low=eia_data.get('impulse_range_low'),
+                atr=eia_data.get('atr'),
+            )
+        
+        return cls(
+            id=data['id'],
+            created_at=created_at,
+            epic=data['epic'],
+            setup_kind=setup_kind,
+            phase=phase,
+            reference_price=data['reference_price'],
+            direction=data['direction'],
+            breakout=breakout,
+            eia=eia,
+            quality_flags=data.get('quality_flags', {}),
+            schema_version=data.get('schema_version', SCHEMA_VERSION),
+        )
