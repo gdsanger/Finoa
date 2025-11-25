@@ -142,3 +142,4 @@ LOGOUT_REDIRECT_URL = 'login'
 import os
 WEAVIATE_URL = os.environ.get('WEAVIATE_URL', '')
 WEAVIATE_API_KEY = os.environ.get('WEAVIATE_API_KEY', '')
+WEAVIATE_GRPC_PORT = int(os.environ.get('WEAVIATE_GRPC_PORT', '50051'))

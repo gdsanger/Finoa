@@ -1096,6 +1096,22 @@ class RealWeaviateClientTest(TestCase):
         self.assertEqual(client._api_key, 'test-key')
         self.assertFalse(client.is_connected)
     
+    def test_real_client_grpc_port_configuration(self):
+        """Test RealWeaviateClient gRPC port configuration."""
+        from core.services.weaviate import RealWeaviateClient
+        
+        # With custom gRPC port
+        client = RealWeaviateClient(
+            url='http://localhost:8080',
+            grpc_port=50052
+        )
+        
+        self.assertEqual(client._get_grpc_port(), 50052)
+        
+        # Default gRPC port
+        client2 = RealWeaviateClient(url='http://localhost:8080')
+        self.assertEqual(client2._get_grpc_port(), 50051)
+    
     def test_get_weaviate_client_inmemory_fallback(self):
         """Test get_weaviate_client returns InMemory when no URL configured."""
         from core.services.weaviate import get_weaviate_client, InMemoryWeaviateClient

@@ -9,7 +9,6 @@ from typing import Any, Optional
 
 try:
     import weaviate
-    from weaviate.classes.config import Configure
     from weaviate.classes.query import Filter
     WEAVIATE_AVAILABLE = True
 except ImportError:
@@ -42,7 +41,8 @@ class RealWeaviateClient:
     def __init__(
         self,
         url: Optional[str] = None,
-        api_key: Optional[str] = None
+        api_key: Optional[str] = None,
+        grpc_port: Optional[int] = None
     ):
         """
         Initialize the Weaviate client.
@@ -51,6 +51,8 @@ class RealWeaviateClient:
             url: Weaviate URL. If not provided, uses WEAVIATE_URL from settings.
             api_key: API key for authentication. If not provided, uses
                      WEAVIATE_API_KEY from settings.
+            grpc_port: gRPC port for Weaviate. If not provided, uses
+                       WEAVIATE_GRPC_PORT from settings, or defaults to 50051.
         """
         if not WEAVIATE_AVAILABLE:
             raise ImportError(
@@ -60,6 +62,7 @@ class RealWeaviateClient:
         
         self._url = url or getattr(settings, 'WEAVIATE_URL', '')
         self._api_key = api_key or getattr(settings, 'WEAVIATE_API_KEY', '')
+        self._grpc_port = grpc_port or getattr(settings, 'WEAVIATE_GRPC_PORT', 50051)
         self._client: Optional["weaviate.WeaviateClient"] = None
     
     @property
@@ -140,9 +143,8 @@ class RealWeaviateClient:
         return 443 if self._is_https() else 8080
     
     def _get_grpc_port(self) -> int:
-        """Get gRPC port (default: 50051)."""
-        # Standard Weaviate gRPC port
-        return 50051
+        """Get gRPC port from configuration."""
+        return self._grpc_port
     
     def _is_https(self) -> bool:
         """Check if URL uses HTTPS."""
@@ -340,6 +342,10 @@ class RealWeaviateClient:
         
         Creates collections if they don't exist based on the schema
         definition from WeaviateService.
+        
+        Note: In Weaviate v4, properties are auto-created when data is inserted.
+        This method creates the collections with their descriptions. Cross-references
+        are set up during data insertion operations.
         """
         self._ensure_connected()
         
@@ -358,6 +364,10 @@ class RealWeaviateClient:
                 continue
             
             logger.info(f"Creating collection {class_name}")
+            
+            # Create collection with description
+            # Note: In Weaviate v4, properties are auto-created on first insert.
+            # References are handled through the add_reference method.
             self._client.collections.create(
                 name=class_name,
                 description=class_def.get('description', ''),
