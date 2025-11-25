@@ -235,9 +235,9 @@ class IgApiClient:
             cst = response.headers.get("CST")
             security_token = response.headers.get("X-SECURITY-TOKEN")
             
-            # If tokens not in headers, try to get from response body (OAuth tokens)
+            # If BOTH tokens not in headers, try to get from response body (OAuth tokens)
             # IG API V3 can return oauthToken in body for OAuth flow
-            if not cst or not security_token:
+            if not cst and not security_token:
                 oauth_token = body.get("oauthToken", {})
                 if oauth_token:
                     cst = oauth_token.get("access_token")

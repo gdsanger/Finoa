@@ -470,6 +470,37 @@ class IgApiClientTest(TestCase):
         
         self.assertIn("session tokens", str(context.exception))
 
+    @patch('core.services.broker.ig_api_client.requests.post')
+    def test_login_partial_header_tokens_fails(self, mock_post):
+        """Test login fails when only one token is in headers (doesn't fallback to OAuth)."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {
+            "CST": "header-cst-token",  # Only CST, no X-SECURITY-TOKEN
+        }
+        mock_response.json.return_value = {
+            "currentAccountId": "ACC999",
+            "clientId": "CLIENT999",
+            "oauthToken": {
+                "access_token": "oauth-access-token",
+                "refresh_token": "oauth-refresh-token",
+            }
+        }
+        mock_post.return_value = mock_response
+        
+        client = IgApiClient(
+            api_key="test-key",
+            username="test-user",
+            password="test-pass",
+        )
+        
+        # Should fail because headers have partial tokens (CST but not X-SECURITY-TOKEN)
+        # and OAuth should not be used as a fallback in this case
+        with self.assertRaises(AuthenticationError) as context:
+            client.login()
+        
+        self.assertIn("session tokens", str(context.exception))
+
 
 class IgBrokerServiceTest(TestCase):
     """Tests for IgBrokerService."""
