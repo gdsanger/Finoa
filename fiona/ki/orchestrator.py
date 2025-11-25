@@ -186,6 +186,8 @@ class KiOrchestrator:
         """
         Store all results in Weaviate if service is available.
         
+        Converts KI layer models to Weaviate models and persists them.
+        
         Args:
             local_result: LocalLLMResult to store.
             reflection_result: ReflectionResult to store.
@@ -195,13 +197,75 @@ class KiOrchestrator:
             return
         
         try:
-            # Note: The existing WeaviateService uses different model classes
-            # This would need adaptation to work with existing models
-            # For now, we'll use a simplified approach
+            # Import Weaviate models
+            from core.services.weaviate.models import (
+                LocalLLMResult as WeaviateLocalLLMResult,
+                ReflectionResult as WeaviateReflectionResult,
+                KiEvaluationResult as WeaviateKiEvaluationResult,
+                LLMProvider,
+            )
+            
+            # Convert and store LocalLLMResult
+            weaviate_llm = WeaviateLocalLLMResult(
+                id=local_result.id,
+                created_at=local_result.created_at,
+                setup_id=local_result.setup_id,
+                provider=LLMProvider.LOCAL,
+                model=local_result.model or "",
+                prompt="",  # Not storing full prompt
+                response=local_result.reason or "",
+                recommendation=local_result.direction if local_result.direction in ("BUY", "SELL", "HOLD") else "HOLD",
+                confidence=0.0,  # LocalLLMResult doesn't have confidence
+                reasoning=local_result.reason,
+                tokens_used=local_result.tokens_used,
+                latency_ms=local_result.latency_ms,
+            )
+            self._weaviate_service.store_llm_result(weaviate_llm)
+            
+            # Convert and store ReflectionResult
+            weaviate_reflection = WeaviateReflectionResult(
+                id=reflection_result.id,
+                created_at=reflection_result.created_at,
+                setup_id=reflection_result.setup_id,
+                reflection_type="PRE_TRADE",
+                outcome=None,
+                trade_id=None,
+                llm_result_id=local_result.id,
+                lessons_learned=[],
+                improvements=reflection_result.corrections_made or [],
+                confidence_adjustment=0.0,
+                notes=reflection_result.reason,
+            )
+            self._weaviate_service.store_reflection_result(weaviate_reflection)
+            
+            # Convert and store KiEvaluationResult
+            decision = "EXECUTE" if ki_result.signal_strength == "strong_signal" else (
+                "WAIT" if ki_result.signal_strength == "weak_signal" else "SKIP"
+            )
+            weaviate_ki = WeaviateKiEvaluationResult(
+                id=ki_result.id,
+                created_at=ki_result.timestamp,
+                setup_id=ki_result.setup_id,
+                llm_result_ids=[local_result.id],
+                final_decision=decision,
+                decision_confidence=ki_result.reflection_score / 100.0,
+                risk_score=0.0,
+                position_size_suggestion=ki_result.final_size,
+                entry_price_target=None,
+                stop_loss_target=ki_result.final_sl,
+                take_profit_target=ki_result.final_tp,
+                factors={},
+                warnings=[],
+            )
+            self._weaviate_service.store_ki_evaluation(weaviate_ki)
+            
+        except ImportError:
+            # Weaviate models not available - skip storage
             pass
         except Exception as e:
             # Log error but don't fail the evaluation
-            print(f"Warning: Failed to store results in Weaviate: {e}")
+            import logging
+            logging.warning(f"Failed to store results in Weaviate: {e}")
     
     def evaluate(self, setup: Any) -> KiEvaluationResult:
         """

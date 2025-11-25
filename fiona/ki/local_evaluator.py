@@ -5,14 +5,24 @@ Performs initial evaluation of SetupCandidates using a local LLM
 (Gemma 2 12B / Qwen 14B / Llama).
 """
 import json
-import os
 import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from .models.llm_result import LocalLLMResult
+
+
+# Try to import KIGate client at module level
+_kigate_available = False
+_execute_agent = None
+try:
+    from core.services.kigate_client import execute_agent as _execute_agent_import
+    _execute_agent = _execute_agent_import
+    _kigate_available = True
+except ImportError:
+    pass
 
 
 # Path to prompt template
@@ -208,41 +218,39 @@ Respond with JSON only: {{"direction": "LONG"|"SHORT"|"NO_TRADE", "sl": float, "
                 latency_ms = int((time.time() - start_time) * 1000)
                 return json.dumps({"direction": None, "reason": f"LLM error: {str(e)}"}), 0, latency_ms
         
-        # Try to use KIGate if available
-        try:
-            from core.services.kigate_client import execute_agent, KIGateResponse
-            
-            response: KIGateResponse = execute_agent(
-                prompt=prompt,
-                model=self._model,
-                temperature=0.3,  # Lower temperature for more deterministic output
-            )
-            
-            latency_ms = int((time.time() - start_time) * 1000)
-            
-            if response.success and response.data:
-                result_text = response.data.get('result', '')
-                tokens = response.data.get('tokens_used', 0)
-                return result_text, tokens, latency_ms
-            else:
-                error = response.error or "Unknown error"
-                return json.dumps({"direction": None, "reason": f"KIGate error: {error}"}), 0, latency_ms
+        # Use KIGate if available (module-level import)
+        if _kigate_available and _execute_agent is not None:
+            try:
+                response = _execute_agent(
+                    prompt=prompt,
+                    model=self._model,
+                    temperature=0.3,  # Lower temperature for more deterministic output
+                )
                 
-        except ImportError:
-            # KIGate not available - return mock response for testing
-            latency_ms = int((time.time() - start_time) * 1000)
-            mock_response = {
-                "direction": "NO_TRADE",
-                "sl": None,
-                "tp": None,
-                "size": None,
-                "reason": "LLM client not available",
-                "quality_flags": {},
-            }
-            return json.dumps(mock_response), 0, latency_ms
-        except Exception as e:
-            latency_ms = int((time.time() - start_time) * 1000)
-            return json.dumps({"direction": None, "reason": f"Error: {str(e)}"}), 0, latency_ms
+                latency_ms = int((time.time() - start_time) * 1000)
+                
+                if response.success and response.data:
+                    result_text = response.data.get('result', '')
+                    tokens = response.data.get('tokens_used', 0)
+                    return result_text, tokens, latency_ms
+                else:
+                    error = response.error or "Unknown error"
+                    return json.dumps({"direction": None, "reason": f"KIGate error: {error}"}), 0, latency_ms
+            except Exception as e:
+                latency_ms = int((time.time() - start_time) * 1000)
+                return json.dumps({"direction": None, "reason": f"Error: {str(e)}"}), 0, latency_ms
+        
+        # KIGate not available - return mock response for testing
+        latency_ms = int((time.time() - start_time) * 1000)
+        mock_response = {
+            "direction": "NO_TRADE",
+            "sl": None,
+            "tp": None,
+            "size": None,
+            "reason": "LLM client not available",
+            "quality_flags": {},
+        }
+        return json.dumps(mock_response), 0, latency_ms
 
     def evaluate(self, setup: Any) -> LocalLLMResult:
         """

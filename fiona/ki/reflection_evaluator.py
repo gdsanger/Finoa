@@ -8,10 +8,21 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from .models.llm_result import LocalLLMResult
 from .models.reflection_result import ReflectionResult
+
+
+# Try to import OpenAI client at module level
+_openai_available = False
+_call_openai_chat = None
+try:
+    from core.services.openai_client import call_openai_chat as _call_openai_chat_import
+    _call_openai_chat = _call_openai_chat_import
+    _openai_available = True
+except ImportError:
+    pass
 
 
 # Path to prompt template
@@ -186,51 +197,49 @@ Respond with JSON: {{"corrected_direction": null|"LONG"|"SHORT"|"NO_TRADE", "cor
                 latency_ms = int((time.time() - start_time) * 1000)
                 return json.dumps({"confidence": 0, "reason": f"GPT error: {str(e)}"}), 0, latency_ms
         
-        # Try to use OpenAI client if available
-        try:
-            from core.services.openai_client import call_openai_chat, OpenAIResponse
-            
-            messages = [
-                {"role": "system", "content": "Du bist ein erfahrener Senior Trader."},
-                {"role": "user", "content": prompt},
-            ]
-            
-            response: OpenAIResponse = call_openai_chat(
-                messages=messages,
-                model=self._model,
-                temperature=0.3,
-            )
-            
-            latency_ms = int((time.time() - start_time) * 1000)
-            
-            if response.success and response.data:
-                choices = response.data.get('choices', [])
-                if choices:
-                    result_text = choices[0].get('message', {}).get('content', '')
-                    usage = response.data.get('usage', {})
-                    tokens = usage.get('total_tokens', 0)
-                    return result_text, tokens, latency_ms
-            
-            error = response.error or "Unknown error"
-            return json.dumps({"confidence": 0, "reason": f"OpenAI error: {error}"}), 0, latency_ms
-            
-        except ImportError:
-            # OpenAI client not available - return mock response
-            latency_ms = int((time.time() - start_time) * 1000)
-            mock_response = {
-                "corrected_direction": None,
-                "corrected_sl": None,
-                "corrected_tp": None,
-                "corrected_size": None,
-                "reason": "GPT client not available",
-                "confidence": 0,
-                "agrees_with_local": True,
-                "corrections_made": [],
-            }
-            return json.dumps(mock_response), 0, latency_ms
-        except Exception as e:
-            latency_ms = int((time.time() - start_time) * 1000)
-            return json.dumps({"confidence": 0, "reason": f"Error: {str(e)}"}), 0, latency_ms
+        # Use OpenAI client if available (module-level import)
+        if _openai_available and _call_openai_chat is not None:
+            try:
+                messages = [
+                    {"role": "system", "content": "Du bist ein erfahrener Senior Trader."},
+                    {"role": "user", "content": prompt},
+                ]
+                
+                response = _call_openai_chat(
+                    messages=messages,
+                    model=self._model,
+                    temperature=0.3,
+                )
+                
+                latency_ms = int((time.time() - start_time) * 1000)
+                
+                if response.success and response.data:
+                    choices = response.data.get('choices', [])
+                    if choices:
+                        result_text = choices[0].get('message', {}).get('content', '')
+                        usage = response.data.get('usage', {})
+                        tokens = usage.get('total_tokens', 0)
+                        return result_text, tokens, latency_ms
+                
+                error = response.error or "Unknown error"
+                return json.dumps({"confidence": 0, "reason": f"OpenAI error: {error}"}), 0, latency_ms
+            except Exception as e:
+                latency_ms = int((time.time() - start_time) * 1000)
+                return json.dumps({"confidence": 0, "reason": f"Error: {str(e)}"}), 0, latency_ms
+        
+        # OpenAI client not available - return mock response
+        latency_ms = int((time.time() - start_time) * 1000)
+        mock_response = {
+            "corrected_direction": None,
+            "corrected_sl": None,
+            "corrected_tp": None,
+            "corrected_size": None,
+            "reason": "GPT client not available",
+            "confidence": 0,
+            "agrees_with_local": True,
+            "corrections_made": [],
+        }
+        return json.dumps(mock_response), 0, latency_ms
 
     def reflect(self, setup: Any, local_result: LocalLLMResult) -> ReflectionResult:
         """
