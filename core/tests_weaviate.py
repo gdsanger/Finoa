@@ -1060,3 +1060,108 @@ class WeaviateSchemaTest(TestCase):
                 prop_names,
                 f"Class {cls['class']} missing schema_version"
             )
+
+
+class RealWeaviateClientTest(TestCase):
+    """Tests for RealWeaviateClient (using mocks since no real Weaviate in CI)."""
+    
+    def test_weaviate_available_flag(self):
+        """Test that WEAVIATE_AVAILABLE is set correctly."""
+        from core.services.weaviate import WEAVIATE_AVAILABLE
+        # Should be True since we installed weaviate-client
+        self.assertTrue(WEAVIATE_AVAILABLE)
+    
+    def test_real_client_requires_url(self):
+        """Test that RealWeaviateClient requires a URL."""
+        from core.services.weaviate import RealWeaviateClient
+        
+        # Create client without URL (settings.WEAVIATE_URL is empty)
+        client = RealWeaviateClient(url='')
+        
+        with self.assertRaises(ValueError) as ctx:
+            client.connect()
+        
+        self.assertIn("URL not configured", str(ctx.exception))
+    
+    def test_real_client_initialization(self):
+        """Test RealWeaviateClient initialization."""
+        from core.services.weaviate import RealWeaviateClient
+        
+        client = RealWeaviateClient(
+            url='http://localhost:8080',
+            api_key='test-key'
+        )
+        
+        self.assertEqual(client._url, 'http://localhost:8080')
+        self.assertEqual(client._api_key, 'test-key')
+        self.assertFalse(client.is_connected)
+    
+    def test_get_weaviate_client_inmemory_fallback(self):
+        """Test get_weaviate_client returns InMemory when no URL configured."""
+        from core.services.weaviate import get_weaviate_client, InMemoryWeaviateClient
+        
+        # Without URL configured, should return InMemoryClient
+        client = get_weaviate_client(use_real=False)
+        
+        self.assertIsInstance(client, InMemoryWeaviateClient)
+    
+    def test_get_weaviate_client_auto_detect(self):
+        """Test get_weaviate_client auto-detects based on settings."""
+        from core.services.weaviate import get_weaviate_client, InMemoryWeaviateClient
+        
+        # With empty WEAVIATE_URL, should return InMemoryClient
+        client = get_weaviate_client()
+        
+        self.assertIsInstance(client, InMemoryWeaviateClient)
+    
+    def test_real_client_url_parsing(self):
+        """Test URL parsing for different formats."""
+        from core.services.weaviate import RealWeaviateClient
+        
+        # HTTP URL
+        client = RealWeaviateClient(url='http://localhost:8080')
+        self.assertEqual(client._get_host(), 'localhost')
+        self.assertEqual(client._get_port(), 8080)
+        self.assertFalse(client._is_https())
+        
+        # HTTPS URL
+        client = RealWeaviateClient(url='https://weaviate.example.com')
+        self.assertEqual(client._get_host(), 'weaviate.example.com')
+        self.assertEqual(client._get_port(), 443)
+        self.assertTrue(client._is_https())
+        
+        # URL with path
+        client = RealWeaviateClient(url='http://weaviate.local:9090/api')
+        self.assertEqual(client._get_host(), 'weaviate.local')
+        self.assertEqual(client._get_port(), 9090)
+    
+    def test_weaviate_service_with_custom_client(self):
+        """Test WeaviateService accepts custom client."""
+        from core.services.weaviate import WeaviateService, InMemoryWeaviateClient
+        
+        custom_client = InMemoryWeaviateClient()
+        service = WeaviateService(client=custom_client)
+        
+        self.assertIs(service.client, custom_client)
+    
+    def test_exports(self):
+        """Test that all expected exports are available."""
+        from core.services.weaviate import (
+            SCHEMA_VERSION,
+            WEAVIATE_AVAILABLE,
+            LocalLLMResult,
+            ReflectionResult,
+            KiEvaluationResult,
+            ExecutedTrade,
+            ShadowTrade,
+            MarketSnapshot,
+            InMemoryWeaviateClient,
+            RealWeaviateClient,
+            get_weaviate_client,
+            WeaviateService,
+        )
+        
+        # All imports should succeed
+        self.assertIsNotNone(SCHEMA_VERSION)
+        self.assertIsNotNone(RealWeaviateClient)
+        self.assertIsNotNone(get_weaviate_client)

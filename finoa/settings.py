@@ -135,3 +135,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'dashboard'
 LOGOUT_REDIRECT_URL = 'login'
+
+# Weaviate configuration
+# Set WEAVIATE_URL to connect to a real Weaviate instance
+# If not set or empty, InMemoryWeaviateClient is used
+import os
+WEAVIATE_URL = os.environ.get('WEAVIATE_URL', '')
+WEAVIATE_API_KEY = os.environ.get('WEAVIATE_API_KEY', '')
