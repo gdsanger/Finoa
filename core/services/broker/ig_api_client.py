@@ -240,13 +240,19 @@ class IgApiClient:
         try:
             # Re-authenticate
             self.login()
+            
+            # Verify session was established with valid tokens
+            if not self._session or not self._session.cst or not self._session.security_token:
+                raise AuthenticationError("Re-authentication did not establish a valid session")
+            
             logger.info("Re-authentication successful, retrying request...")
             
             # Update the headers with new tokens
+            # Note: CST and X-SECURITY-TOKEN are used for both header-based auth
+            # and OAuth (where access_token is stored as cst, refresh_token as security_token)
             new_headers = headers.copy()
-            if self._session:
-                new_headers["CST"] = self._session.cst
-                new_headers["X-SECURITY-TOKEN"] = self._session.security_token
+            new_headers["CST"] = self._session.cst
+            new_headers["X-SECURITY-TOKEN"] = self._session.security_token
             
             # Retry the request without allowing another retry to prevent infinite loops
             return self._make_request(

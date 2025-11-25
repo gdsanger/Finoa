@@ -699,6 +699,55 @@ class IgApiClientTest(TestCase):
         # Verify no re-auth attempt was made
         self.assertEqual(mock_post.call_count, 1)
 
+    @patch('core.services.broker.ig_api_client.requests.request')
+    @patch('core.services.broker.ig_api_client.requests.post')
+    def test_reauth_invalid_session_raises_error(self, mock_post, mock_request):
+        """Test that re-auth with invalid session tokens raises error."""
+        # First login succeeds normally
+        mock_login_response = MagicMock()
+        mock_login_response.status_code = 200
+        mock_login_response.headers = {
+            "CST": "test-cst-token",
+            "X-SECURITY-TOKEN": "test-security-token",
+        }
+        mock_login_response.json.return_value = {
+            "currentAccountId": "ACC123",
+            "clientId": "CLIENT123",
+        }
+        
+        # Re-login returns success but with no tokens (edge case)
+        mock_relogin_empty = MagicMock()
+        mock_relogin_empty.status_code = 200
+        mock_relogin_empty.headers = {}  # No tokens
+        mock_relogin_empty.json.return_value = {
+            "currentAccountId": "ACC123",
+            "clientId": "CLIENT123",
+            # No oauthToken either
+        }
+        
+        mock_post.side_effect = [mock_login_response, mock_relogin_empty]
+        
+        # Request fails with token-invalid
+        mock_error_response = MagicMock()
+        mock_error_response.status_code = 401
+        mock_error_response.text = '{"errorCode":"error.security.client-token-invalid"}'
+        mock_error_response.json.return_value = {
+            "errorCode": "error.security.client-token-invalid"
+        }
+        
+        mock_request.return_value = mock_error_response
+        
+        client = IgApiClient(
+            api_key="test-key",
+            username="test-user",
+            password="test-pass",
+        )
+        client.login()
+        
+        # This should fail with "session tokens" error from the re-auth login
+        with self.assertRaises(AuthenticationError):
+            client.get_accounts()
+
 
 class IgBrokerServiceTest(TestCase):
     """Tests for IgBrokerService."""
