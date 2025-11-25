@@ -379,6 +379,15 @@ class ExecutionService:
         """
         return self._sessions.get(session_id)
 
+    def get_all_sessions(self) -> list[ExecutionSession]:
+        """
+        Get all sessions including terminal ones.
+        
+        Returns:
+            List of all ExecutionSessions.
+        """
+        return list(self._sessions.values())
+
     def get_active_sessions(self) -> list[ExecutionSession]:
         """
         Get all active (non-terminal) sessions.

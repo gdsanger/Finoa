@@ -6,7 +6,7 @@ aggregating data from Strategy, KI, Risk, and Execution layers.
 """
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Optional, List, Literal
+from typing import Optional, List, Literal, Union
 import logging
 
 from core.services.execution import ExecutionService, ExecutionState
@@ -90,8 +90,8 @@ class SignalService:
         """
         signals = []
         
-        # Get active sessions from execution service
-        all_sessions = list(self._execution._sessions.values())
+        # Get all sessions from execution service using public method
+        all_sessions = self._execution.get_all_sessions()
         
         for session in all_sessions:
             # Filter based on state
@@ -463,7 +463,7 @@ class TradeService:
 
     def _build_trade_history_dto(
         self,
-        trade: ExecutedTrade | ShadowTrade,
+        trade: Union[ExecutedTrade, ShadowTrade],
         is_shadow: bool,
     ) -> TradeHistoryDTO:
         """Build a TradeHistoryDTO from a trade object."""
