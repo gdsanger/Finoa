@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Account, Category, Booking, RecurringBooking, Payee, KIGateConfig, OpenAIConfig, DocumentUpload, TimeEntry
+from .models import Account, Category, Booking, RecurringBooking, Payee, KIGateConfig, OpenAIConfig, DocumentUpload, TimeEntry, IgBrokerConfig
 
 
 @admin.register(Payee)
@@ -134,6 +134,33 @@ class TimeEntryAdmin(admin.ModelAdmin):
         }),
         ('Status', {
             'fields': ('billed',)
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
+
+@admin.register(IgBrokerConfig)
+class IgBrokerConfigAdmin(admin.ModelAdmin):
+    list_display = ['name', 'account_type', 'is_active', 'updated_at']
+    list_filter = ['is_active', 'account_type']
+    search_fields = ['name', 'username']
+    readonly_fields = ['created_at', 'updated_at']
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('name', 'is_active', 'account_type')
+        }),
+        ('Authentication', {
+            'fields': ('api_key', 'username', 'password', 'account_id'),
+            'description': 'Credentials for IG API access. Keep these secure!'
+        }),
+        ('Connection Settings', {
+            'fields': ('api_base_url', 'timeout_seconds')
+        }),
+        ('Trading Defaults', {
+            'fields': ('default_oil_epic',)
         }),
         ('Timestamps', {
             'fields': ('created_at', 'updated_at'),
