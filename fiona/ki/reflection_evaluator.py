@@ -67,7 +67,7 @@ class GPTReflectionEvaluator:
         Initialize the GPTReflectionEvaluator.
         
         Args:
-            gpt_client: Optional GPT client for API calls.
+            gpt_client: Optional client for API calls.
                        If None, will use KIGate integration.
             model: GPT model name to use (default: gpt-4o).
             agent_name: KIGate agent name (default: trading-reflection-agent).
