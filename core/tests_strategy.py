@@ -1,0 +1,735 @@
+"""
+Tests for the Strategy Engine module.
+
+These tests cover the data models, configuration, and strategy logic
+for breakout and EIA setups.
+"""
+from datetime import datetime, timezone
+from decimal import Decimal
+from django.test import TestCase
+
+from core.services.strategy import (
+    SetupKind,
+    SessionPhase,
+    BreakoutContext,
+    EiaContext,
+    Candle,
+    SetupCandidate,
+    StrategyConfig,
+    BreakoutConfig,
+    EiaConfig,
+    AsiaRangeConfig,
+    UsCoreConfig,
+    MarketStateProvider,
+    BaseMarketStateProvider,
+    StrategyEngine,
+)
+
+
+class SetupKindEnumTest(TestCase):
+    """Tests for SetupKind enum."""
+
+    def test_setup_kind_values(self):
+        """Test SetupKind enum values."""
+        self.assertEqual(SetupKind.BREAKOUT.value, "BREAKOUT")
+        self.assertEqual(SetupKind.EIA_REVERSION.value, "EIA_REVERSION")
+        self.assertEqual(SetupKind.EIA_TRENDDAY.value, "EIA_TRENDDAY")
+
+    def test_setup_kind_is_string_subclass(self):
+        """Test that SetupKind is a string subclass for JSON serialization."""
+        self.assertIsInstance(SetupKind.BREAKOUT, str)
+
+
+class SessionPhaseEnumTest(TestCase):
+    """Tests for SessionPhase enum."""
+
+    def test_session_phase_values(self):
+        """Test SessionPhase enum values."""
+        self.assertEqual(SessionPhase.ASIA_RANGE.value, "ASIA_RANGE")
+        self.assertEqual(SessionPhase.LONDON_CORE.value, "LONDON_CORE")
+        self.assertEqual(SessionPhase.US_CORE.value, "US_CORE")
+        self.assertEqual(SessionPhase.EIA_PRE.value, "EIA_PRE")
+        self.assertEqual(SessionPhase.EIA_POST.value, "EIA_POST")
+        self.assertEqual(SessionPhase.FRIDAY_LATE.value, "FRIDAY_LATE")
+        self.assertEqual(SessionPhase.OTHER.value, "OTHER")
+
+
+class BreakoutContextTest(TestCase):
+    """Tests for BreakoutContext dataclass."""
+
+    def test_breakout_context_creation(self):
+        """Test BreakoutContext dataclass creation."""
+        context = BreakoutContext(
+            range_high=75.50,
+            range_low=74.50,
+            range_height=1.00,
+            trigger_price=75.60,
+            direction="LONG",
+            atr=0.50,
+            vwap=75.00,
+            volume_spike=True,
+        )
+        
+        self.assertEqual(context.range_high, 75.50)
+        self.assertEqual(context.range_low, 74.50)
+        self.assertEqual(context.range_height, 1.00)
+        self.assertEqual(context.trigger_price, 75.60)
+        self.assertEqual(context.direction, "LONG")
+        self.assertEqual(context.atr, 0.50)
+        self.assertTrue(context.volume_spike)
+
+    def test_breakout_context_to_dict(self):
+        """Test BreakoutContext to_dict serialization."""
+        context = BreakoutContext(
+            range_high=75.50,
+            range_low=74.50,
+            range_height=1.00,
+            trigger_price=75.60,
+            direction="LONG",
+        )
+        
+        data = context.to_dict()
+        
+        self.assertEqual(data['range_high'], 75.50)
+        self.assertEqual(data['direction'], "LONG")
+        self.assertIsNone(data['atr'])
+
+
+class EiaContextTest(TestCase):
+    """Tests for EiaContext dataclass."""
+
+    def test_eia_context_creation(self):
+        """Test EiaContext dataclass creation."""
+        ts = datetime(2025, 1, 15, 15, 30, tzinfo=timezone.utc)
+        context = EiaContext(
+            eia_timestamp=ts,
+            first_impulse_direction="SHORT",
+            impulse_range_high=75.50,
+            impulse_range_low=74.00,
+            atr=0.50,
+        )
+        
+        self.assertEqual(context.eia_timestamp, ts)
+        self.assertEqual(context.first_impulse_direction, "SHORT")
+        self.assertEqual(context.impulse_range_high, 75.50)
+        self.assertEqual(context.atr, 0.50)
+
+    def test_eia_context_to_dict(self):
+        """Test EiaContext to_dict serialization."""
+        ts = datetime(2025, 1, 15, 15, 30, tzinfo=timezone.utc)
+        context = EiaContext(
+            eia_timestamp=ts,
+            first_impulse_direction="LONG",
+        )
+        
+        data = context.to_dict()
+        
+        self.assertIn('2025-01-15', data['eia_timestamp'])
+        self.assertEqual(data['first_impulse_direction'], "LONG")
+
+
+class CandleTest(TestCase):
+    """Tests for Candle dataclass."""
+
+    def test_candle_creation(self):
+        """Test Candle dataclass creation."""
+        ts = datetime(2025, 1, 15, 10, 0, tzinfo=timezone.utc)
+        candle = Candle(
+            timestamp=ts,
+            open=75.00,
+            high=75.50,
+            low=74.50,
+            close=75.40,
+            volume=1000.0,
+        )
+        
+        self.assertEqual(candle.open, 75.00)
+        self.assertEqual(candle.high, 75.50)
+        self.assertEqual(candle.low, 74.50)
+        self.assertEqual(candle.close, 75.40)
+        self.assertEqual(candle.volume, 1000.0)
+
+    def test_candle_body_properties(self):
+        """Test Candle body property calculations."""
+        ts = datetime(2025, 1, 15, 10, 0, tzinfo=timezone.utc)
+        
+        # Bullish candle
+        bullish = Candle(ts, open=74.50, high=75.50, low=74.00, close=75.00)
+        self.assertEqual(bullish.body_high, 75.00)
+        self.assertEqual(bullish.body_low, 74.50)
+        self.assertEqual(bullish.body_size, 0.50)
+        self.assertTrue(bullish.is_bullish)
+        self.assertFalse(bullish.is_bearish)
+        
+        # Bearish candle
+        bearish = Candle(ts, open=75.00, high=75.50, low=74.00, close=74.50)
+        self.assertEqual(bearish.body_high, 75.00)
+        self.assertEqual(bearish.body_low, 74.50)
+        self.assertEqual(bearish.body_size, 0.50)
+        self.assertFalse(bearish.is_bullish)
+        self.assertTrue(bearish.is_bearish)
+
+    def test_candle_to_dict(self):
+        """Test Candle to_dict serialization."""
+        ts = datetime(2025, 1, 15, 10, 0, tzinfo=timezone.utc)
+        candle = Candle(ts, open=75.00, high=75.50, low=74.50, close=75.40)
+        
+        data = candle.to_dict()
+        
+        self.assertIn('2025-01-15', data['timestamp'])
+        self.assertEqual(data['open'], 75.00)
+        self.assertEqual(data['close'], 75.40)
+
+
+class SetupCandidateTest(TestCase):
+    """Tests for SetupCandidate dataclass."""
+
+    def test_setup_candidate_breakout(self):
+        """Test SetupCandidate creation for breakout."""
+        ts = datetime(2025, 1, 15, 10, 0, tzinfo=timezone.utc)
+        breakout = BreakoutContext(
+            range_high=75.50,
+            range_low=74.50,
+            range_height=1.00,
+            trigger_price=75.60,
+            direction="LONG",
+        )
+        
+        candidate = SetupCandidate(
+            id="test-123",
+            created_at=ts,
+            epic="CC.D.CL.UNC.IP",
+            setup_kind=SetupKind.BREAKOUT,
+            phase=SessionPhase.LONDON_CORE,
+            reference_price=75.60,
+            direction="LONG",
+            breakout=breakout,
+            quality_flags={"clean_range": True},
+        )
+        
+        self.assertEqual(candidate.id, "test-123")
+        self.assertEqual(candidate.setup_kind, SetupKind.BREAKOUT)
+        self.assertEqual(candidate.direction, "LONG")
+        self.assertIsNotNone(candidate.breakout)
+        self.assertIsNone(candidate.eia)
+
+    def test_setup_candidate_eia(self):
+        """Test SetupCandidate creation for EIA setup."""
+        ts = datetime(2025, 1, 15, 15, 35, tzinfo=timezone.utc)
+        eia_ts = datetime(2025, 1, 15, 15, 30, tzinfo=timezone.utc)
+        eia = EiaContext(
+            eia_timestamp=eia_ts,
+            first_impulse_direction="SHORT",
+            impulse_range_high=75.50,
+            impulse_range_low=74.00,
+        )
+        
+        candidate = SetupCandidate(
+            id="test-456",
+            created_at=ts,
+            epic="CC.D.CL.UNC.IP",
+            setup_kind=SetupKind.EIA_REVERSION,
+            phase=SessionPhase.EIA_POST,
+            reference_price=74.50,
+            direction="LONG",
+            eia=eia,
+        )
+        
+        self.assertEqual(candidate.setup_kind, SetupKind.EIA_REVERSION)
+        self.assertEqual(candidate.direction, "LONG")
+        self.assertIsNone(candidate.breakout)
+        self.assertIsNotNone(candidate.eia)
+
+    def test_setup_candidate_to_dict(self):
+        """Test SetupCandidate to_dict serialization."""
+        ts = datetime(2025, 1, 15, 10, 0, tzinfo=timezone.utc)
+        
+        candidate = SetupCandidate(
+            id="test-789",
+            created_at=ts,
+            epic="CC.D.CL.UNC.IP",
+            setup_kind=SetupKind.BREAKOUT,
+            phase=SessionPhase.LONDON_CORE,
+            reference_price=75.60,
+            direction="LONG",
+        )
+        
+        data = candidate.to_dict()
+        
+        self.assertEqual(data['id'], "test-789")
+        self.assertEqual(data['setup_kind'], "BREAKOUT")
+        self.assertEqual(data['phase'], "LONDON_CORE")
+        self.assertEqual(data['direction'], "LONG")
+
+
+class StrategyConfigTest(TestCase):
+    """Tests for StrategyConfig."""
+
+    def test_default_config(self):
+        """Test default StrategyConfig creation."""
+        config = StrategyConfig()
+        
+        self.assertEqual(config.breakout.asia_range.start, "00:00")
+        self.assertEqual(config.breakout.asia_range.end, "08:00")
+        self.assertEqual(config.breakout.asia_range.min_range_ticks, 10)
+        self.assertEqual(config.eia.impulse_window_minutes, 3)
+        self.assertEqual(config.default_epic, "CC.D.CL.UNC.IP")
+
+    def test_config_from_dict(self):
+        """Test StrategyConfig creation from dictionary."""
+        data = {
+            'breakout': {
+                'asia_range': {
+                    'start': '01:00',
+                    'end': '09:00',
+                    'min_range_ticks': 15,
+                },
+                'us_core': {
+                    'pre_us_start': '14:00',
+                    'min_range_ticks': 20,
+                },
+            },
+            'eia': {
+                'impulse_window_minutes': 5,
+                'reversion_min_retrace_fraction': 0.6,
+            },
+            'tick_size': 0.02,
+        }
+        
+        config = StrategyConfig.from_dict(data)
+        
+        self.assertEqual(config.breakout.asia_range.start, '01:00')
+        self.assertEqual(config.breakout.asia_range.min_range_ticks, 15)
+        self.assertEqual(config.breakout.us_core.pre_us_start, '14:00')
+        self.assertEqual(config.eia.impulse_window_minutes, 5)
+        self.assertEqual(config.tick_size, 0.02)
+
+    def test_config_to_dict(self):
+        """Test StrategyConfig to_dict serialization."""
+        config = StrategyConfig()
+        data = config.to_dict()
+        
+        self.assertIn('breakout', data)
+        self.assertIn('eia', data)
+        self.assertIn('asia_range', data['breakout'])
+        self.assertEqual(data['breakout']['asia_range']['start'], '00:00')
+
+
+class DummyMarketStateProvider(BaseMarketStateProvider):
+    """Dummy implementation of MarketStateProvider for testing."""
+
+    def __init__(
+        self,
+        phase: SessionPhase = SessionPhase.OTHER,
+        candles: list[Candle] = None,
+        asia_range: tuple[float, float] = None,
+        pre_us_range: tuple[float, float] = None,
+        eia_timestamp: datetime = None,
+        atr: float = None,
+    ):
+        self._phase = phase
+        self._candles = candles or []
+        self._asia_range = asia_range
+        self._pre_us_range = pre_us_range
+        self._eia_timestamp = eia_timestamp
+        self._atr = atr
+
+    def get_phase(self, ts: datetime) -> SessionPhase:
+        return self._phase
+
+    def get_recent_candles(
+        self,
+        epic: str,
+        timeframe: str,
+        limit: int
+    ) -> list[Candle]:
+        return self._candles[:limit]
+
+    def get_asia_range(self, epic: str) -> tuple[float, float] | None:
+        return self._asia_range
+
+    def get_pre_us_range(self, epic: str) -> tuple[float, float] | None:
+        return self._pre_us_range
+
+    def get_eia_timestamp(self) -> datetime | None:
+        return self._eia_timestamp
+
+    def get_atr(
+        self,
+        epic: str,
+        timeframe: str,
+        period: int
+    ) -> float | None:
+        return self._atr
+
+
+class StrategyEngineBreakoutTest(TestCase):
+    """Tests for StrategyEngine breakout logic."""
+
+    def test_no_setup_when_phase_other(self):
+        """Test that no setups are generated when phase is OTHER."""
+        provider = DummyMarketStateProvider(phase=SessionPhase.OTHER)
+        engine = StrategyEngine(provider)
+        
+        ts = datetime(2025, 1, 15, 10, 0, tzinfo=timezone.utc)
+        candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
+        
+        self.assertEqual(len(candidates), 0)
+
+    def test_asia_breakout_long(self):
+        """Test Asia range breakout LONG setup."""
+        ts = datetime(2025, 1, 15, 9, 0, tzinfo=timezone.utc)
+        
+        # Create a bullish breakout candle with body >= 50% of range
+        # Range is 0.20 (75.20 - 75.00), so min body is 0.10
+        candle = Candle(
+            timestamp=ts,
+            open=75.15,
+            high=75.30,
+            low=75.10,
+            close=75.28,  # Above Asia high (75.20), body = 0.13
+        )
+        
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.LONDON_CORE,
+            candles=[candle],
+            asia_range=(75.20, 75.00),  # 0.20 range = 20 ticks at 0.01
+            atr=0.50,
+        )
+        engine = StrategyEngine(provider)
+        
+        candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
+        
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0].setup_kind, SetupKind.BREAKOUT)
+        self.assertEqual(candidates[0].direction, "LONG")
+        self.assertEqual(candidates[0].phase, SessionPhase.LONDON_CORE)
+        self.assertIsNotNone(candidates[0].breakout)
+        self.assertEqual(candidates[0].breakout.range_high, 75.20)
+
+    def test_asia_breakout_short(self):
+        """Test Asia range breakout SHORT setup."""
+        ts = datetime(2025, 1, 15, 9, 0, tzinfo=timezone.utc)
+        
+        # Create a bearish breakout candle with body >= 50% of range
+        # Range is 0.20 (75.20 - 75.00), so min body is 0.10
+        candle = Candle(
+            timestamp=ts,
+            open=75.05,
+            high=75.10,
+            low=74.90,
+            close=74.93,  # Below Asia low (75.00), body = 0.12
+        )
+        
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.LONDON_CORE,
+            candles=[candle],
+            asia_range=(75.20, 75.00),  # 0.20 range = 20 ticks
+        )
+        engine = StrategyEngine(provider)
+        
+        candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
+        
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0].direction, "SHORT")
+
+    def test_no_breakout_when_range_too_small(self):
+        """Test that no breakout is generated when range is too small."""
+        ts = datetime(2025, 1, 15, 9, 0, tzinfo=timezone.utc)
+        
+        candle = Candle(
+            timestamp=ts,
+            open=75.03,
+            high=75.05,
+            low=75.01,
+            close=75.04,
+        )
+        
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.LONDON_CORE,
+            candles=[candle],
+            asia_range=(75.03, 75.00),  # Only 0.03 = 3 ticks, below min 10
+        )
+        engine = StrategyEngine(provider)
+        
+        candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
+        
+        self.assertEqual(len(candidates), 0)
+
+    def test_no_breakout_when_candle_body_too_small(self):
+        """Test that no breakout is generated when candle body is too small."""
+        ts = datetime(2025, 1, 15, 9, 0, tzinfo=timezone.utc)
+        
+        # Candle with tiny body (doji-like)
+        candle = Candle(
+            timestamp=ts,
+            open=75.51,
+            high=75.60,
+            low=75.40,
+            close=75.52,  # Very small body
+        )
+        
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.LONDON_CORE,
+            candles=[candle],
+            asia_range=(75.50, 74.50),  # 1.00 range
+        )
+        config = StrategyConfig()
+        config.breakout.asia_range.min_breakout_body_fraction = 0.5
+        
+        engine = StrategyEngine(provider, config)
+        
+        candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
+        
+        self.assertEqual(len(candidates), 0)
+
+    def test_us_core_breakout(self):
+        """Test US Core breakout setup."""
+        ts = datetime(2025, 1, 15, 16, 0, tzinfo=timezone.utc)
+        
+        # Create a bullish breakout candle with body >= 50% of range
+        # Range is 0.20 (75.20 - 75.00), so min body is 0.10
+        candle = Candle(
+            timestamp=ts,
+            open=75.15,
+            high=75.30,
+            low=75.10,
+            close=75.28,  # Above range high (75.20), body = 0.13
+        )
+        
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.US_CORE,
+            candles=[candle],
+            pre_us_range=(75.20, 75.00),  # 0.20 range = 20 ticks
+        )
+        engine = StrategyEngine(provider)
+        
+        candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
+        
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0].setup_kind, SetupKind.BREAKOUT)
+        self.assertEqual(candidates[0].phase, SessionPhase.US_CORE)
+
+
+class StrategyEngineEiaTest(TestCase):
+    """Tests for StrategyEngine EIA logic."""
+
+    def test_eia_reversion_after_long_impulse(self):
+        """Test EIA reversion setup after LONG impulse."""
+        eia_ts = datetime(2025, 1, 15, 15, 30, tzinfo=timezone.utc)
+        ts = datetime(2025, 1, 15, 15, 35, tzinfo=timezone.utc)
+        
+        # Create impulse candles (LONG)
+        impulse_candles = [
+            Candle(datetime(2025, 1, 15, 15, 30), open=74.00, high=74.50, low=73.90, close=74.40),
+            Candle(datetime(2025, 1, 15, 15, 31), open=74.40, high=75.00, low=74.30, close=74.90),
+            Candle(datetime(2025, 1, 15, 15, 32), open=74.90, high=75.50, low=74.80, close=75.40),
+        ]
+        
+        # Create reversion candle (bearish, retracing)
+        reversion_candle = Candle(
+            datetime(2025, 1, 15, 15, 33),
+            open=75.30,
+            high=75.40,
+            low=74.50,
+            close=74.60,  # Significant retrace
+        )
+        
+        all_candles = impulse_candles + [reversion_candle]
+        
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.EIA_POST,
+            candles=all_candles,
+            eia_timestamp=eia_ts,
+        )
+        engine = StrategyEngine(provider)
+        
+        candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
+        
+        # Should find EIA_REVERSION with SHORT direction
+        reversion_candidates = [c for c in candidates if c.setup_kind == SetupKind.EIA_REVERSION]
+        self.assertEqual(len(reversion_candidates), 1)
+        self.assertEqual(reversion_candidates[0].direction, "SHORT")
+
+    def test_eia_reversion_after_short_impulse(self):
+        """Test EIA reversion setup after SHORT impulse."""
+        eia_ts = datetime(2025, 1, 15, 15, 30, tzinfo=timezone.utc)
+        ts = datetime(2025, 1, 15, 15, 35, tzinfo=timezone.utc)
+        
+        # Create impulse candles (SHORT)
+        impulse_candles = [
+            Candle(datetime(2025, 1, 15, 15, 30), open=75.00, high=75.10, low=74.60, close=74.70),
+            Candle(datetime(2025, 1, 15, 15, 31), open=74.70, high=74.80, low=74.30, close=74.40),
+            Candle(datetime(2025, 1, 15, 15, 32), open=74.40, high=74.50, low=74.00, close=74.10),
+        ]
+        
+        # Create reversion candle (bullish, retracing)
+        reversion_candle = Candle(
+            datetime(2025, 1, 15, 15, 33),
+            open=74.20,
+            high=74.80,
+            low=74.10,
+            close=74.70,  # Significant retrace upward
+        )
+        
+        all_candles = impulse_candles + [reversion_candle]
+        
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.EIA_POST,
+            candles=all_candles,
+            eia_timestamp=eia_ts,
+        )
+        engine = StrategyEngine(provider)
+        
+        candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
+        
+        # Should find EIA_REVERSION with LONG direction
+        reversion_candidates = [c for c in candidates if c.setup_kind == SetupKind.EIA_REVERSION]
+        self.assertEqual(len(reversion_candidates), 1)
+        self.assertEqual(reversion_candidates[0].direction, "LONG")
+
+    def test_eia_trendday_long(self):
+        """Test EIA trend day setup with LONG continuation."""
+        eia_ts = datetime(2025, 1, 15, 15, 30, tzinfo=timezone.utc)
+        ts = datetime(2025, 1, 15, 15, 37, tzinfo=timezone.utc)
+        
+        # Create impulse candles (LONG)
+        impulse_candles = [
+            Candle(datetime(2025, 1, 15, 15, 30), open=74.00, high=74.50, low=73.90, close=74.40),
+            Candle(datetime(2025, 1, 15, 15, 31), open=74.40, high=75.00, low=74.30, close=74.90),
+            Candle(datetime(2025, 1, 15, 15, 32), open=74.90, high=75.50, low=74.80, close=75.40),
+        ]
+        
+        # Create follow candles with higher highs and higher lows
+        follow_candles = [
+            Candle(datetime(2025, 1, 15, 15, 33), open=75.40, high=75.60, low=75.30, close=75.55),
+            Candle(datetime(2025, 1, 15, 15, 34), open=75.55, high=75.75, low=75.45, close=75.70),
+            Candle(datetime(2025, 1, 15, 15, 35), open=75.70, high=75.90, low=75.60, close=75.85),
+        ]
+        
+        all_candles = impulse_candles + follow_candles
+        
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.EIA_POST,
+            candles=all_candles,
+            eia_timestamp=eia_ts,
+        )
+        engine = StrategyEngine(provider)
+        
+        candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
+        
+        # Should find EIA_TRENDDAY with LONG direction
+        trendday_candidates = [c for c in candidates if c.setup_kind == SetupKind.EIA_TRENDDAY]
+        self.assertEqual(len(trendday_candidates), 1)
+        self.assertEqual(trendday_candidates[0].direction, "LONG")
+
+    def test_eia_trendday_short(self):
+        """Test EIA trend day setup with SHORT continuation."""
+        eia_ts = datetime(2025, 1, 15, 15, 30, tzinfo=timezone.utc)
+        ts = datetime(2025, 1, 15, 15, 37, tzinfo=timezone.utc)
+        
+        # Create impulse candles (SHORT)
+        impulse_candles = [
+            Candle(datetime(2025, 1, 15, 15, 30), open=75.00, high=75.10, low=74.60, close=74.70),
+            Candle(datetime(2025, 1, 15, 15, 31), open=74.70, high=74.80, low=74.30, close=74.40),
+            Candle(datetime(2025, 1, 15, 15, 32), open=74.40, high=74.50, low=74.00, close=74.10),
+        ]
+        
+        # Create follow candles with lower lows and lower highs
+        follow_candles = [
+            Candle(datetime(2025, 1, 15, 15, 33), open=74.10, high=74.05, low=73.90, close=73.95),
+            Candle(datetime(2025, 1, 15, 15, 34), open=73.95, high=73.90, low=73.75, close=73.80),
+            Candle(datetime(2025, 1, 15, 15, 35), open=73.80, high=73.75, low=73.60, close=73.65),
+        ]
+        
+        all_candles = impulse_candles + follow_candles
+        
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.EIA_POST,
+            candles=all_candles,
+            eia_timestamp=eia_ts,
+        )
+        engine = StrategyEngine(provider)
+        
+        candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
+        
+        # Should find EIA_TRENDDAY with SHORT direction
+        trendday_candidates = [c for c in candidates if c.setup_kind == SetupKind.EIA_TRENDDAY]
+        self.assertEqual(len(trendday_candidates), 1)
+        self.assertEqual(trendday_candidates[0].direction, "SHORT")
+
+    def test_no_eia_setup_without_eia_timestamp(self):
+        """Test that no EIA setups are generated without EIA timestamp."""
+        ts = datetime(2025, 1, 15, 15, 35, tzinfo=timezone.utc)
+        
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.EIA_POST,
+            candles=[],
+            eia_timestamp=None,
+        )
+        engine = StrategyEngine(provider)
+        
+        candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
+        
+        self.assertEqual(len(candidates), 0)
+
+
+class StrategyEngineIntegrationTest(TestCase):
+    """Integration tests for StrategyEngine."""
+
+    def test_multiple_candidates_filtered(self):
+        """Test that duplicate candidates are filtered."""
+        ts = datetime(2025, 1, 15, 9, 0, tzinfo=timezone.utc)
+        
+        # Create multiple breakout candles with proper body size
+        # Range is 0.20, min body is 0.10
+        # The engine uses the last candle, so make sure it has proper body
+        candles = [
+            Candle(ts, open=75.10, high=75.25, low=75.05, close=75.22),  # body = 0.12
+            Candle(ts, open=75.15, high=75.35, low=75.10, close=75.30),  # body = 0.15, above high
+        ]
+        
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.LONDON_CORE,
+            candles=candles,
+            asia_range=(75.20, 75.00),  # 0.20 range = 20 ticks
+        )
+        engine = StrategyEngine(provider)
+        
+        candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
+        
+        # Should only have one LONG breakout candidate
+        breakout_long = [c for c in candidates if c.setup_kind == SetupKind.BREAKOUT and c.direction == "LONG"]
+        self.assertEqual(len(breakout_long), 1)
+
+    def test_config_affects_evaluation(self):
+        """Test that configuration affects evaluation."""
+        ts = datetime(2025, 1, 15, 9, 0, tzinfo=timezone.utc)
+        
+        # Create a valid breakout candle with proper body size
+        # Range is 0.20 (75.50 - 75.30), min body is 0.10
+        candle = Candle(
+            timestamp=ts,
+            open=75.45,
+            high=75.65,
+            low=75.40,
+            close=75.58,  # Above range high (75.50), body = 0.13
+        )
+        
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.LONDON_CORE,
+            candles=[candle],
+            asia_range=(75.50, 75.30),  # 0.20 range = 20 ticks
+        )
+        
+        # Default config (min 10 ticks) should allow breakout
+        engine1 = StrategyEngine(provider)
+        candidates1 = engine1.evaluate("CC.D.CL.UNC.IP", ts)
+        self.assertEqual(len(candidates1), 1)
+        
+        # Config with min 50 ticks should reject
+        config = StrategyConfig()
+        config.breakout.asia_range.min_range_ticks = 50
+        engine2 = StrategyEngine(provider, config)
+        candidates2 = engine2.evaluate("CC.D.CL.UNC.IP", ts)
+        self.assertEqual(len(candidates2), 0)
