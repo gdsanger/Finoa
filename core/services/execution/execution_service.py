@@ -6,6 +6,8 @@ and Risk Engine to present trade proposals to users and execute trades.
 """
 from datetime import datetime, timezone
 from decimal import Decimal
+from enum import Enum
+import logging
 from typing import Optional, Union
 import uuid
 
@@ -30,6 +32,9 @@ from core.services.weaviate.weaviate_service import WeaviateService
 from fiona.ki.models.ki_evaluation_result import KiEvaluationResult
 
 from .models import ExecutionSession, ExecutionState, ExecutionConfig
+
+
+logger = logging.getLogger(__name__)
 
 
 class ExecutionError(Exception):
@@ -155,7 +160,7 @@ class ExecutionService:
             adjusted_order=adjusted_order,
             comment=risk_eval.reason if risk_eval else None,
             meta={
-                'setup_kind': setup.setup_kind.value if hasattr(setup.setup_kind, 'value') else setup.setup_kind,
+                'setup_kind': setup.setup_kind.value if isinstance(setup.setup_kind, Enum) else str(setup.setup_kind),
                 'direction': setup.direction,
                 'reference_price': setup.reference_price,
             },
@@ -433,9 +438,14 @@ class ExecutionService:
         # Get values from KI evaluation if available, otherwise use defaults
         if ki_eval is not None and ki_eval.is_tradeable():
             params = ki_eval.get_trade_parameters()
-            size = Decimal(str(params.get('size', 1.0))) if params else Decimal('1.0')
-            stop_loss = Decimal(str(params['sl'])) if params and params.get('sl') else None
-            take_profit = Decimal(str(params['tp'])) if params and params.get('tp') else None
+            if params:
+                size = Decimal(str(params.get('size', 1.0)))
+                stop_loss = Decimal(str(params.get('sl'))) if params.get('sl') else None
+                take_profit = Decimal(str(params.get('tp'))) if params.get('tp') else None
+            else:
+                size = Decimal('1.0')
+                stop_loss = None
+                take_profit = None
         else:
             # Default values
             size = Decimal('1.0')
@@ -465,10 +475,11 @@ class ExecutionService:
             try:
                 price = self._broker.get_symbol_price(epic)
                 return price.mid_price
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to get price for {epic}: {e}")
         
         # Fallback to a placeholder (should not happen in production)
+        logger.warning(f"Using placeholder price for {epic}")
         return Decimal('0.00')
 
     def _get_entry_price_for_shadow(self, epic: str) -> Decimal:
@@ -488,8 +499,8 @@ class ExecutionService:
             try:
                 price = self._broker.get_symbol_price(epic)
                 return price.mid_price
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to get price for shadow trade {epic}: {e}")
         
         # Fallback to a placeholder
         return Decimal('0.00')

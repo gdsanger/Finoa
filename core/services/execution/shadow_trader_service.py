@@ -6,6 +6,8 @@ executed on the broker, either due to risk denial or user choice.
 """
 from datetime import datetime, timezone
 from decimal import Decimal
+from enum import Enum
+import logging
 from typing import Optional, Union
 import uuid
 
@@ -22,6 +24,9 @@ from core.services.weaviate.weaviate_service import WeaviateService
 from fiona.ki.models.ki_evaluation_result import KiEvaluationResult
 
 from .models import ExecutionConfig, ExitReason
+
+
+logger = logging.getLogger(__name__)
 
 
 class ShadowTraderService:
@@ -118,7 +123,7 @@ class ShadowTraderService:
             opened_at=now,
             skip_reason=skip_reason,
             meta={
-                'setup_kind': setup.setup_kind.value if hasattr(setup.setup_kind, 'value') else setup.setup_kind,
+                'setup_kind': setup.setup_kind.value if isinstance(setup.setup_kind, Enum) else str(setup.setup_kind),
                 'direction': setup.direction,
             },
         )
@@ -239,9 +244,9 @@ class ShadowTraderService:
                 if exit_reason is not None:
                     closed = self._close_shadow_trade(shadow, current_price, exit_reason, now)
                     closed_trades.append(closed)
-            except Exception:
-                # Log error but continue with other trades
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to poll shadow trade {trade_id}: {e}")
+                continue
         
         return closed_trades
 
@@ -297,8 +302,8 @@ class ShadowTraderService:
                 shadow.market_snapshot_ids.append(snapshot.id)
                 
                 return snapshot
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to capture market snapshot for trade {trade_id}: {e}")
         
         return None
 
