@@ -28,6 +28,52 @@ class OrderDirection(Enum):
     SELL = "SELL"
 
 
+class PositionDirection(Enum):
+    """Direction of a position - long or short."""
+    LONG = "LONG"
+    SHORT = "SHORT"
+    
+    @classmethod
+    def from_order_direction(cls, order_dir: 'OrderDirection') -> 'PositionDirection':
+        """Convert OrderDirection to PositionDirection."""
+        if order_dir == OrderDirection.BUY:
+            return cls.LONG
+        return cls.SHORT
+
+
+class Direction(str, Enum):
+    """
+    Combined direction enum for flexibility.
+    
+    Supports both order directions (BUY/SELL) and position directions (LONG/SHORT).
+    This enum inherits from str to enable direct JSON serialization.
+    """
+    BUY = "BUY"
+    SELL = "SELL"
+    LONG = "LONG"
+    SHORT = "SHORT"
+    
+    def is_order_direction(self) -> bool:
+        """Check if this is an order direction (BUY/SELL)."""
+        return self in (Direction.BUY, Direction.SELL)
+    
+    def is_position_direction(self) -> bool:
+        """Check if this is a position direction (LONG/SHORT)."""
+        return self in (Direction.LONG, Direction.SHORT)
+    
+    def to_order_direction(self) -> 'OrderDirection':
+        """Convert to OrderDirection."""
+        if self == Direction.BUY or self == Direction.LONG:
+            return OrderDirection.BUY
+        return OrderDirection.SELL
+    
+    def to_position_direction(self) -> 'PositionDirection':
+        """Convert to PositionDirection."""
+        if self == Direction.BUY or self == Direction.LONG:
+            return PositionDirection.LONG
+        return PositionDirection.SHORT
+
+
 class OrderStatus(Enum):
     """Status of an order or position."""
     OPEN = "OPEN"
@@ -78,6 +124,27 @@ class AccountState:
             value = getattr(self, field_name)
             if not isinstance(value, Decimal):
                 setattr(self, field_name, Decimal(str(value)))
+
+    def to_dict(self) -> dict:
+        """
+        Convert to dictionary for serialization (e.g., Weaviate).
+        
+        Returns:
+            dict: Serializable dictionary representation.
+        """
+        return {
+            'account_id': self.account_id,
+            'account_name': self.account_name,
+            'balance': float(self.balance),
+            'available': float(self.available),
+            'equity': float(self.equity),
+            'margin_used': float(self.margin_used),
+            'margin_available': float(self.margin_available),
+            'unrealized_pnl': float(self.unrealized_pnl),
+            'realized_pnl': float(self.realized_pnl),
+            'currency': self.currency,
+            'timestamp': self.timestamp.isoformat() if self.timestamp else None,
+        }
 
 
 @dataclass
@@ -131,6 +198,29 @@ class Position:
         if isinstance(self.direction, str):
             self.direction = OrderDirection(self.direction)
 
+    def to_dict(self) -> dict:
+        """
+        Convert to dictionary for serialization (e.g., Weaviate).
+        
+        Returns:
+            dict: Serializable dictionary representation.
+        """
+        return {
+            'position_id': self.position_id,
+            'deal_id': self.deal_id,
+            'epic': self.epic,
+            'market_name': self.market_name,
+            'direction': self.direction.value if isinstance(self.direction, Enum) else self.direction,
+            'size': float(self.size),
+            'open_price': float(self.open_price),
+            'current_price': float(self.current_price),
+            'unrealized_pnl': float(self.unrealized_pnl),
+            'currency': self.currency,
+            'stop_loss': float(self.stop_loss) if self.stop_loss is not None else None,
+            'take_profit': float(self.take_profit) if self.take_profit is not None else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
+
 
 @dataclass
 class OrderRequest:
@@ -183,6 +273,28 @@ class OrderRequest:
         if isinstance(self.order_type, str):
             self.order_type = OrderType(self.order_type)
 
+    def to_dict(self) -> dict:
+        """
+        Convert to dictionary for serialization (e.g., Weaviate).
+        
+        Returns:
+            dict: Serializable dictionary representation.
+        """
+        return {
+            'epic': self.epic,
+            'direction': self.direction.value if isinstance(self.direction, Enum) else self.direction,
+            'size': float(self.size),
+            'order_type': self.order_type.value if isinstance(self.order_type, Enum) else self.order_type,
+            'limit_price': float(self.limit_price) if self.limit_price is not None else None,
+            'stop_price': float(self.stop_price) if self.stop_price is not None else None,
+            'stop_loss': float(self.stop_loss) if self.stop_loss is not None else None,
+            'take_profit': float(self.take_profit) if self.take_profit is not None else None,
+            'guaranteed_stop': self.guaranteed_stop,
+            'trailing_stop': self.trailing_stop,
+            'trailing_stop_distance': float(self.trailing_stop_distance) if self.trailing_stop_distance is not None else None,
+            'currency': self.currency,
+        }
+
 
 @dataclass
 class OrderResult:
@@ -212,6 +324,23 @@ class OrderResult:
             self.timestamp = datetime.now(timezone.utc)
         if isinstance(self.status, str):
             self.status = OrderStatus(self.status)
+
+    def to_dict(self) -> dict:
+        """
+        Convert to dictionary for serialization (e.g., Weaviate).
+        
+        Returns:
+            dict: Serializable dictionary representation.
+        """
+        return {
+            'success': self.success,
+            'deal_id': self.deal_id,
+            'deal_reference': self.deal_reference,
+            'status': self.status.value if isinstance(self.status, Enum) else self.status,
+            'reason': self.reason,
+            'affected_deals': self.affected_deals,
+            'timestamp': self.timestamp.isoformat() if self.timestamp else None,
+        }
 
 
 @dataclass
@@ -265,3 +394,55 @@ class SymbolPrice:
     def mid_price(self) -> Decimal:
         """Calculate mid price between bid and ask."""
         return (self.bid + self.ask) / 2
+
+    def to_dict(self) -> dict:
+        """
+        Convert to dictionary for serialization (e.g., Weaviate).
+        
+        Returns:
+            dict: Serializable dictionary representation.
+        """
+        return {
+            'epic': self.epic,
+            'market_name': self.market_name,
+            'bid': float(self.bid),
+            'ask': float(self.ask),
+            'spread': float(self.spread),
+            'high': float(self.high) if self.high is not None else None,
+            'low': float(self.low) if self.low is not None else None,
+            'change': float(self.change) if self.change is not None else None,
+            'change_percent': float(self.change_percent) if self.change_percent is not None else None,
+            'mid_price': float(self.mid_price),
+            'timestamp': self.timestamp.isoformat() if self.timestamp else None,
+        }
+
+
+@dataclass
+class BrokerError:
+    """
+    Dataclass for broker error information (for serialization).
+    
+    This is a data model for error information, separate from the
+    BrokerError exception class in broker_service.py.
+    
+    Attributes:
+        error_code: Error code from the broker.
+        message: Human-readable error message.
+        raw: Raw error response from the broker (if available).
+    """
+    error_code: str
+    message: str
+    raw: Optional[dict] = None
+
+    def to_dict(self) -> dict:
+        """
+        Convert to dictionary for serialization (e.g., Weaviate).
+        
+        Returns:
+            dict: Serializable dictionary representation.
+        """
+        return {
+            'error_code': self.error_code,
+            'message': self.message,
+            'raw': self.raw,
+        }
