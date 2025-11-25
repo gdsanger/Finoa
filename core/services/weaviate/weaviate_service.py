@@ -56,19 +56,19 @@ class QueryFilter:
 class WeaviateClientProtocol(Protocol):
     """Protocol defining the interface for Weaviate client operations."""
     
-    def create_object(self, class_name: str, properties: dict, uuid: Optional[str] = None) -> str:
+    def create_object(self, class_name: str, properties: dict, object_uuid: Optional[str] = None) -> str:
         """Create an object in Weaviate."""
         ...
     
-    def get_object(self, class_name: str, uuid: str) -> Optional[dict]:
+    def get_object(self, class_name: str, object_uuid: str) -> Optional[dict]:
         """Get an object by UUID."""
         ...
     
-    def query_objects(self, class_name: str, filters: dict, limit: int = 100, offset: int = 0) -> list[dict]:
+    def query_objects(self, class_name: str, filters: Optional[dict] = None, limit: int = 100, offset: int = 0) -> list[dict]:
         """Query objects with filters."""
         ...
     
-    def delete_object(self, class_name: str, uuid: str) -> bool:
+    def delete_object(self, class_name: str, object_uuid: str) -> bool:
         """Delete an object."""
         ...
     

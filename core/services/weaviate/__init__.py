@@ -9,6 +9,7 @@ Provides the central persistence layer for Fiona based on Weaviate:
 """
 
 from .models import (
+    SCHEMA_VERSION,
     LocalLLMResult,
     ReflectionResult,
     KiEvaluationResult,
@@ -20,6 +21,8 @@ from .models import (
 from .weaviate_service import WeaviateService
 
 __all__ = [
+    # Constants
+    'SCHEMA_VERSION',
     # Data models
     'LocalLLMResult',
     'ReflectionResult',

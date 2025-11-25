@@ -14,7 +14,6 @@ import unittest
 from django.test import TestCase
 
 from core.services.strategy.models import (
-    SCHEMA_VERSION,
     SetupKind,
     SessionPhase,
     BreakoutContext,
@@ -22,6 +21,7 @@ from core.services.strategy.models import (
     SetupCandidate,
 )
 from core.services.weaviate.models import (
+    SCHEMA_VERSION,
     LocalLLMResult,
     ReflectionResult,
     KiEvaluationResult,

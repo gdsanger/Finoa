@@ -2,7 +2,7 @@
 Data models for Weaviate persistence layer.
 
 These models represent the complete pipeline for Fiona:
-Setup → KI → Reflexion → Entscheidung → Trade → Nachbetrachtung
+Setup → AI → Reflection → Decision → Trade → Post-Analysis
 
 All objects support serialization with schema versioning for future upgrades.
 """
