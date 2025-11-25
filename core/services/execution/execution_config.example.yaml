@@ -1,0 +1,21 @@
+# Execution Layer Configuration Example
+# This file shows all available configuration options for the Execution Layer.
+
+execution:
+  # Allow shadow trades when risk engine denies the trade
+  allow_shadow_if_risk_denied: true
+  
+  # Minutes to track market snapshots after trade exit
+  track_market_snapshot_minutes_after_exit: 10
+  
+  # Interval between market snapshots (in seconds)
+  track_snapshot_interval_seconds: 60
+  
+  # Default currency for trades
+  default_currency: EUR
+  
+  # Enable automatic polling for exit conditions
+  enable_exit_polling: true
+  
+  # Interval between exit condition checks (in seconds)
+  exit_polling_interval_seconds: 30

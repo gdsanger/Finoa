@@ -1,0 +1,501 @@
+"""
+Execution Service for Fiona trading system.
+
+The ExecutionService orchestrates signals from Strategy Engine, KI Layer,
+and Risk Engine to present trade proposals to users and execute trades.
+"""
+from datetime import datetime, timezone
+from decimal import Decimal
+from typing import Optional, Union
+import uuid
+
+from core.services.broker.broker_service import BrokerService, BrokerError
+from core.services.broker.models import (
+    OrderRequest,
+    OrderResult,
+    OrderDirection,
+    OrderStatus,
+    SymbolPrice,
+)
+from core.services.strategy.models import SetupCandidate
+from core.services.risk.models import RiskEvaluationResult
+from core.services.weaviate.models import (
+    ExecutedTrade,
+    ShadowTrade,
+    MarketSnapshot,
+    TradeDirection,
+    TradeStatus,
+)
+from core.services.weaviate.weaviate_service import WeaviateService
+from fiona.ki.models.ki_evaluation_result import KiEvaluationResult
+
+from .models import ExecutionSession, ExecutionState, ExecutionConfig
+
+
+class ExecutionError(Exception):
+    """Exception raised for execution-related errors."""
+    
+    def __init__(self, message: str, code: str = None, details: dict = None):
+        """
+        Initialize ExecutionError.
+        
+        Args:
+            message: Human-readable error message.
+            code: Error code (if available).
+            details: Additional error details.
+        """
+        super().__init__(message)
+        self.code = code
+        self.details = details or {}
+
+
+class ExecutionService:
+    """
+    Execution Layer v1.0 for Fiona trading system.
+    
+    The ExecutionService:
+    - Receives signals from Strategy Engine, KI Layer, and Risk Engine
+    - Presents trade proposals to users
+    - Executes trades upon user confirmation (or simulates shadow trades)
+    - Tracks trade lifecycle and persists to Weaviate
+    
+    In v1.0, there is no fully automatic trading - every real trade
+    requires explicit user confirmation.
+    
+    Example:
+        >>> service = ExecutionService(broker, weaviate, config)
+        >>> session = service.propose_trade(setup, ki_eval, risk_eval)
+        >>> if session.state == ExecutionState.WAITING_FOR_USER:
+        ...     trade = service.confirm_live_trade(session.id)
+        >>> elif session.state == ExecutionState.SHADOW_ONLY:
+        ...     shadow = service.confirm_shadow_trade(session.id)
+    """
+
+    def __init__(
+        self,
+        broker_service: Optional[BrokerService] = None,
+        weaviate_service: Optional[WeaviateService] = None,
+        config: Optional[ExecutionConfig] = None,
+    ):
+        """
+        Initialize the ExecutionService.
+        
+        Args:
+            broker_service: BrokerService instance for live trades.
+            weaviate_service: WeaviateService for persistence.
+            config: ExecutionConfig for behavior settings.
+        """
+        self._broker = broker_service
+        self._weaviate = weaviate_service or WeaviateService()
+        self._config = config or ExecutionConfig()
+        
+        # In-memory session storage (replace with persistent storage if needed)
+        self._sessions: dict[str, ExecutionSession] = {}
+
+    @property
+    def config(self) -> ExecutionConfig:
+        """Get the current configuration."""
+        return self._config
+
+    def propose_trade(
+        self,
+        setup: SetupCandidate,
+        ki_eval: Optional[KiEvaluationResult] = None,
+        risk_eval: Optional[RiskEvaluationResult] = None,
+    ) -> ExecutionSession:
+        """
+        Create a new ExecutionSession for a trade proposal.
+        
+        Combines signals from Strategy Engine, KI Layer, and Risk Engine
+        to create a concrete trade proposal for the user.
+        
+        Args:
+            setup: SetupCandidate from Strategy Engine.
+            ki_eval: KiEvaluationResult from KI Layer (optional).
+            risk_eval: RiskEvaluationResult from Risk Engine (optional).
+            
+        Returns:
+            ExecutionSession: New session ready for user decision.
+            
+        Raises:
+            ExecutionError: If session cannot be created.
+        """
+        now = datetime.now(timezone.utc)
+        session_id = str(uuid.uuid4())
+        
+        # Build the proposed order from setup and KI evaluation
+        proposed_order = self._build_order_from_signals(setup, ki_eval)
+        
+        # Determine initial state based on risk evaluation
+        if risk_eval is not None and not risk_eval.allowed:
+            # Risk denied - only shadow trading allowed (if configured)
+            if self._config.allow_shadow_if_risk_denied:
+                initial_state = ExecutionState.SHADOW_ONLY
+            else:
+                initial_state = ExecutionState.RISK_REJECTED
+        else:
+            # Risk approved or not evaluated - waiting for user
+            initial_state = ExecutionState.WAITING_FOR_USER
+        
+        # Get adjusted order from risk engine if available
+        adjusted_order = None
+        if risk_eval is not None and risk_eval.adjusted_order is not None:
+            adjusted_order = risk_eval.adjusted_order
+        
+        # Create the session
+        session = ExecutionSession(
+            id=session_id,
+            setup_id=setup.id,
+            ki_evaluation_id=ki_eval.id if ki_eval else None,
+            risk_result_id=None,  # RiskEvaluationResult doesn't have an id field
+            state=initial_state,
+            created_at=now,
+            last_update=now,
+            proposed_order=proposed_order,
+            adjusted_order=adjusted_order,
+            comment=risk_eval.reason if risk_eval else None,
+            meta={
+                'setup_kind': setup.setup_kind.value if hasattr(setup.setup_kind, 'value') else setup.setup_kind,
+                'direction': setup.direction,
+                'reference_price': setup.reference_price,
+            },
+        )
+        
+        # Store session
+        self._sessions[session_id] = session
+        
+        return session
+
+    def confirm_live_trade(self, session_id: str) -> ExecutedTrade:
+        """
+        Confirm and execute a live trade.
+        
+        User clicks 'Trade ausführen' - the order is placed with the broker.
+        
+        Args:
+            session_id: ID of the ExecutionSession.
+            
+        Returns:
+            ExecutedTrade: The executed trade record.
+            
+        Raises:
+            ExecutionError: If trade cannot be executed.
+        """
+        session = self._get_session(session_id)
+        
+        # Validate state
+        if session.state != ExecutionState.WAITING_FOR_USER:
+            raise ExecutionError(
+                f"Cannot execute live trade: session is in state {session.state.value}. "
+                f"Expected WAITING_FOR_USER.",
+                code="INVALID_STATE",
+            )
+        
+        # Require broker service for live trades
+        if self._broker is None:
+            raise ExecutionError(
+                "Broker service not configured for live trades.",
+                code="NO_BROKER",
+            )
+        
+        # Transition to USER_ACCEPTED
+        session.transition_to(ExecutionState.USER_ACCEPTED)
+        
+        # Get the effective order
+        order = session.get_effective_order()
+        
+        # Place the order with the broker
+        try:
+            result = self._broker.place_order(order)
+        except BrokerError as e:
+            # Revert state on error
+            session.state = ExecutionState.WAITING_FOR_USER
+            raise ExecutionError(
+                f"Broker error: {str(e)}",
+                code=e.code if hasattr(e, 'code') else "BROKER_ERROR",
+                details=e.details if hasattr(e, 'details') else {},
+            )
+        
+        if not result.success:
+            # Revert state on failure
+            session.state = ExecutionState.WAITING_FOR_USER
+            raise ExecutionError(
+                f"Order rejected: {result.reason}",
+                code="ORDER_REJECTED",
+                details={'deal_reference': result.deal_reference},
+            )
+        
+        # Get entry price from market or broker
+        entry_price = self._get_entry_price(order.epic)
+        
+        # Create ExecutedTrade
+        now = datetime.now(timezone.utc)
+        trade_id = str(uuid.uuid4())
+        
+        trade = ExecutedTrade(
+            id=trade_id,
+            created_at=now,
+            setup_id=session.setup_id,
+            ki_evaluation_id=session.ki_evaluation_id,
+            risk_evaluation_id=session.risk_result_id,
+            broker_deal_id=result.deal_id,
+            broker_order_id=result.deal_reference,
+            epic=order.epic,
+            direction=self._order_to_trade_direction(order.direction),
+            size=order.size,
+            entry_price=entry_price,
+            stop_loss=order.stop_loss,
+            take_profit=order.take_profit,
+            status=TradeStatus.OPEN,
+            opened_at=now,
+            currency=order.currency,
+            meta=session.meta,
+        )
+        
+        # Update session
+        session.trade_id = trade_id
+        session.is_shadow = False
+        session.transition_to(ExecutionState.LIVE_TRADE_OPEN)
+        
+        # Persist to Weaviate
+        self._weaviate.store_trade(trade)
+        
+        return trade
+
+    def confirm_shadow_trade(self, session_id: str) -> ShadowTrade:
+        """
+        Confirm a shadow trade.
+        
+        User clicks 'Nur Schatten-Trade' or trade was risk-denied.
+        The trade is simulated without broker execution.
+        
+        Args:
+            session_id: ID of the ExecutionSession.
+            
+        Returns:
+            ShadowTrade: The simulated trade record.
+            
+        Raises:
+            ExecutionError: If shadow trade cannot be created.
+        """
+        session = self._get_session(session_id)
+        
+        # Validate state
+        if not session.state.allows_user_action():
+            raise ExecutionError(
+                f"Cannot create shadow trade: session is in state {session.state.value}. "
+                f"Expected WAITING_FOR_USER or SHADOW_ONLY.",
+                code="INVALID_STATE",
+            )
+        
+        # Transition to USER_SHADOW
+        session.transition_to(ExecutionState.USER_SHADOW)
+        
+        # Get the effective order
+        order = session.get_effective_order()
+        
+        # Get entry price (from broker if available, otherwise from order context)
+        entry_price = self._get_entry_price_for_shadow(order.epic)
+        
+        # Determine skip reason
+        skip_reason = None
+        if session.comment:
+            skip_reason = session.comment
+        
+        # Create ShadowTrade
+        now = datetime.now(timezone.utc)
+        trade_id = str(uuid.uuid4())
+        
+        shadow_trade = ShadowTrade(
+            id=trade_id,
+            created_at=now,
+            setup_id=session.setup_id,
+            ki_evaluation_id=session.ki_evaluation_id,
+            risk_evaluation_id=session.risk_result_id,
+            epic=order.epic,
+            direction=self._order_to_trade_direction(order.direction),
+            size=order.size,
+            entry_price=entry_price,
+            stop_loss=order.stop_loss,
+            take_profit=order.take_profit,
+            status=TradeStatus.OPEN,
+            opened_at=now,
+            skip_reason=skip_reason,
+            meta=session.meta,
+        )
+        
+        # Update session
+        session.trade_id = trade_id
+        session.is_shadow = True
+        session.transition_to(ExecutionState.SHADOW_TRADE_OPEN)
+        
+        # Persist to Weaviate
+        self._weaviate.store_shadow_trade(shadow_trade)
+        
+        return shadow_trade
+
+    def reject_trade(self, session_id: str) -> None:
+        """
+        Reject a trade proposal.
+        
+        User clicks 'Verwerfen' - the signal is discarded.
+        
+        Args:
+            session_id: ID of the ExecutionSession.
+            
+        Raises:
+            ExecutionError: If session cannot be rejected.
+        """
+        session = self._get_session(session_id)
+        
+        # Validate state
+        if not session.state.allows_user_action():
+            raise ExecutionError(
+                f"Cannot reject trade: session is in state {session.state.value}. "
+                f"Expected WAITING_FOR_USER or SHADOW_ONLY.",
+                code="INVALID_STATE",
+            )
+        
+        # Transition to USER_REJECTED
+        session.transition_to(ExecutionState.USER_REJECTED)
+        
+        # Transition to DROPPED
+        session.transition_to(ExecutionState.DROPPED)
+
+    def get_session(self, session_id: str) -> Optional[ExecutionSession]:
+        """
+        Get an ExecutionSession by ID.
+        
+        Args:
+            session_id: ID of the session.
+            
+        Returns:
+            ExecutionSession if found, None otherwise.
+        """
+        return self._sessions.get(session_id)
+
+    def get_active_sessions(self) -> list[ExecutionSession]:
+        """
+        Get all active (non-terminal) sessions.
+        
+        Returns:
+            List of active ExecutionSessions.
+        """
+        return [
+            s for s in self._sessions.values()
+            if not s.state.is_terminal()
+        ]
+
+    def get_open_trades(self) -> list[ExecutionSession]:
+        """
+        Get all sessions with open trades.
+        
+        Returns:
+            List of sessions with open live or shadow trades.
+        """
+        return [
+            s for s in self._sessions.values()
+            if s.state.is_trade_open()
+        ]
+
+    # =========================================================================
+    # Private helper methods
+    # =========================================================================
+
+    def _get_session(self, session_id: str) -> ExecutionSession:
+        """Get session or raise error."""
+        session = self._sessions.get(session_id)
+        if session is None:
+            raise ExecutionError(
+                f"Session not found: {session_id}",
+                code="SESSION_NOT_FOUND",
+            )
+        return session
+
+    def _build_order_from_signals(
+        self,
+        setup: SetupCandidate,
+        ki_eval: Optional[KiEvaluationResult],
+    ) -> OrderRequest:
+        """
+        Build an OrderRequest from setup and KI evaluation signals.
+        
+        Args:
+            setup: SetupCandidate from Strategy Engine.
+            ki_eval: KiEvaluationResult from KI Layer (optional).
+            
+        Returns:
+            OrderRequest: The constructed order.
+        """
+        # Determine direction
+        direction = OrderDirection.BUY if setup.direction == "LONG" else OrderDirection.SELL
+        
+        # Get values from KI evaluation if available, otherwise use defaults
+        if ki_eval is not None and ki_eval.is_tradeable():
+            params = ki_eval.get_trade_parameters()
+            size = Decimal(str(params.get('size', 1.0))) if params else Decimal('1.0')
+            stop_loss = Decimal(str(params['sl'])) if params and params.get('sl') else None
+            take_profit = Decimal(str(params['tp'])) if params and params.get('tp') else None
+        else:
+            # Default values
+            size = Decimal('1.0')
+            stop_loss = None
+            take_profit = None
+        
+        return OrderRequest(
+            epic=setup.epic,
+            direction=direction,
+            size=size,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+            currency=self._config.default_currency,
+        )
+
+    def _get_entry_price(self, epic: str) -> Decimal:
+        """
+        Get entry price from broker.
+        
+        Args:
+            epic: Market identifier.
+            
+        Returns:
+            Decimal: Entry price.
+        """
+        if self._broker is not None:
+            try:
+                price = self._broker.get_symbol_price(epic)
+                return price.mid_price
+            except Exception:
+                pass
+        
+        # Fallback to a placeholder (should not happen in production)
+        return Decimal('0.00')
+
+    def _get_entry_price_for_shadow(self, epic: str) -> Decimal:
+        """
+        Get entry price for shadow trade.
+        
+        Uses broker if available, otherwise uses a placeholder.
+        
+        Args:
+            epic: Market identifier.
+            
+        Returns:
+            Decimal: Entry price.
+        """
+        # Try to get real price from broker
+        if self._broker is not None:
+            try:
+                price = self._broker.get_symbol_price(epic)
+                return price.mid_price
+            except Exception:
+                pass
+        
+        # Fallback to a placeholder
+        return Decimal('0.00')
+
+    def _order_to_trade_direction(self, order_direction: OrderDirection) -> TradeDirection:
+        """Convert OrderDirection to TradeDirection."""
+        if order_direction == OrderDirection.BUY:
+            return TradeDirection.LONG
+        return TradeDirection.SHORT

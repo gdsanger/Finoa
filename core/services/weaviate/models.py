@@ -344,7 +344,9 @@ class ExecutedTrade:
         created_at: Timestamp when the trade was created.
         setup_id: Reference to the SetupCandidate that triggered the trade.
         ki_evaluation_id: Reference to the KiEvaluationResult.
+        risk_evaluation_id: Reference to the RiskEvaluationResult.
         broker_deal_id: Deal ID from the broker.
+        broker_order_id: Order ID from the broker.
         epic: Market identifier.
         direction: Trade direction (LONG/SHORT).
         size: Position size.
@@ -355,12 +357,16 @@ class ExecutedTrade:
         status: Current trade status.
         opened_at: Timestamp when trade was opened.
         closed_at: Timestamp when trade was closed.
-        pnl: Profit/loss.
+        pnl: Profit/loss (realized_pnl).
         pnl_percent: Profit/loss percentage.
+        max_favorable_excursion: Maximum favorable excursion during trade.
+        max_adverse_excursion: Maximum adverse excursion during trade.
+        exit_reason: Reason for trade exit (SL_HIT, TP_HIT, MANUAL, TIME_EXIT, etc.).
         fees: Trading fees.
         currency: Trade currency.
         market_snapshot_ids: References to MarketSnapshots.
         notes: Additional notes.
+        meta: Additional metadata.
         schema_version: Schema version for compatibility.
     """
     id: str
@@ -372,7 +378,9 @@ class ExecutedTrade:
     entry_price: Decimal
     status: TradeStatus
     ki_evaluation_id: Optional[str] = None
+    risk_evaluation_id: Optional[str] = None
     broker_deal_id: Optional[str] = None
+    broker_order_id: Optional[str] = None
     exit_price: Optional[Decimal] = None
     stop_loss: Optional[Decimal] = None
     take_profit: Optional[Decimal] = None
@@ -380,16 +388,22 @@ class ExecutedTrade:
     closed_at: Optional[datetime] = None
     pnl: Optional[Decimal] = None
     pnl_percent: Optional[float] = None
+    max_favorable_excursion: Optional[float] = None
+    max_adverse_excursion: Optional[float] = None
+    exit_reason: Optional[str] = None
     fees: Decimal = Decimal('0.00')
     currency: str = 'EUR'
     market_snapshot_ids: Optional[list[str]] = None
     notes: Optional[str] = None
+    meta: Optional[dict[str, Any]] = None
     schema_version: str = SCHEMA_VERSION
 
     def __post_init__(self):
         """Ensure proper types and initialize lists."""
         if self.market_snapshot_ids is None:
             self.market_snapshot_ids = []
+        if self.meta is None:
+            self.meta = {}
         
         # Ensure Decimal types
         if not isinstance(self.size, Decimal):
@@ -425,7 +439,9 @@ class ExecutedTrade:
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'setup_id': self.setup_id,
             'ki_evaluation_id': self.ki_evaluation_id,
+            'risk_evaluation_id': self.risk_evaluation_id,
             'broker_deal_id': self.broker_deal_id,
+            'broker_order_id': self.broker_order_id,
             'epic': self.epic,
             'direction': self.direction.value if isinstance(self.direction, TradeDirection) else self.direction,
             'size': float(self.size),
@@ -438,10 +454,14 @@ class ExecutedTrade:
             'closed_at': self.closed_at.isoformat() if self.closed_at else None,
             'pnl': float(self.pnl) if self.pnl is not None else None,
             'pnl_percent': self.pnl_percent,
+            'max_favorable_excursion': self.max_favorable_excursion,
+            'max_adverse_excursion': self.max_adverse_excursion,
+            'exit_reason': self.exit_reason,
             'fees': float(self.fees),
             'currency': self.currency,
             'market_snapshot_ids': self.market_snapshot_ids,
             'notes': self.notes,
+            'meta': self.meta,
             'schema_version': self.schema_version,
         }
 
@@ -468,7 +488,9 @@ class ExecutedTrade:
             created_at=parse_datetime(data.get('created_at')),
             setup_id=data['setup_id'],
             ki_evaluation_id=data.get('ki_evaluation_id'),
+            risk_evaluation_id=data.get('risk_evaluation_id'),
             broker_deal_id=data.get('broker_deal_id'),
+            broker_order_id=data.get('broker_order_id'),
             epic=data['epic'],
             direction=data['direction'],
             size=Decimal(str(data['size'])),
@@ -481,10 +503,14 @@ class ExecutedTrade:
             closed_at=parse_datetime(data.get('closed_at')),
             pnl=Decimal(str(data['pnl'])) if data.get('pnl') is not None else None,
             pnl_percent=data.get('pnl_percent'),
+            max_favorable_excursion=data.get('max_favorable_excursion'),
+            max_adverse_excursion=data.get('max_adverse_excursion'),
+            exit_reason=data.get('exit_reason'),
             fees=Decimal(str(data.get('fees', '0.00'))),
             currency=data.get('currency', 'EUR'),
             market_snapshot_ids=data.get('market_snapshot_ids', []),
             notes=data.get('notes'),
+            meta=data.get('meta', {}),
             schema_version=data.get('schema_version', SCHEMA_VERSION),
         )
 
@@ -502,6 +528,7 @@ class ShadowTrade:
         created_at: Timestamp when the shadow trade was created.
         setup_id: Reference to the SetupCandidate.
         ki_evaluation_id: Reference to the KiEvaluationResult.
+        risk_evaluation_id: Reference to the RiskEvaluationResult.
         epic: Market identifier.
         direction: Trade direction (LONG/SHORT).
         size: Hypothetical position size.
@@ -512,11 +539,13 @@ class ShadowTrade:
         status: Current trade status.
         opened_at: Timestamp when trade was "opened".
         closed_at: Timestamp when trade was "closed".
-        theoretical_pnl: Theoretical profit/loss.
+        theoretical_pnl: Theoretical profit/loss (realized_pnl).
         theoretical_pnl_percent: Theoretical profit/loss percentage.
+        exit_reason: Reason for trade exit (SL_HIT, TP_HIT, etc.).
         skip_reason: Reason why this was not executed (if applicable).
         market_snapshot_ids: References to MarketSnapshots.
         notes: Additional notes.
+        meta: Additional metadata.
         schema_version: Schema version for compatibility.
     """
     id: str
@@ -528,6 +557,7 @@ class ShadowTrade:
     entry_price: Decimal
     status: TradeStatus
     ki_evaluation_id: Optional[str] = None
+    risk_evaluation_id: Optional[str] = None
     exit_price: Optional[Decimal] = None
     stop_loss: Optional[Decimal] = None
     take_profit: Optional[Decimal] = None
@@ -535,15 +565,19 @@ class ShadowTrade:
     closed_at: Optional[datetime] = None
     theoretical_pnl: Optional[Decimal] = None
     theoretical_pnl_percent: Optional[float] = None
+    exit_reason: Optional[str] = None
     skip_reason: Optional[str] = None
     market_snapshot_ids: Optional[list[str]] = None
     notes: Optional[str] = None
+    meta: Optional[dict[str, Any]] = None
     schema_version: str = SCHEMA_VERSION
 
     def __post_init__(self):
         """Ensure proper types and initialize lists."""
         if self.market_snapshot_ids is None:
             self.market_snapshot_ids = []
+        if self.meta is None:
+            self.meta = {}
         
         # Ensure Decimal types
         if not isinstance(self.size, Decimal):
@@ -577,6 +611,7 @@ class ShadowTrade:
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'setup_id': self.setup_id,
             'ki_evaluation_id': self.ki_evaluation_id,
+            'risk_evaluation_id': self.risk_evaluation_id,
             'epic': self.epic,
             'direction': self.direction.value if isinstance(self.direction, TradeDirection) else self.direction,
             'size': float(self.size),
@@ -589,9 +624,11 @@ class ShadowTrade:
             'closed_at': self.closed_at.isoformat() if self.closed_at else None,
             'theoretical_pnl': float(self.theoretical_pnl) if self.theoretical_pnl is not None else None,
             'theoretical_pnl_percent': self.theoretical_pnl_percent,
+            'exit_reason': self.exit_reason,
             'skip_reason': self.skip_reason,
             'market_snapshot_ids': self.market_snapshot_ids,
             'notes': self.notes,
+            'meta': self.meta,
             'schema_version': self.schema_version,
         }
 
@@ -618,6 +655,7 @@ class ShadowTrade:
             created_at=parse_datetime(data.get('created_at')),
             setup_id=data['setup_id'],
             ki_evaluation_id=data.get('ki_evaluation_id'),
+            risk_evaluation_id=data.get('risk_evaluation_id'),
             epic=data['epic'],
             direction=data['direction'],
             size=Decimal(str(data['size'])),
@@ -630,9 +668,11 @@ class ShadowTrade:
             closed_at=parse_datetime(data.get('closed_at')),
             theoretical_pnl=Decimal(str(data['theoretical_pnl'])) if data.get('theoretical_pnl') is not None else None,
             theoretical_pnl_percent=data.get('theoretical_pnl_percent'),
+            exit_reason=data.get('exit_reason'),
             skip_reason=data.get('skip_reason'),
             market_snapshot_ids=data.get('market_snapshot_ids', []),
             notes=data.get('notes'),
+            meta=data.get('meta', {}),
             schema_version=data.get('schema_version', SCHEMA_VERSION),
         )
 
@@ -643,15 +683,21 @@ class MarketSnapshot:
     Represents a point-in-time snapshot of market conditions.
     
     Used for recording market state at key moments (trade entry/exit,
-    setup detection, etc.) for later analysis.
+    setup detection, etc.) for later analysis. Can store price series
+    for post-exit tracking.
     
     Attributes:
         id: Unique identifier for the snapshot.
+        trade_id: Reference to ExecutedTrade or ShadowTrade.
+        is_shadow: Whether this is related to a shadow trade.
         created_at: Timestamp when the snapshot was taken.
         epic: Market identifier.
         bid: Bid price.
         ask: Ask price.
         spread: Current spread.
+        prices: List of close prices (for post-exit tracking).
+        highs: List of high prices (for post-exit tracking).
+        lows: List of low prices (for post-exit tracking).
         high: Day high.
         low: Day low.
         volume: Current volume (if available).
@@ -662,6 +708,7 @@ class MarketSnapshot:
         session_phase: Current trading session phase.
         additional_indicators: Additional technical indicators.
         notes: Additional notes.
+        comment: Additional comment.
         schema_version: Schema version for compatibility.
     """
     id: str
@@ -670,6 +717,11 @@ class MarketSnapshot:
     bid: Decimal
     ask: Decimal
     spread: Decimal
+    trade_id: Optional[str] = None
+    is_shadow: bool = False
+    prices: Optional[list[float]] = None
+    highs: Optional[list[float]] = None
+    lows: Optional[list[float]] = None
     high: Optional[Decimal] = None
     low: Optional[Decimal] = None
     volume: Optional[float] = None
@@ -680,12 +732,19 @@ class MarketSnapshot:
     session_phase: Optional[str] = None
     additional_indicators: Optional[dict[str, Any]] = None
     notes: Optional[str] = None
+    comment: Optional[str] = None
     schema_version: str = SCHEMA_VERSION
 
     def __post_init__(self):
         """Ensure proper types."""
         if self.additional_indicators is None:
             self.additional_indicators = {}
+        if self.prices is None:
+            self.prices = []
+        if self.highs is None:
+            self.highs = []
+        if self.lows is None:
+            self.lows = []
         
         # Ensure Decimal types
         if not isinstance(self.bid, Decimal):
@@ -713,12 +772,17 @@ class MarketSnapshot:
         """
         return {
             'id': self.id,
+            'trade_id': self.trade_id,
+            'is_shadow': self.is_shadow,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'epic': self.epic,
             'bid': float(self.bid),
             'ask': float(self.ask),
             'spread': float(self.spread),
             'mid_price': float(self.mid_price),
+            'prices': self.prices,
+            'highs': self.highs,
+            'lows': self.lows,
             'high': float(self.high) if self.high is not None else None,
             'low': float(self.low) if self.low is not None else None,
             'volume': self.volume,
@@ -729,6 +793,7 @@ class MarketSnapshot:
             'session_phase': self.session_phase,
             'additional_indicators': self.additional_indicators,
             'notes': self.notes,
+            'comment': self.comment,
             'schema_version': self.schema_version,
         }
 
@@ -749,11 +814,16 @@ class MarketSnapshot:
         
         return cls(
             id=data['id'],
+            trade_id=data.get('trade_id'),
+            is_shadow=data.get('is_shadow', False),
             created_at=created_at,
             epic=data['epic'],
             bid=Decimal(str(data['bid'])),
             ask=Decimal(str(data['ask'])),
             spread=Decimal(str(data['spread'])),
+            prices=data.get('prices', []),
+            highs=data.get('highs', []),
+            lows=data.get('lows', []),
             high=Decimal(str(data['high'])) if data.get('high') is not None else None,
             low=Decimal(str(data['low'])) if data.get('low') is not None else None,
             volume=data.get('volume'),
@@ -764,5 +834,6 @@ class MarketSnapshot:
             session_phase=data.get('session_phase'),
             additional_indicators=data.get('additional_indicators', {}),
             notes=data.get('notes'),
+            comment=data.get('comment'),
             schema_version=data.get('schema_version', SCHEMA_VERSION),
         )
