@@ -700,7 +700,7 @@ class IgApiClientTest(TestCase):
     @patch('core.services.broker.ig_api_client.requests.request')
     @patch('core.services.broker.ig_api_client.requests.post')
     def test_token_invalid_oauth_triggers_reauth(self, mock_post, mock_request):
-        """Test that oauth-token-invalid error triggers token refresh and re-authentication."""
+        """Test that oauth-token-invalid error triggers token refresh and retry."""
         # First login succeeds with OAuth tokens
         mock_login_response = MagicMock()
         mock_login_response.status_code = 200

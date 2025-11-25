@@ -269,6 +269,9 @@ class IgApiClient:
                 self.login()
             
             # Verify session was established with valid tokens
+            # Note: For both OAuth and traditional sessions, the access/auth token is stored in `cst`
+            # For OAuth: cst = access_token, security_token = refresh_token
+            # For traditional: cst = CST header value, security_token = X-SECURITY-TOKEN header value
             if not self._session or not self._session.cst:
                 raise AuthenticationError("Re-authentication did not establish a valid session")
             
@@ -335,6 +338,8 @@ class IgApiClient:
             
             # Extract new tokens
             access_token = body.get("access_token")
+            # IG API may not return a new refresh_token on every refresh.
+            # Per OAuth 2.0 spec, if no new refresh_token is provided, the existing one remains valid.
             refresh_token = body.get("refresh_token", self._session.security_token)
             
             if not access_token:
