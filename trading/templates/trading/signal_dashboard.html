@@ -1,0 +1,583 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Fiona - Signal Dashboard{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Fiona Trading Dashboard - Dark Mode Styles */
+    :root {
+        --fiona-bg-dark: #1a1d21;
+        --fiona-card-dark: #2d3239;
+        --fiona-card-header: #3a4149;
+        --fiona-text-light: #e9ecef;
+        --fiona-text-muted: #8b949e;
+        --fiona-border: #484f58;
+        
+        /* Signal Colors */
+        --signal-long: #28a745;
+        --signal-short: #dc3545;
+        
+        /* Confidence Colors */
+        --confidence-high: #28a745;
+        --confidence-medium: #ffc107;
+        --confidence-low: #dc3545;
+        
+        /* Risk Colors */
+        --risk-green: #28a745;
+        --risk-yellow: #ffc107;
+        --risk-red: #dc3545;
+    }
+    
+    .fiona-dashboard {
+        background-color: var(--fiona-bg-dark);
+        min-height: 100vh;
+        color: var(--fiona-text-light);
+        padding: 1rem;
+    }
+    
+    .fiona-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid var(--fiona-border);
+    }
+    
+    .fiona-header h1 {
+        color: var(--fiona-text-light);
+        margin: 0;
+    }
+    
+    .fiona-header .badge {
+        font-size: 1rem;
+        padding: 0.5rem 1rem;
+    }
+    
+    /* Signal Card */
+    .signal-card {
+        background-color: var(--fiona-card-dark);
+        border: 1px solid var(--fiona-border);
+        border-radius: 12px;
+        margin-bottom: 1.5rem;
+        overflow: hidden;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    .signal-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+    
+    .signal-card-header {
+        background-color: var(--fiona-card-header);
+        padding: 1rem 1.25rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid var(--fiona-border);
+    }
+    
+    .signal-card-body {
+        padding: 1.25rem;
+    }
+    
+    .signal-card-footer {
+        padding: 1rem 1.25rem;
+        background-color: var(--fiona-card-header);
+        border-top: 1px solid var(--fiona-border);
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+    
+    /* Setup Type Badge */
+    .setup-type-badge {
+        font-size: 0.875rem;
+        padding: 0.35rem 0.75rem;
+        border-radius: 6px;
+        font-weight: 600;
+    }
+    
+    .setup-type-BREAKOUT {
+        background-color: #2563eb;
+        color: white;
+    }
+    
+    .setup-type-EIA_REVERSION {
+        background-color: #7c3aed;
+        color: white;
+    }
+    
+    .setup-type-EIA_TRENDDAY {
+        background-color: #059669;
+        color: white;
+    }
+    
+    /* Session Phase Tag */
+    .session-phase-tag {
+        background-color: var(--fiona-border);
+        color: var(--fiona-text-light);
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    /* Direction Badge */
+    .direction-badge {
+        font-size: 1rem;
+        font-weight: 700;
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+    }
+    
+    .direction-LONG {
+        background-color: var(--signal-long);
+        color: white;
+    }
+    
+    .direction-SHORT {
+        background-color: var(--signal-short);
+        color: white;
+    }
+    
+    /* Confidence Badge */
+    .confidence-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.35rem 0.75rem;
+        border-radius: 6px;
+        font-weight: 600;
+    }
+    
+    .confidence-high {
+        background-color: rgba(40, 167, 69, 0.2);
+        color: var(--confidence-high);
+        border: 1px solid var(--confidence-high);
+    }
+    
+    .confidence-medium {
+        background-color: rgba(255, 193, 7, 0.2);
+        color: var(--confidence-medium);
+        border: 1px solid var(--confidence-medium);
+    }
+    
+    .confidence-low {
+        background-color: rgba(220, 53, 69, 0.2);
+        color: var(--confidence-low);
+        border: 1px solid var(--confidence-low);
+    }
+    
+    /* Risk Badge */
+    .risk-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.35rem 0.75rem;
+        border-radius: 6px;
+        font-weight: 600;
+    }
+    
+    .risk-GREEN {
+        background-color: rgba(40, 167, 69, 0.2);
+        color: var(--risk-green);
+        border: 1px solid var(--risk-green);
+    }
+    
+    .risk-YELLOW {
+        background-color: rgba(255, 193, 7, 0.2);
+        color: var(--risk-yellow);
+        border: 1px solid var(--risk-yellow);
+    }
+    
+    .risk-RED {
+        background-color: rgba(220, 53, 69, 0.2);
+        color: var(--risk-red);
+        border: 1px solid var(--risk-red);
+    }
+    
+    /* Range Info Box */
+    .range-info {
+        background-color: rgba(0, 0, 0, 0.2);
+        border-radius: 8px;
+        padding: 0.75rem;
+        margin-bottom: 1rem;
+    }
+    
+    .range-info-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 0.25rem;
+    }
+    
+    .range-info-row:last-child {
+        margin-bottom: 0;
+    }
+    
+    .range-label {
+        color: var(--fiona-text-muted);
+        font-size: 0.875rem;
+    }
+    
+    .range-value {
+        font-weight: 600;
+        font-family: 'Roboto Mono', monospace;
+    }
+    
+    /* KI Info */
+    .ki-info {
+        background-color: rgba(0, 0, 0, 0.2);
+        border-radius: 8px;
+        padding: 0.75rem;
+        margin-top: 1rem;
+    }
+    
+    .ki-reasoning {
+        color: var(--fiona-text-muted);
+        font-size: 0.875rem;
+        line-height: 1.5;
+        margin-top: 0.5rem;
+    }
+    
+    /* Trade Buttons */
+    .btn-trade-live {
+        background-color: var(--signal-long);
+        border-color: var(--signal-long);
+        color: white;
+        font-weight: 600;
+    }
+    
+    .btn-trade-live:hover:not(:disabled) {
+        background-color: #218838;
+        border-color: #1e7e34;
+        color: white;
+    }
+    
+    .btn-trade-live:disabled {
+        background-color: #6c757d;
+        border-color: #6c757d;
+        opacity: 0.65;
+    }
+    
+    .btn-trade-shadow {
+        background-color: #6c757d;
+        border-color: #6c757d;
+        color: white;
+        font-weight: 600;
+    }
+    
+    .btn-trade-shadow:hover {
+        background-color: #545b62;
+        border-color: #4e555b;
+        color: white;
+    }
+    
+    .btn-trade-reject {
+        background-color: transparent;
+        border-color: var(--signal-short);
+        color: var(--signal-short);
+    }
+    
+    .btn-trade-reject:hover {
+        background-color: var(--signal-short);
+        color: white;
+    }
+    
+    .btn-trade-details {
+        background-color: #3a6ea5;
+        border-color: #3a6ea5;
+        color: white;
+    }
+    
+    .btn-trade-details:hover {
+        background-color: #2e5684;
+        border-color: #2e5684;
+        color: white;
+    }
+    
+    /* Section Label */
+    .section-label {
+        color: var(--fiona-text-muted);
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 1px;
+        margin-bottom: 0.5rem;
+    }
+    
+    /* Stats Grid */
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 1rem;
+        margin-top: 1rem;
+    }
+    
+    .stat-item {
+        text-align: center;
+    }
+    
+    .stat-value {
+        font-size: 1.25rem;
+        font-weight: 700;
+        font-family: 'Roboto Mono', monospace;
+    }
+    
+    .stat-label {
+        font-size: 0.75rem;
+        color: var(--fiona-text-muted);
+        text-transform: uppercase;
+    }
+    
+    /* Empty State */
+    .empty-state {
+        text-align: center;
+        padding: 4rem 2rem;
+        color: var(--fiona-text-muted);
+    }
+    
+    .empty-state i {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+        opacity: 0.5;
+    }
+    
+    /* Responsive */
+    @media (max-width: 768px) {
+        .signal-card-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.5rem;
+        }
+        
+        .signal-card-footer {
+            justify-content: center;
+        }
+        
+        .stats-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="fiona-dashboard">
+    <div class="container-fluid">
+        <div class="fiona-header">
+            <div>
+                <h1>
+                    <i class="bi bi-graph-up-arrow"></i> Fiona Signal Dashboard
+                </h1>
+                <small class="text-muted">Trading Signal Management v1.0</small>
+            </div>
+            <div class="d-flex gap-2 align-items-center">
+                <span class="badge bg-success">{{ active_count }} aktive Signale</span>
+                <a href="{% url 'trade_history' %}" class="btn btn-sm btn-outline-light">
+                    <i class="bi bi-clock-history"></i> Historie
+                </a>
+            </div>
+        </div>
+        
+        {% if signals %}
+        <div class="row">
+            {% for signal in signals %}
+            <div class="col-lg-6 col-xl-4">
+                <div class="signal-card">
+                    <div class="signal-card-header">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="setup-type-badge setup-type-{% if signal.setup_type %}{{ signal.setup_type }}{% else %}BREAKOUT{% endif %}">
+                                {% if signal.setup_type_display %}
+                                    {{ signal.setup_type_display }}
+                                {% else %}
+                                    {{ signal.get_setup_type_display }}
+                                {% endif %}
+                            </span>
+                            <span class="session-phase-tag">
+                                {% if signal.session_phase_display %}
+                                    {{ signal.session_phase_display }}
+                                {% else %}
+                                    {{ signal.get_session_phase_display }}
+                                {% endif %}
+                            </span>
+                        </div>
+                        <span class="direction-badge direction-{{ signal.direction }}">
+                            {% if signal.direction == 'LONG' %}
+                                <i class="bi bi-arrow-up-circle-fill"></i>
+                            {% else %}
+                                <i class="bi bi-arrow-down-circle-fill"></i>
+                            {% endif %}
+                            {{ signal.direction }}
+                        </span>
+                    </div>
+                    
+                    <div class="signal-card-body">
+                        <!-- Range Info -->
+                        <div class="range-info">
+                            <div class="section-label">Range Info</div>
+                            <div class="range-info-row">
+                                <span class="range-label">Range High</span>
+                                <span class="range-value">{{ signal.range_high }}</span>
+                            </div>
+                            <div class="range-info-row">
+                                <span class="range-label">Range Low</span>
+                                <span class="range-value">{{ signal.range_low }}</span>
+                            </div>
+                            <div class="range-info-row">
+                                <span class="range-label">Trigger</span>
+                                <span class="range-value text-warning">{{ signal.trigger_price }}</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Stats -->
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <div class="stat-value text-danger">{{ signal.stop_loss }}</div>
+                                <div class="stat-label">SL</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value text-success">{{ signal.take_profit }}</div>
+                                <div class="stat-label">TP</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value">{{ signal.position_size }}</div>
+                                <div class="stat-label">Size</div>
+                            </div>
+                        </div>
+                        
+                        <!-- KI & Risk Badges -->
+                        <div class="d-flex flex-wrap gap-2 mt-3">
+                            {% with gpt_conf=signal.gpt_confidence|floatformat:0 %}
+                            <span class="confidence-badge {% if gpt_conf >= 80 %}confidence-high{% elif gpt_conf >= 60 %}confidence-medium{% else %}confidence-low{% endif %}">
+                                <i class="bi bi-cpu"></i> GPT {{ gpt_conf }}%
+                            </span>
+                            {% endwith %}
+                            
+                            <span class="risk-badge risk-{{ signal.risk_status }}">
+                                {% if signal.risk_status == 'GREEN' %}
+                                    <i class="bi bi-check-circle-fill"></i> Erlaubt
+                                {% elif signal.risk_status == 'YELLOW' %}
+                                    <i class="bi bi-exclamation-triangle-fill"></i> Riskant
+                                {% else %}
+                                    <i class="bi bi-x-circle-fill"></i> Verboten
+                                {% endif %}
+                            </span>
+                        </div>
+                        
+                        <!-- KI Reasoning -->
+                        <div class="ki-info">
+                            <div class="section-label">KI-Begründung</div>
+                            <p class="ki-reasoning mb-0">{{ signal.ki_reasoning|truncatechars:120 }}</p>
+                        </div>
+                    </div>
+                    
+                    <div class="signal-card-footer">
+                        <a href="{% url 'signal_detail' signal.id %}" class="btn btn-trade-details btn-sm">
+                            <i class="bi bi-eye"></i> Details
+                        </a>
+                        
+                        <button class="btn btn-trade-live btn-sm" 
+                                {% if not signal.can_execute_live %}disabled{% endif %}
+                                onclick="executeTrade('{{ signal.id }}', 'live')">
+                            <i class="bi bi-lightning-fill"></i> Live Trade
+                        </button>
+                        
+                        <button class="btn btn-trade-shadow btn-sm"
+                                onclick="executeTrade('{{ signal.id }}', 'shadow')">
+                            <i class="bi bi-eye-slash"></i> Shadow
+                        </button>
+                        
+                        <button class="btn btn-trade-reject btn-sm"
+                                onclick="rejectSignal('{{ signal.id }}')">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <i class="bi bi-graph-up-arrow"></i>
+            <h3>Keine aktiven Signale</h3>
+            <p>Es sind derzeit keine aktiven Trading-Signale vorhanden.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+    
+    function executeTrade(signalId, tradeType) {
+        const url = tradeType === 'live' 
+            ? `/fiona/signals/${signalId}/live/`
+            : `/fiona/signals/${signalId}/shadow/`;
+        
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Content-Type': 'application/json',
+            },
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(data.message);
+                location.reload();
+            } else {
+                alert('Fehler: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Ein Fehler ist aufgetreten.');
+        });
+    }
+    
+    function rejectSignal(signalId) {
+        if (!confirm('Signal wirklich verwerfen?')) {
+            return;
+        }
+        
+        fetch(`/fiona/signals/${signalId}/reject/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Content-Type': 'application/json',
+            },
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(data.message);
+                location.reload();
+            } else {
+                alert('Fehler: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Ein Fehler ist aufgetreten.');
+        });
+    }
+</script>
+{% endblock %}

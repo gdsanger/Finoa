@@ -1,0 +1,334 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Fiona - Trade Historie{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Fiona Trading History - Dark Mode Styles */
+    :root {
+        --fiona-bg-dark: #1a1d21;
+        --fiona-card-dark: #2d3239;
+        --fiona-card-header: #3a4149;
+        --fiona-text-light: #e9ecef;
+        --fiona-text-muted: #8b949e;
+        --fiona-border: #484f58;
+        
+        /* Signal Colors */
+        --signal-long: #28a745;
+        --signal-short: #dc3545;
+    }
+    
+    .fiona-history {
+        background-color: var(--fiona-bg-dark);
+        min-height: 100vh;
+        color: var(--fiona-text-light);
+        padding: 1rem;
+    }
+    
+    .fiona-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid var(--fiona-border);
+    }
+    
+    .fiona-header h1 {
+        color: var(--fiona-text-light);
+        margin: 0;
+    }
+    
+    /* History Table */
+    .history-table {
+        background-color: var(--fiona-card-dark);
+        border-radius: 12px;
+        overflow: hidden;
+    }
+    
+    .history-table table {
+        margin: 0;
+        color: var(--fiona-text-light);
+    }
+    
+    .history-table thead th {
+        background-color: var(--fiona-card-header);
+        border-bottom: 1px solid var(--fiona-border);
+        padding: 1rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.5px;
+        color: var(--fiona-text-muted);
+    }
+    
+    .history-table tbody td {
+        padding: 1rem;
+        border-bottom: 1px solid var(--fiona-border);
+        vertical-align: middle;
+    }
+    
+    .history-table tbody tr:hover {
+        background-color: var(--fiona-card-header);
+    }
+    
+    .history-table tbody tr:last-child td {
+        border-bottom: none;
+    }
+    
+    /* Trade Type Badge */
+    .trade-type-badge {
+        font-size: 0.75rem;
+        padding: 0.35rem 0.75rem;
+        border-radius: 6px;
+        font-weight: 600;
+    }
+    
+    .trade-type-LIVE {
+        background-color: var(--signal-long);
+        color: white;
+    }
+    
+    .trade-type-SHADOW {
+        background-color: #6c757d;
+        color: white;
+    }
+    
+    /* Status Badge */
+    .status-badge {
+        font-size: 0.75rem;
+        padding: 0.35rem 0.75rem;
+        border-radius: 6px;
+        font-weight: 600;
+    }
+    
+    .status-OPEN {
+        background-color: rgba(37, 99, 235, 0.2);
+        color: #60a5fa;
+        border: 1px solid #60a5fa;
+    }
+    
+    .status-CLOSED {
+        background-color: rgba(40, 167, 69, 0.2);
+        color: var(--signal-long);
+        border: 1px solid var(--signal-long);
+    }
+    
+    .status-CANCELLED {
+        background-color: rgba(108, 117, 125, 0.2);
+        color: #adb5bd;
+        border: 1px solid #adb5bd;
+    }
+    
+    /* Direction Badge */
+    .direction-badge-sm {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        font-weight: 600;
+    }
+    
+    .direction-LONG {
+        background-color: var(--signal-long);
+        color: white;
+    }
+    
+    .direction-SHORT {
+        background-color: var(--signal-short);
+        color: white;
+    }
+    
+    /* P&L */
+    .pnl-positive {
+        color: var(--signal-long);
+        font-weight: 700;
+    }
+    
+    .pnl-negative {
+        color: var(--signal-short);
+        font-weight: 700;
+    }
+    
+    /* Empty State */
+    .empty-state {
+        text-align: center;
+        padding: 4rem 2rem;
+        color: var(--fiona-text-muted);
+        background-color: var(--fiona-card-dark);
+        border-radius: 12px;
+    }
+    
+    .empty-state i {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+        opacity: 0.5;
+    }
+    
+    .btn-back {
+        background-color: transparent;
+        border: 1px solid var(--fiona-border);
+        color: var(--fiona-text-light);
+        font-weight: 500;
+        padding: 0.5rem 1rem;
+    }
+    
+    .btn-back:hover {
+        background-color: var(--fiona-card-header);
+        color: white;
+    }
+    
+    /* Mono font for numbers */
+    .mono {
+        font-family: 'Roboto Mono', monospace;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="fiona-history">
+    <div class="container-fluid">
+        <div class="fiona-header">
+            <div>
+                <h1>
+                    <i class="bi bi-clock-history"></i> Trade Historie
+                </h1>
+                <small class="text-muted">Übersicht aller ausgeführten Trades</small>
+            </div>
+            <div>
+                <a href="{% url 'signal_dashboard' %}" class="btn btn-back">
+                    <i class="bi bi-arrow-left"></i> Zurück zum Dashboard
+                </a>
+            </div>
+        </div>
+        
+        {% if trades %}
+        <div class="history-table">
+            <table class="table table-borderless">
+                <thead>
+                    <tr>
+                        <th>Typ</th>
+                        <th>Setup</th>
+                        <th>Richtung</th>
+                        <th>Entry</th>
+                        <th>SL</th>
+                        <th>TP</th>
+                        <th>Size</th>
+                        <th>Exit</th>
+                        <th>P&L</th>
+                        <th>Status</th>
+                        <th>Datum</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for trade in trades %}
+                    <tr>
+                        <td>
+                            <span class="trade-type-badge trade-type-{% if trade.trade_type %}{{ trade.trade_type }}{% else %}LIVE{% endif %}">
+                                {% if trade.trade_type_display %}
+                                    {{ trade.trade_type_display }}
+                                {% elif trade.get_trade_type_display %}
+                                    {{ trade.get_trade_type_display }}
+                                {% else %}
+                                    {{ trade.trade_type }}
+                                {% endif %}
+                            </span>
+                        </td>
+                        <td>
+                            {% if trade.signal.setup_type %}
+                                {{ trade.signal.setup_type }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="direction-badge-sm direction-{% if trade.signal.direction %}{{ trade.signal.direction }}{% else %}LONG{% endif %}">
+                                {{ trade.signal.direction }}
+                            </span>
+                        </td>
+                        <td class="mono">{{ trade.entry_price }}</td>
+                        <td class="mono text-danger">{{ trade.stop_loss }}</td>
+                        <td class="mono text-success">{{ trade.take_profit }}</td>
+                        <td class="mono">{{ trade.position_size }}</td>
+                        <td class="mono">
+                            {% if trade.exit_price %}
+                                {{ trade.exit_price }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td class="mono">
+                            {% if trade.realized_pnl %}
+                                <span class="{% if trade.realized_pnl >= 0 %}pnl-positive{% else %}pnl-negative{% endif %}">
+                                    {% if trade.realized_pnl >= 0 %}+{% endif %}{{ trade.realized_pnl }}
+                                </span>
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="status-badge status-{% if trade.status %}{{ trade.status }}{% else %}OPEN{% endif %}">
+                                {% if trade.status_display %}
+                                    {{ trade.status_display }}
+                                {% elif trade.get_status_display %}
+                                    {{ trade.get_status_display }}
+                                {% else %}
+                                    {{ trade.status }}
+                                {% endif %}
+                            </span>
+                        </td>
+                        <td class="text-muted">
+                            {% if trade.opened_at %}
+                                {{ trade.opened_at|date:"d.m.Y H:i" }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        {% if page_obj %}
+        <!-- Pagination -->
+        <nav class="mt-4" aria-label="Trade history pagination">
+            <ul class="pagination justify-content-center">
+                {% if page_obj.has_previous %}
+                <li class="page-item">
+                    <a class="page-link bg-dark text-light border-secondary" href="?page=1">&laquo; Erste</a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link bg-dark text-light border-secondary" href="?page={{ page_obj.previous_page_number }}">Zurück</a>
+                </li>
+                {% endif %}
+                
+                <li class="page-item disabled">
+                    <span class="page-link bg-secondary text-light border-secondary">
+                        Seite {{ page_obj.number }} von {{ page_obj.paginator.num_pages }}
+                    </span>
+                </li>
+                
+                {% if page_obj.has_next %}
+                <li class="page-item">
+                    <a class="page-link bg-dark text-light border-secondary" href="?page={{ page_obj.next_page_number }}">Weiter</a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link bg-dark text-light border-secondary" href="?page={{ page_obj.paginator.num_pages }}">Letzte &raquo;</a>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+        {% endif %}
+        {% else %}
+        <div class="empty-state">
+            <i class="bi bi-clock-history"></i>
+            <h3>Keine Trades vorhanden</h3>
+            <p>Es wurden noch keine Trades ausgeführt.</p>
+            <a href="{% url 'signal_dashboard' %}" class="btn btn-back mt-3">
+                <i class="bi bi-arrow-left"></i> Zurück zum Dashboard
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

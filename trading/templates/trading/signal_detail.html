@@ -1,0 +1,641 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Fiona - Signal Details{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Fiona Trading Detail Panel - Dark Mode Styles */
+    :root {
+        --fiona-bg-dark: #1a1d21;
+        --fiona-card-dark: #2d3239;
+        --fiona-card-header: #3a4149;
+        --fiona-text-light: #e9ecef;
+        --fiona-text-muted: #8b949e;
+        --fiona-border: #484f58;
+        
+        /* Signal Colors */
+        --signal-long: #28a745;
+        --signal-short: #dc3545;
+        
+        /* Confidence Colors */
+        --confidence-high: #28a745;
+        --confidence-medium: #ffc107;
+        --confidence-low: #dc3545;
+        
+        /* Risk Colors */
+        --risk-green: #28a745;
+        --risk-yellow: #ffc107;
+        --risk-red: #dc3545;
+    }
+    
+    .fiona-detail {
+        background-color: var(--fiona-bg-dark);
+        min-height: 100vh;
+        color: var(--fiona-text-light);
+        padding: 1rem;
+    }
+    
+    .fiona-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid var(--fiona-border);
+    }
+    
+    .fiona-header h1 {
+        color: var(--fiona-text-light);
+        margin: 0;
+    }
+    
+    /* Detail Panel */
+    .detail-panel {
+        background-color: var(--fiona-card-dark);
+        border: 1px solid var(--fiona-border);
+        border-radius: 12px;
+        margin-bottom: 1.5rem;
+        overflow: hidden;
+    }
+    
+    .detail-panel-header {
+        background-color: var(--fiona-card-header);
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid var(--fiona-border);
+    }
+    
+    .detail-panel-header h5 {
+        margin: 0;
+        color: var(--fiona-text-light);
+    }
+    
+    .detail-panel-body {
+        padding: 1.25rem;
+    }
+    
+    /* Setup Type Badge */
+    .setup-type-badge {
+        font-size: 1rem;
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        font-weight: 600;
+    }
+    
+    .setup-type-BREAKOUT {
+        background-color: #2563eb;
+        color: white;
+    }
+    
+    .setup-type-EIA_REVERSION {
+        background-color: #7c3aed;
+        color: white;
+    }
+    
+    .setup-type-EIA_TRENDDAY {
+        background-color: #059669;
+        color: white;
+    }
+    
+    /* Session Phase Tag */
+    .session-phase-tag {
+        background-color: var(--fiona-border);
+        color: var(--fiona-text-light);
+        font-size: 0.875rem;
+        padding: 0.35rem 0.75rem;
+        border-radius: 6px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    /* Direction Badge */
+    .direction-badge-lg {
+        font-size: 1.5rem;
+        font-weight: 700;
+        padding: 0.75rem 1.5rem;
+        border-radius: 8px;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .direction-LONG {
+        background-color: var(--signal-long);
+        color: white;
+    }
+    
+    .direction-SHORT {
+        background-color: var(--signal-short);
+        color: white;
+    }
+    
+    /* Confidence Badge */
+    .confidence-badge-lg {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.75rem 1.5rem;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 1.25rem;
+    }
+    
+    .confidence-high {
+        background-color: rgba(40, 167, 69, 0.2);
+        color: var(--confidence-high);
+        border: 2px solid var(--confidence-high);
+    }
+    
+    .confidence-medium {
+        background-color: rgba(255, 193, 7, 0.2);
+        color: var(--confidence-medium);
+        border: 2px solid var(--confidence-medium);
+    }
+    
+    .confidence-low {
+        background-color: rgba(220, 53, 69, 0.2);
+        color: var(--confidence-low);
+        border: 2px solid var(--confidence-low);
+    }
+    
+    /* Risk Badge */
+    .risk-badge-lg {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.75rem 1.5rem;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 1.25rem;
+    }
+    
+    .risk-GREEN {
+        background-color: rgba(40, 167, 69, 0.2);
+        color: var(--risk-green);
+        border: 2px solid var(--risk-green);
+    }
+    
+    .risk-YELLOW {
+        background-color: rgba(255, 193, 7, 0.2);
+        color: var(--risk-yellow);
+        border: 2px solid var(--risk-yellow);
+    }
+    
+    .risk-RED {
+        background-color: rgba(220, 53, 69, 0.2);
+        color: var(--risk-red);
+        border: 2px solid var(--risk-red);
+    }
+    
+    /* Data Row */
+    .data-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.75rem 0;
+        border-bottom: 1px solid var(--fiona-border);
+    }
+    
+    .data-row:last-child {
+        border-bottom: none;
+    }
+    
+    .data-label {
+        color: var(--fiona-text-muted);
+        font-size: 0.875rem;
+    }
+    
+    .data-value {
+        font-weight: 600;
+        font-family: 'Roboto Mono', monospace;
+        font-size: 1rem;
+    }
+    
+    .data-value-lg {
+        font-size: 1.25rem;
+    }
+    
+    /* Reasoning Box */
+    .reasoning-box {
+        background-color: rgba(0, 0, 0, 0.2);
+        border-radius: 8px;
+        padding: 1rem;
+        margin-top: 0.5rem;
+    }
+    
+    .reasoning-text {
+        color: var(--fiona-text-light);
+        font-size: 0.9375rem;
+        line-height: 1.6;
+        margin: 0;
+    }
+    
+    /* Section Label */
+    .section-label {
+        color: var(--fiona-text-muted);
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 1px;
+        margin-bottom: 0.75rem;
+    }
+    
+    /* Correction Info */
+    .correction-info {
+        background-color: rgba(37, 99, 235, 0.1);
+        border: 1px solid rgba(37, 99, 235, 0.3);
+        border-radius: 8px;
+        padding: 1rem;
+        margin-top: 1rem;
+    }
+    
+    .correction-header {
+        color: #60a5fa;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+    }
+    
+    /* Trade Buttons */
+    .btn-trade-live {
+        background-color: var(--signal-long);
+        border-color: var(--signal-long);
+        color: white;
+        font-weight: 600;
+        font-size: 1rem;
+        padding: 0.75rem 1.5rem;
+    }
+    
+    .btn-trade-live:hover:not(:disabled) {
+        background-color: #218838;
+        border-color: #1e7e34;
+        color: white;
+    }
+    
+    .btn-trade-live:disabled {
+        background-color: #6c757d;
+        border-color: #6c757d;
+        opacity: 0.65;
+    }
+    
+    .btn-trade-shadow {
+        background-color: #6c757d;
+        border-color: #6c757d;
+        color: white;
+        font-weight: 600;
+        font-size: 1rem;
+        padding: 0.75rem 1.5rem;
+    }
+    
+    .btn-trade-shadow:hover {
+        background-color: #545b62;
+        border-color: #4e555b;
+        color: white;
+    }
+    
+    .btn-trade-reject {
+        background-color: transparent;
+        border: 2px solid var(--signal-short);
+        color: var(--signal-short);
+        font-weight: 600;
+        font-size: 1rem;
+        padding: 0.75rem 1.5rem;
+    }
+    
+    .btn-trade-reject:hover {
+        background-color: var(--signal-short);
+        color: white;
+    }
+    
+    .btn-back {
+        background-color: transparent;
+        border: 1px solid var(--fiona-border);
+        color: var(--fiona-text-light);
+        font-weight: 500;
+        padding: 0.5rem 1rem;
+    }
+    
+    .btn-back:hover {
+        background-color: var(--fiona-card-header);
+        color: white;
+    }
+    
+    /* Button Bar */
+    .button-bar {
+        background-color: var(--fiona-card-header);
+        border-radius: 12px;
+        padding: 1.25rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        justify-content: center;
+    }
+    
+    /* Summary Card */
+    .summary-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    /* Responsive */
+    @media (max-width: 768px) {
+        .summary-header {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        
+        .button-bar {
+            flex-direction: column;
+        }
+        
+        .button-bar .btn {
+            width: 100%;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="fiona-detail">
+    <div class="container-fluid">
+        <div class="fiona-header">
+            <div>
+                <a href="{% url 'signal_dashboard' %}" class="btn btn-back mb-2">
+                    <i class="bi bi-arrow-left"></i> Zurück zum Dashboard
+                </a>
+                <h1>
+                    <i class="bi bi-graph-up-arrow"></i> Signal Details
+                </h1>
+            </div>
+        </div>
+        
+        <div class="row">
+            <!-- Main Panel -->
+            <div class="col-lg-8">
+                <!-- Setup Summary -->
+                <div class="detail-panel">
+                    <div class="detail-panel-header">
+                        <h5><i class="bi bi-lightning-charge-fill"></i> Setup Übersicht</h5>
+                    </div>
+                    <div class="detail-panel-body">
+                        <div class="summary-header">
+                            <span class="setup-type-badge setup-type-{% if signal.setup_type %}{{ signal.setup_type }}{% else %}BREAKOUT{% endif %}">
+                                {% if signal.setup_type_display %}
+                                    {{ signal.setup_type_display }}
+                                {% elif signal.get_setup_type_display %}
+                                    {{ signal.get_setup_type_display }}
+                                {% else %}
+                                    {{ signal.setup_type }}
+                                {% endif %}
+                            </span>
+                            <span class="session-phase-tag">
+                                {% if signal.session_phase_display %}
+                                    {{ signal.session_phase_display }}
+                                {% elif signal.get_session_phase_display %}
+                                    {{ signal.get_session_phase_display }}
+                                {% else %}
+                                    {{ signal.session_phase }}
+                                {% endif %}
+                            </span>
+                            <span class="direction-badge-lg direction-{{ signal.direction }}">
+                                {% if signal.direction == 'LONG' %}
+                                    <i class="bi bi-arrow-up-circle-fill"></i> LONG
+                                {% else %}
+                                    <i class="bi bi-arrow-down-circle-fill"></i> SHORT
+                                {% endif %}
+                            </span>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="section-label">Range Information</div>
+                                <div class="data-row">
+                                    <span class="data-label">Range High</span>
+                                    <span class="data-value data-value-lg">{{ signal.range_high }}</span>
+                                </div>
+                                <div class="data-row">
+                                    <span class="data-label">Range Low</span>
+                                    <span class="data-value data-value-lg">{{ signal.range_low }}</span>
+                                </div>
+                                <div class="data-row">
+                                    <span class="data-label">Trigger Preis</span>
+                                    <span class="data-value data-value-lg text-warning">{{ signal.trigger_price }}</span>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="section-label">Trade Parameter</div>
+                                <div class="data-row">
+                                    <span class="data-label">Stop Loss</span>
+                                    <span class="data-value data-value-lg text-danger">{{ signal.stop_loss }}</span>
+                                </div>
+                                <div class="data-row">
+                                    <span class="data-label">Take Profit</span>
+                                    <span class="data-value data-value-lg text-success">{{ signal.take_profit }}</span>
+                                </div>
+                                <div class="data-row">
+                                    <span class="data-label">Position Size</span>
+                                    <span class="data-value data-value-lg">{{ signal.position_size }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- KI Evaluation -->
+                <div class="detail-panel">
+                    <div class="detail-panel-header">
+                        <h5><i class="bi bi-cpu"></i> KI-Bewertung (Lokal)</h5>
+                    </div>
+                    <div class="detail-panel-body">
+                        <div class="section-label">Begründung</div>
+                        <div class="reasoning-box">
+                            <p class="reasoning-text">{{ signal.ki_reasoning }}</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- GPT Reflection -->
+                <div class="detail-panel">
+                    <div class="detail-panel-header">
+                        <h5><i class="bi bi-stars"></i> GPT-Reflexion</h5>
+                    </div>
+                    <div class="detail-panel-body">
+                        <div class="d-flex flex-wrap gap-3 mb-3">
+                            {% with gpt_conf=signal.gpt_confidence|floatformat:0 %}
+                            <span class="confidence-badge-lg {% if gpt_conf >= 80 %}confidence-high{% elif gpt_conf >= 60 %}confidence-medium{% else %}confidence-low{% endif %}">
+                                <i class="bi bi-graph-up"></i> Confidence: {{ gpt_conf }}%
+                            </span>
+                            {% endwith %}
+                        </div>
+                        
+                        <div class="section-label">Ausführliche Begründung</div>
+                        <div class="reasoning-box">
+                            <p class="reasoning-text">{{ signal.gpt_reasoning }}</p>
+                        </div>
+                        
+                        {% if signal.gpt_corrected_sl or signal.gpt_corrected_tp or signal.gpt_corrected_size %}
+                        <div class="correction-info">
+                            <div class="correction-header">
+                                <i class="bi bi-pencil-square"></i> Korrigierte Parameter
+                            </div>
+                            <div class="row">
+                                {% if signal.gpt_corrected_sl %}
+                                <div class="col-4">
+                                    <div class="data-label">SL</div>
+                                    <div class="data-value text-danger">{{ signal.gpt_corrected_sl }}</div>
+                                </div>
+                                {% endif %}
+                                {% if signal.gpt_corrected_tp %}
+                                <div class="col-4">
+                                    <div class="data-label">TP</div>
+                                    <div class="data-value text-success">{{ signal.gpt_corrected_tp }}</div>
+                                </div>
+                                {% endif %}
+                                {% if signal.gpt_corrected_size %}
+                                <div class="col-4">
+                                    <div class="data-label">Size</div>
+                                    <div class="data-value">{{ signal.gpt_corrected_size }}</div>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Side Panel -->
+            <div class="col-lg-4">
+                <!-- Risk Engine -->
+                <div class="detail-panel">
+                    <div class="detail-panel-header">
+                        <h5><i class="bi bi-shield-check"></i> Risk Engine</h5>
+                    </div>
+                    <div class="detail-panel-body">
+                        <div class="text-center mb-3">
+                            <span class="risk-badge-lg risk-{{ signal.risk_status }}">
+                                {% if signal.risk_status == 'GREEN' %}
+                                    <i class="bi bi-check-circle-fill"></i> Trade Erlaubt
+                                {% elif signal.risk_status == 'YELLOW' %}
+                                    <i class="bi bi-exclamation-triangle-fill"></i> Riskant
+                                {% else %}
+                                    <i class="bi bi-x-circle-fill"></i> Verboten
+                                {% endif %}
+                            </span>
+                        </div>
+                        
+                        <div class="data-row">
+                            <span class="data-label">Erlaubte Size</span>
+                            <span class="data-value">{{ signal.risk_allowed_size }}</span>
+                        </div>
+                        <div class="data-row">
+                            <span class="data-label">Risiko %</span>
+                            <span class="data-value">{{ signal.risk_percentage }}%</span>
+                        </div>
+                        
+                        <div class="section-label mt-3">Begründung</div>
+                        <div class="reasoning-box">
+                            <p class="reasoning-text">{{ signal.risk_reasoning }}</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Trade Buttons -->
+                <div class="button-bar">
+                    <button class="btn btn-trade-live" 
+                            {% if not signal.can_execute_live %}disabled{% endif %}
+                            onclick="executeTrade('{{ signal.id }}', 'live')">
+                        <i class="bi bi-lightning-fill"></i> Trade ausführen
+                    </button>
+                    
+                    <button class="btn btn-trade-shadow"
+                            onclick="executeTrade('{{ signal.id }}', 'shadow')">
+                        <i class="bi bi-eye-slash"></i> Shadow Trade starten
+                    </button>
+                    
+                    <button class="btn btn-trade-reject"
+                            onclick="rejectSignal('{{ signal.id }}')">
+                        <i class="bi bi-x-lg"></i> Verwerfen
+                    </button>
+                    
+                    <a href="{% url 'signal_dashboard' %}" class="btn btn-back w-100">
+                        <i class="bi bi-arrow-left"></i> Zurück
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+    
+    function executeTrade(signalId, tradeType) {
+        const url = tradeType === 'live' 
+            ? `/fiona/signals/${signalId}/live/`
+            : `/fiona/signals/${signalId}/shadow/`;
+        
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Content-Type': 'application/json',
+            },
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(data.message);
+                window.location.href = '{% url "signal_dashboard" %}';
+            } else {
+                alert('Fehler: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Ein Fehler ist aufgetreten.');
+        });
+    }
+    
+    function rejectSignal(signalId) {
+        if (!confirm('Signal wirklich verwerfen?')) {
+            return;
+        }
+        
+        fetch(`/fiona/signals/${signalId}/reject/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Content-Type': 'application/json',
+            },
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(data.message);
+                window.location.href = '{% url "signal_dashboard" %}';
+            } else {
+                alert('Fehler: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Ein Fehler ist aufgetreten.');
+        });
+    }
+</script>
+{% endblock %}
