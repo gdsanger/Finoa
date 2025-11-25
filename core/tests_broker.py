@@ -444,7 +444,139 @@ class IgApiClientTest(TestCase):
         self.assertEqual(session.cst, "oauth-access-token")
         self.assertEqual(session.security_token, "oauth-refresh-token")
         self.assertEqual(session.account_id, "ACC456")
+        self.assertTrue(session.is_oauth)
         self.assertTrue(client.is_authenticated)
+
+    @patch('core.services.broker.ig_api_client.requests.post')
+    def test_oauth_auth_headers_use_bearer_token(self, mock_post):
+        """Test that OAuth sessions use Authorization: Bearer header."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {}  # No tokens in headers = OAuth flow
+        mock_response.json.return_value = {
+            "currentAccountId": "ACC456",
+            "clientId": "CLIENT456",
+            "oauthToken": {
+                "access_token": "oauth-access-token",
+                "refresh_token": "oauth-refresh-token",
+            }
+        }
+        mock_post.return_value = mock_response
+        
+        client = IgApiClient(
+            api_key="test-key",
+            username="test-user",
+            password="test-pass",
+        )
+        client.login()
+        
+        headers = client._get_auth_headers()
+        
+        self.assertEqual(headers["Authorization"], "Bearer oauth-access-token")
+        self.assertEqual(headers["IG-ACCOUNT-ID"], "ACC456")
+        self.assertNotIn("CST", headers)
+        self.assertNotIn("X-SECURITY-TOKEN", headers)
+
+    @patch('core.services.broker.ig_api_client.requests.post')
+    def test_traditional_auth_headers_use_cst_token(self, mock_post):
+        """Test that traditional sessions use CST and X-SECURITY-TOKEN headers."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {
+            "CST": "test-cst-token",
+            "X-SECURITY-TOKEN": "test-security-token",
+        }
+        mock_response.json.return_value = {
+            "currentAccountId": "ACC123",
+            "clientId": "CLIENT123",
+        }
+        mock_post.return_value = mock_response
+        
+        client = IgApiClient(
+            api_key="test-key",
+            username="test-user",
+            password="test-pass",
+        )
+        client.login()
+        
+        headers = client._get_auth_headers()
+        
+        self.assertEqual(headers["CST"], "test-cst-token")
+        self.assertEqual(headers["X-SECURITY-TOKEN"], "test-security-token")
+        self.assertNotIn("Authorization", headers)
+
+    @patch('core.services.broker.ig_api_client.requests.post')
+    def test_oauth_logout_does_not_make_api_call(self, mock_post):
+        """Test that OAuth sessions don't make logout API call."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {}
+        mock_response.json.return_value = {
+            "currentAccountId": "ACC456",
+            "clientId": "CLIENT456",
+            "oauthToken": {
+                "access_token": "oauth-access-token",
+                "refresh_token": "oauth-refresh-token",
+            }
+        }
+        mock_post.return_value = mock_response
+        
+        client = IgApiClient(
+            api_key="test-key",
+            username="test-user",
+            password="test-pass",
+        )
+        client.login()
+        
+        # Reset mock to track logout calls
+        with patch('core.services.broker.ig_api_client.requests.request') as mock_request:
+            client.logout()
+            # No request should be made for OAuth logout
+            mock_request.assert_not_called()
+        
+        # Session should be cleared
+        self.assertFalse(client.is_authenticated)
+
+    @patch('core.services.broker.ig_api_client.requests.post')
+    def test_oauth_token_refresh_success(self, mock_post):
+        """Test OAuth token refresh updates session with new tokens."""
+        # Initial login
+        mock_login_response = MagicMock()
+        mock_login_response.status_code = 200
+        mock_login_response.headers = {}
+        mock_login_response.json.return_value = {
+            "currentAccountId": "ACC456",
+            "clientId": "CLIENT456",
+            "oauthToken": {
+                "access_token": "old-access-token",
+                "refresh_token": "refresh-token",
+            }
+        }
+        
+        # Token refresh response
+        mock_refresh_response = MagicMock()
+        mock_refresh_response.status_code = 200
+        mock_refresh_response.json.return_value = {
+            "access_token": "new-access-token",
+            "refresh_token": "new-refresh-token",
+        }
+        
+        mock_post.side_effect = [mock_login_response, mock_refresh_response]
+        
+        client = IgApiClient(
+            api_key="test-key",
+            username="test-user",
+            password="test-pass",
+        )
+        client.login()
+        
+        # Refresh the token
+        client._refresh_oauth_token()
+        
+        # Session should have new tokens
+        self.assertEqual(client._session.cst, "new-access-token")
+        self.assertEqual(client._session.security_token, "new-refresh-token")
+        self.assertTrue(client._session.is_oauth)
 
     @patch('core.services.broker.ig_api_client.requests.post')
     def test_login_missing_tokens(self, mock_post):
@@ -568,8 +700,8 @@ class IgApiClientTest(TestCase):
     @patch('core.services.broker.ig_api_client.requests.request')
     @patch('core.services.broker.ig_api_client.requests.post')
     def test_token_invalid_oauth_triggers_reauth(self, mock_post, mock_request):
-        """Test that oauth-token-invalid error also triggers re-authentication."""
-        # First login succeeds
+        """Test that oauth-token-invalid error triggers token refresh and retry."""
+        # First login succeeds with OAuth tokens
         mock_login_response = MagicMock()
         mock_login_response.status_code = 200
         mock_login_response.headers = {}
@@ -582,7 +714,15 @@ class IgApiClientTest(TestCase):
             }
         }
         
-        mock_post.side_effect = [mock_login_response, mock_login_response]
+        # Token refresh succeeds
+        mock_refresh_response = MagicMock()
+        mock_refresh_response.status_code = 200
+        mock_refresh_response.json.return_value = {
+            "access_token": "new-oauth-access-token",
+            "refresh_token": "oauth-refresh-token",
+        }
+        
+        mock_post.side_effect = [mock_login_response, mock_refresh_response]
         
         # First request fails with oauth-token-invalid
         mock_error_response = MagicMock()
@@ -606,10 +746,11 @@ class IgApiClientTest(TestCase):
         )
         client.login()
         
-        # This should trigger re-auth and retry
+        # This should trigger token refresh and retry
         result = client.get_accounts()
         
         self.assertEqual(result, [])
+        # First login + token refresh
         self.assertEqual(mock_post.call_count, 2)
 
     @patch('core.services.broker.ig_api_client.requests.request')

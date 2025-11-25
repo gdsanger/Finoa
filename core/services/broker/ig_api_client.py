@@ -36,6 +36,7 @@ class IgSession:
     client_id: str
     timezone_offset: int = 0
     created_at: datetime = None
+    is_oauth: bool = False  # Track if session was authenticated via OAuth
 
     def __post_init__(self):
         if self.created_at is None:
@@ -104,6 +105,10 @@ class IgApiClient:
         """
         Get headers for authenticated requests.
         
+        Uses different headers based on authentication method:
+        - OAuth: Authorization: Bearer <access_token> + IG-ACCOUNT-ID
+        - Traditional: CST + X-SECURITY-TOKEN headers
+        
         Args:
             version: API version for the request.
         
@@ -113,14 +118,24 @@ class IgApiClient:
         if not self._session:
             raise AuthenticationError("Not authenticated - call login() first")
         
-        return {
+        headers = {
             "X-IG-API-KEY": self.api_key,
-            "CST": self._session.cst,
-            "X-SECURITY-TOKEN": self._session.security_token,
             "Content-Type": "application/json; charset=UTF-8",
             "Accept": "application/json; charset=UTF-8",
             "VERSION": version,
         }
+        
+        if self._session.is_oauth:
+            # OAuth authentication uses Bearer token
+            headers["Authorization"] = f"Bearer {self._session.cst}"
+            if self._session.account_id:
+                headers["IG-ACCOUNT-ID"] = self._session.account_id
+        else:
+            # Traditional authentication uses CST and X-SECURITY-TOKEN
+            headers["CST"] = self._session.cst
+            headers["X-SECURITY-TOKEN"] = self._session.security_token
+        
+        return headers
 
     def _get_login_headers(self, version: str = "3") -> Dict[str, str]:
         """Get headers for login request."""
@@ -223,6 +238,9 @@ class IgApiClient:
         This is called when a token-invalid error is received to automatically
         re-authenticate and retry the original request once.
         
+        For OAuth sessions, tries to refresh the token first. If that fails,
+        falls back to full re-login.
+        
         Args:
             method: HTTP method (GET, POST, PUT, DELETE).
             endpoint: API endpoint (without base URL).
@@ -238,21 +256,34 @@ class IgApiClient:
             BrokerError: If the retried request fails.
         """
         try:
-            # Re-authenticate
-            self.login()
+            # For OAuth sessions, try to refresh the token first
+            if self._session and self._session.is_oauth and self._session.security_token:
+                try:
+                    self._refresh_oauth_token()
+                except AuthenticationError:
+                    # If refresh fails, fall back to full re-login
+                    logger.info("OAuth token refresh failed, falling back to full login")
+                    self.login()
+            else:
+                # For traditional sessions, just re-login
+                self.login()
             
             # Verify session was established with valid tokens
-            if not self._session or not self._session.cst or not self._session.security_token:
+            # Note: For both OAuth and traditional sessions, the access/auth token is stored in `cst`
+            # For OAuth: cst = access_token, security_token = refresh_token
+            # For traditional: cst = CST header value, security_token = X-SECURITY-TOKEN header value
+            if not self._session or not self._session.cst:
+                raise AuthenticationError("Re-authentication did not establish a valid session")
+            
+            # For non-OAuth sessions, also verify security_token
+            if not self._session.is_oauth and not self._session.security_token:
                 raise AuthenticationError("Re-authentication did not establish a valid session")
             
             logger.info("Re-authentication successful, retrying request...")
             
-            # Update the headers with new tokens
-            # Note: CST and X-SECURITY-TOKEN are used for both header-based auth
-            # and OAuth (where access_token is stored as cst, refresh_token as security_token)
-            new_headers = headers.copy()
-            new_headers["CST"] = self._session.cst
-            new_headers["X-SECURITY-TOKEN"] = self._session.security_token
+            # Get fresh auth headers for the retry
+            version = headers.get("VERSION", "1")
+            new_headers = self._get_auth_headers(version)
             
             # Retry the request without allowing another retry to prevent infinite loops
             return self._make_request(
@@ -262,6 +293,72 @@ class IgApiClient:
         except AuthenticationError:
             logger.error("Re-authentication failed")
             raise
+
+    def _refresh_oauth_token(self) -> None:
+        """
+        Refresh OAuth access token using the refresh token.
+        
+        Updates the session with new tokens.
+        
+        Raises:
+            AuthenticationError: If token refresh fails.
+        """
+        if not self._session or not self._session.security_token:
+            raise AuthenticationError("No refresh token available")
+        
+        logger.info("Refreshing OAuth token...")
+        
+        data = {
+            "refresh_token": self._session.security_token,
+        }
+        
+        try:
+            response = requests.post(
+                f"{self.base_url}/session/refresh-token",
+                headers={
+                    "X-IG-API-KEY": self.api_key,
+                    "Content-Type": "application/json; charset=UTF-8",
+                    "Accept": "application/json; charset=UTF-8",
+                    "VERSION": API_VERSION_SESSION,
+                },
+                json=data,
+                timeout=self.timeout
+            )
+            
+            if response.status_code != 200:
+                error_msg = f"Token refresh failed: {response.status_code}"
+                try:
+                    error_data = response.json()
+                    error_msg = f"Token refresh failed: {error_data.get('errorCode', response.text)}"
+                except (ValueError, TypeError):
+                    pass
+                raise AuthenticationError(error_msg)
+            
+            body = response.json()
+            
+            # Extract new tokens
+            access_token = body.get("access_token")
+            # IG API may not return a new refresh_token on every refresh.
+            # Per OAuth 2.0 spec, if no new refresh_token is provided, the existing one remains valid.
+            refresh_token = body.get("refresh_token", self._session.security_token)
+            
+            if not access_token:
+                raise AuthenticationError("Token refresh response missing access_token")
+            
+            # Update session with new tokens
+            self._session = IgSession(
+                cst=access_token,
+                security_token=refresh_token,
+                account_id=self._session.account_id,
+                client_id=self._session.client_id,
+                timezone_offset=self._session.timezone_offset,
+                is_oauth=True,
+            )
+            
+            logger.info("OAuth token refreshed successfully")
+            
+        except requests.RequestException as e:
+            raise AuthenticationError(f"Token refresh request failed: {str(e)}")
 
     def login(self) -> IgSession:
         """
@@ -307,11 +404,13 @@ class IgApiClient:
             # If BOTH tokens are missing from headers, try to get from response body (OAuth tokens)
             # IG API V3 can return oauthToken in body for OAuth flow
             # Note: If headers have partial tokens (one present, one missing), we don't fallback to OAuth
+            is_oauth = False
             if not cst and not security_token:
                 oauth_token = body.get("oauthToken", {})
                 if oauth_token:
                     cst = oauth_token.get("access_token")
                     security_token = oauth_token.get("refresh_token")
+                    is_oauth = True
             
             if not cst or not security_token:
                 raise AuthenticationError("Login response missing session tokens")
@@ -326,9 +425,11 @@ class IgApiClient:
                 account_id=account_id,
                 client_id=client_id,
                 timezone_offset=timezone_offset,
+                is_oauth=is_oauth,
             )
             
-            logger.info(f"Successfully logged in. Account: {account_id}")
+            auth_method = "OAuth" if is_oauth else "traditional"
+            logger.info(f"Successfully logged in via {auth_method}. Account: {account_id}")
             return self._session
             
         except requests.RequestException as e:
@@ -338,20 +439,30 @@ class IgApiClient:
         """
         End the current session.
         
+        For traditional sessions, makes a DELETE request to /session.
+        For OAuth sessions, simply discards the tokens (no server-side logout needed).
+        
         Raises:
-            BrokerError: If logout fails.
+            BrokerError: If logout fails (only for traditional sessions).
         """
         if not self._session:
             logger.warning("Logout called but no active session")
             return
         
         try:
-            self._make_request(
-                "DELETE",
-                "/session",
-                self._get_auth_headers(API_VERSION_SESSION)
-            )
-            logger.info("Successfully logged out")
+            if self._session.is_oauth:
+                # For OAuth sessions, just discard the tokens
+                # OAuth tokens expire on their own and don't need server-side logout
+                logger.info("OAuth session - discarding tokens")
+            else:
+                # For traditional sessions, make a logout request
+                self._make_request(
+                    "DELETE",
+                    "/session",
+                    self._get_auth_headers(API_VERSION_SESSION),
+                    retry_on_token_error=False  # Don't retry logout on token error
+                )
+                logger.info("Successfully logged out")
         except BrokerError as e:
             logger.warning(f"Logout failed: {e}")
         finally:
