@@ -15,4 +15,5 @@ urlpatterns = [
     # API Endpoints
     path('api/signals/', views.api_signals, name='api_signals'),
     path('api/trade/<str:signal_id>/', views.api_signal_detail, name='api_signal_detail'),
+    path('api/account-state/', views.api_account_state, name='api_account_state'),
 ]
