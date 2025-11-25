@@ -235,8 +235,9 @@ class IgApiClient:
             cst = response.headers.get("CST")
             security_token = response.headers.get("X-SECURITY-TOKEN")
             
-            # If BOTH tokens not in headers, try to get from response body (OAuth tokens)
+            # If BOTH tokens are missing from headers, try to get from response body (OAuth tokens)
             # IG API V3 can return oauthToken in body for OAuth flow
+            # Note: If headers have partial tokens (one present, one missing), we don't fallback to OAuth
             if not cst and not security_token:
                 oauth_token = body.get("oauthToken", {})
                 if oauth_token:
