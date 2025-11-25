@@ -6,6 +6,7 @@ based on market data and configurable strategies.
 """
 
 from .models import (
+    SCHEMA_VERSION,
     SetupKind,
     SessionPhase,
     BreakoutContext,
@@ -30,6 +31,8 @@ from .providers import (
 from .strategy_engine import StrategyEngine
 
 __all__ = [
+    # Constants
+    'SCHEMA_VERSION',
     # Data models
     'SetupKind',
     'SessionPhase',
