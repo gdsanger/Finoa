@@ -2,6 +2,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
 from django.utils import timezone
 from decimal import Decimal
 import uuid
@@ -111,14 +112,15 @@ def signal_dashboard(request):
     Signal Dashboard - Main view showing all active trading signals.
     """
     # Try to get signals from database, fall back to mock data
-    signals = list(Signal.objects.filter(status='ACTIVE'))
+    db_signals = Signal.objects.filter(status='ACTIVE')
     
-    if not signals:
+    if db_signals.exists():
+        signals = list(db_signals)
+        active_count = len(signals)
+    else:
         # Use mock data for development
         signals = get_mock_signals()
-    
-    # Count signals by status
-    active_count = len([s for s in signals if (isinstance(s, dict) and s.get('status') == 'ACTIVE') or (hasattr(s, 'status') and s.status == 'ACTIVE')])
+        active_count = len(signals)
     
     context = {
         'signals': signals,
@@ -137,16 +139,13 @@ def signal_detail(request, signal_id):
     try:
         signal = Signal.objects.get(id=signal_id)
     except (Signal.DoesNotExist, ValueError):
-        # Fall back to mock data
+        # Fall back to mock data - try to find matching ID
         mock_signals = get_mock_signals()
         signal = next((s for s in mock_signals if str(s['id']) == str(signal_id)), None)
         
         if not signal:
-            # If still not found, use first mock signal
-            signal = mock_signals[0] if mock_signals else None
-    
-    if not signal:
-        return redirect('signal_dashboard')
+            # Signal not found - redirect to dashboard
+            return redirect('signal_dashboard')
     
     context = {
         'signal': signal,
@@ -268,12 +267,12 @@ def reject_signal(request, signal_id):
 @login_required
 def trade_history(request):
     """
-    Trade history view - Shows executed and shadow trades.
+    Trade history view - Shows executed and shadow trades with pagination.
     """
-    trades = Trade.objects.select_related('signal').all()[:50]
+    trade_list = Trade.objects.select_related('signal').all()
     
     # Generate mock trades if empty
-    if not trades:
+    if not trade_list.exists():
         mock_trades = [
             {
                 'id': str(uuid.uuid4()),
@@ -317,9 +316,17 @@ def trade_history(request):
             },
         ]
         trades = mock_trades
+        page_obj = None
+    else:
+        # Paginate results
+        paginator = Paginator(trade_list, 25)
+        page_number = request.GET.get('page')
+        page_obj = paginator.get_page(page_number)
+        trades = page_obj
     
     context = {
         'trades': trades,
+        'page_obj': page_obj,
     }
     
     return render(request, 'trading/trade_history.html', context)

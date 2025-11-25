@@ -1,4 +1,5 @@
 from django.db import models
+from django.core.validators import MinValueValidator, MaxValueValidator
 from decimal import Decimal
 import uuid
 
@@ -68,7 +69,8 @@ class Signal(models.Model):
         max_digits=5, 
         decimal_places=2,
         default=Decimal('0.00'),
-        help_text='GPT Confidence Score (0-100%)'
+        help_text='GPT Confidence Score (0-100%)',
+        validators=[MinValueValidator(Decimal('0.00')), MaxValueValidator(Decimal('100.00'))]
     )
     gpt_reasoning = models.TextField(blank=True, help_text='Ausführliche GPT-Begründung')
     gpt_corrected_sl = models.DecimalField(max_digits=10, decimal_places=4, null=True, blank=True)
