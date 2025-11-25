@@ -4,11 +4,16 @@ Data models for the Risk Engine.
 These models represent risk configuration and evaluation results,
 independent of specific broker or strategy implementations.
 """
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import datetime, time
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 import yaml
+
+if TYPE_CHECKING:
+    from core.services.broker.models import OrderRequest
 
 
 @dataclass
@@ -179,7 +184,7 @@ class RiskEvaluationResult:
     """
     allowed: bool
     reason: str
-    adjusted_order: Optional['OrderRequest'] = None
+    adjusted_order: Optional[OrderRequest] = None
     violations: list = field(default_factory=list)
     risk_metrics: dict = field(default_factory=dict)
 
@@ -190,10 +195,15 @@ class RiskEvaluationResult:
         Returns:
             dict: Dictionary representation of the result.
         """
+        adjusted_order_dict = None
+        if self.adjusted_order is not None:
+            # OrderRequest from broker.models has to_dict method
+            adjusted_order_dict = self.adjusted_order.to_dict()
+        
         return {
             'allowed': self.allowed,
             'reason': self.reason,
-            'adjusted_order': self.adjusted_order.to_dict() if self.adjusted_order else None,
+            'adjusted_order': adjusted_order_dict,
             'violations': self.violations,
             'risk_metrics': self.risk_metrics,
         }
@@ -207,10 +217,3 @@ class RiskEvaluationResult:
         """
         import json
         return json.dumps(self.to_dict(), indent=2)
-
-
-# Import OrderRequest at runtime to avoid circular imports
-def _get_order_request_class():
-    """Get the OrderRequest class from broker models."""
-    from core.services.broker.models import OrderRequest
-    return OrderRequest

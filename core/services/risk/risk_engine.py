@@ -4,10 +4,9 @@ Risk Engine implementation for Fiona trading system.
 The Risk Engine evaluates trades and determines whether they are
 allowed based on configurable risk limits.
 """
-from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 from core.services.broker.models import AccountState, Position, OrderRequest, OrderDirection
 from core.services.strategy.models import SetupCandidate, SessionPhase, SetupKind
@@ -291,7 +290,7 @@ class RiskEngine:
         account: AccountState,
         order: OrderRequest,
         setup: SetupCandidate,
-    ) -> tuple[Optional[str], Optional[OrderRequest], dict]:
+    ) -> Tuple[Optional[str], Optional[OrderRequest], dict]:
         """
         Check position size and risk per trade limits.
         
