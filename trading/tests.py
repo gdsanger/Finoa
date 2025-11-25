@@ -126,12 +126,27 @@ class SignalDashboardViewTest(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertTrue(response.url.startswith('/login/'))
     
-    def test_signal_dashboard_shows_mock_data(self):
-        """Test that mock signals are shown when no db signals exist."""
+    def test_signal_dashboard_shows_active_signals(self):
+        """Test that dashboard shows active signals from database."""
+        # Create an active signal
+        Signal.objects.create(
+            setup_type='BREAKOUT',
+            session_phase='LONDON_CORE',
+            direction='LONG',
+            trigger_price=Decimal('78.50'),
+            risk_status='GREEN',
+            status='ACTIVE',
+        )
+        
         response = self.client.get('/fiona/signals/')
         self.assertEqual(response.status_code, 200)
-        # Mock data should include BREAKOUT signal
         self.assertContains(response, 'Breakout')
+    
+    def test_signal_dashboard_empty_when_no_signals(self):
+        """Test that dashboard shows empty state when no signals exist."""
+        response = self.client.get('/fiona/signals/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Keine aktiven Signale')
 
 
 class SignalDetailViewTest(TestCase):
