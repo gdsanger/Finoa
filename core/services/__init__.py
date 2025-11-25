@@ -31,6 +31,13 @@ from .financial_insights_engine import (
     create_agent_prompt,
     parse_agent_response,
 )
+from .execution import (
+    ExecutionState,
+    ExecutionSession,
+    ExecutionConfig,
+    ExecutionService,
+    ShadowTraderService,
+)
 
 __all__ = [
     'calculate_actual_balance',
@@ -54,4 +61,10 @@ __all__ = [
     'build_analysis_dataset',
     'create_agent_prompt',
     'parse_agent_response',
+    # Execution Layer
+    'ExecutionState',
+    'ExecutionSession',
+    'ExecutionConfig',
+    'ExecutionService',
+    'ShadowTraderService',
 ]
