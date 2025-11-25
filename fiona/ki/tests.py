@@ -630,6 +630,69 @@ class GPTReflectionEvaluatorTest(TestCase):
         self.assertTrue(result.has_corrections())
         self.assertEqual(result.signal_strength, "weak_signal")
 
+    def test_reflection_evaluator_kigate_config(self):
+        """Test GPTReflectionEvaluator with custom KIGate configuration."""
+        evaluator = GPTReflectionEvaluator(
+            agent_name="custom-agent",
+            provider="claude",
+            user_id="custom-user"
+        )
+        
+        self.assertEqual(evaluator._agent_name, "custom-agent")
+        self.assertEqual(evaluator._provider, "claude")
+        self.assertEqual(evaluator._user_id, "custom-user")
+        self.assertEqual(evaluator._model, "gpt-4o")  # Default model
+    
+    def test_reflection_evaluator_default_kigate_config(self):
+        """Test GPTReflectionEvaluator default KIGate configuration."""
+        from fiona.ki.reflection_evaluator import (
+            KIGATE_AGENT_NAME,
+            KIGATE_PROVIDER,
+            KIGATE_USER_ID
+        )
+        
+        evaluator = GPTReflectionEvaluator()
+        
+        self.assertEqual(evaluator._agent_name, KIGATE_AGENT_NAME)
+        self.assertEqual(evaluator._provider, KIGATE_PROVIDER)
+        self.assertEqual(evaluator._user_id, KIGATE_USER_ID)
+        self.assertEqual(KIGATE_AGENT_NAME, "trading-reflection-agent")
+        self.assertEqual(KIGATE_PROVIDER, "openai")
+    
+    def test_reflection_evaluator_parse_json_response(self):
+        """Test JSON response parsing."""
+        evaluator = GPTReflectionEvaluator()
+        
+        # Test with clean JSON
+        clean_json = '{"corrected_direction": null, "confidence": 85, "agrees_with_local": true}'
+        parsed = evaluator._parse_gpt_response(clean_json)
+        self.assertIsNone(parsed['corrected_direction'])
+        self.assertEqual(parsed['confidence'], 85)
+        self.assertTrue(parsed['agrees_with_local'])
+        
+        # Test with markdown code blocks
+        markdown_json = '''```json
+{"corrected_direction": "SHORT", "corrected_sl": 78.00, "confidence": 75}
+```'''
+        parsed = evaluator._parse_gpt_response(markdown_json)
+        self.assertEqual(parsed['corrected_direction'], "SHORT")
+        self.assertEqual(parsed['corrected_sl'], 78.00)
+        self.assertEqual(parsed['confidence'], 75)
+    
+    def test_reflection_evaluator_build_prompt(self):
+        """Test prompt building for KIGate."""
+        evaluator = GPTReflectionEvaluator()
+        setup = self._create_test_setup()
+        local_result = self._create_test_local_result(setup.id)
+        
+        prompt = evaluator._build_prompt(setup, local_result)
+        
+        # Verify prompt contains expected elements
+        self.assertIn("CC.D.CL.UNC.IP", prompt)  # Epic
+        self.assertIn("BREAKOUT", prompt)  # Setup kind
+        self.assertIn("LONG", prompt)  # Direction
+        self.assertIn("75.5", str(prompt))  # SL value
+
 
 class KiOrchestratorTest(TestCase):
     """Tests for KiOrchestrator."""

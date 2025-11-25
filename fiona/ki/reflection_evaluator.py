@@ -2,6 +2,7 @@
 GPTReflectionEvaluator for Fiona KI Layer.
 
 Performs validation and reflection on LocalLLMResult using GPT-4.1/4o.
+Uses KIGate API with the 'trading-reflection-agent' for evaluation.
 """
 import json
 import time
@@ -14,19 +15,25 @@ from .models.llm_result import LocalLLMResult
 from .models.reflection_result import ReflectionResult
 
 
-# Try to import OpenAI client at module level
-_openai_available = False
-_call_openai_chat = None
+# Try to import KIGate client at module level
+_kigate_available = False
+_execute_agent = None
 try:
-    from core.services.openai_client import call_openai_chat as _call_openai_chat_import
-    _call_openai_chat = _call_openai_chat_import
-    _openai_available = True
+    from core.services.kigate_client import execute_agent as _execute_agent_import
+    _execute_agent = _execute_agent_import
+    _kigate_available = True
 except ImportError:
     pass
 
 
 # Path to prompt template
 PROMPT_TEMPLATE_PATH = Path(__file__).parent / "prompts" / "reflection_prompt.txt"
+
+# KIGate configuration for trading-reflection-agent
+KIGATE_AGENT_NAME = "trading-reflection-agent"
+KIGATE_PROVIDER = "openai"
+KIGATE_MODEL = "gpt-4o"
+KIGATE_USER_ID = "fiona-ki"
 
 
 class GPTReflectionEvaluator:
@@ -40,6 +47,8 @@ class GPTReflectionEvaluator:
     - Generates a confidence score (0-100%)
     - Provides final reasoning
     
+    Uses KIGate API with the 'trading-reflection-agent' for evaluation.
+    
     Example:
         >>> evaluator = GPTReflectionEvaluator()
         >>> reflection = evaluator.reflect(setup, local_result)
@@ -50,17 +59,26 @@ class GPTReflectionEvaluator:
         self,
         gpt_client: Optional[Any] = None,
         model: str = "gpt-4o",
+        agent_name: str = KIGATE_AGENT_NAME,
+        provider: str = KIGATE_PROVIDER,
+        user_id: str = KIGATE_USER_ID,
     ):
         """
         Initialize the GPTReflectionEvaluator.
         
         Args:
-            gpt_client: Optional GPT client for API calls.
-                       If None, will use OpenAI integration.
+            gpt_client: Optional client for API calls.
+                       If None, will use KIGate integration.
             model: GPT model name to use (default: gpt-4o).
+            agent_name: KIGate agent name (default: trading-reflection-agent).
+            provider: KIGate provider (default: openai).
+            user_id: KIGate user ID (default: fiona-ki).
         """
         self._gpt_client = gpt_client
         self._model = model
+        self._agent_name = agent_name
+        self._provider = provider
+        self._user_id = user_id
         self._prompt_template = self._load_prompt_template()
     
     def _load_prompt_template(self) -> str:
@@ -177,7 +195,9 @@ Respond with JSON: {{"corrected_direction": null|"LONG"|"SHORT"|"NO_TRADE", "cor
 
     def _call_gpt(self, prompt: str) -> tuple[str, int, int]:
         """
-        Call GPT with the given prompt.
+        Call GPT via KIGate with the given prompt.
+        
+        Uses the trading-reflection-agent via /agent/execute endpoint.
         
         Args:
             prompt: The prompt to send.
@@ -188,7 +208,7 @@ Respond with JSON: {{"corrected_direction": null|"LONG"|"SHORT"|"NO_TRADE", "cor
         start_time = time.time()
         
         if self._gpt_client is not None:
-            # Use provided client
+            # Use provided client (for testing)
             try:
                 response = self._gpt_client(prompt)
                 latency_ms = int((time.time() - start_time) * 1000)
@@ -197,44 +217,39 @@ Respond with JSON: {{"corrected_direction": null|"LONG"|"SHORT"|"NO_TRADE", "cor
                 latency_ms = int((time.time() - start_time) * 1000)
                 return json.dumps({"confidence": 0, "reason": f"GPT error: {str(e)}"}), 0, latency_ms
         
-        # Use OpenAI client if available (module-level import)
-        if _openai_available and _call_openai_chat is not None:
+        # Use KIGate if available (module-level import)
+        if _kigate_available and _execute_agent is not None:
             try:
-                messages = [
-                    {"role": "system", "content": "Du bist ein erfahrener Senior Trader."},
-                    {"role": "user", "content": prompt},
-                ]
-                
-                response = _call_openai_chat(
-                    messages=messages,
+                response = _execute_agent(
+                    prompt=prompt,
+                    agent_name=self._agent_name,
+                    provider=self._provider,
                     model=self._model,
-                    temperature=0.3,
+                    user_id=self._user_id,
+                    temperature=0.3,  # Lower temperature for more deterministic output
                 )
                 
                 latency_ms = int((time.time() - start_time) * 1000)
                 
                 if response.success and response.data:
-                    choices = response.data.get('choices', [])
-                    if choices:
-                        result_text = choices[0].get('message', {}).get('content', '')
-                        usage = response.data.get('usage', {})
-                        tokens = usage.get('total_tokens', 0)
-                        return result_text, tokens, latency_ms
-                
-                error = response.error or "Unknown error"
-                return json.dumps({"confidence": 0, "reason": f"OpenAI error: {error}"}), 0, latency_ms
+                    result_text = response.data.get('result', '')
+                    tokens = response.data.get('tokens_used', 0)
+                    return result_text, tokens, latency_ms
+                else:
+                    error = response.error or "Unknown error"
+                    return json.dumps({"confidence": 0, "reason": f"KIGate error: {error}"}), 0, latency_ms
             except Exception as e:
                 latency_ms = int((time.time() - start_time) * 1000)
                 return json.dumps({"confidence": 0, "reason": f"Error: {str(e)}"}), 0, latency_ms
         
-        # OpenAI client not available - return mock response
+        # KIGate not available - return mock response
         latency_ms = int((time.time() - start_time) * 1000)
         mock_response = {
             "corrected_direction": None,
             "corrected_sl": None,
             "corrected_tp": None,
             "corrected_size": None,
-            "reason": "GPT client not available",
+            "reason": "KIGate client not available",
             "confidence": 0,
             "agrees_with_local": True,
             "corrections_made": [],
