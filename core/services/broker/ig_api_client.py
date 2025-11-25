@@ -228,15 +228,25 @@ class IgApiClient:
                     pass
                 raise AuthenticationError(error_msg)
             
-            # Extract session tokens from headers
+            # Parse response body first (needed for both header and body token extraction)
+            body = response.json()
+            
+            # Extract session tokens from headers (primary method)
             cst = response.headers.get("CST")
             security_token = response.headers.get("X-SECURITY-TOKEN")
+            
+            # If BOTH tokens are missing from headers, try to get from response body (OAuth tokens)
+            # IG API V3 can return oauthToken in body for OAuth flow
+            # Note: If headers have partial tokens (one present, one missing), we don't fallback to OAuth
+            if not cst and not security_token:
+                oauth_token = body.get("oauthToken", {})
+                if oauth_token:
+                    cst = oauth_token.get("access_token")
+                    security_token = oauth_token.get("refresh_token")
             
             if not cst or not security_token:
                 raise AuthenticationError("Login response missing session tokens")
             
-            # Parse response body
-            body = response.json()
             account_id = self.account_id or body.get("currentAccountId")
             client_id = body.get("clientId")
             timezone_offset = body.get("timezoneOffset", 0)
