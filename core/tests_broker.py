@@ -414,6 +414,62 @@ class IgApiClientTest(TestCase):
         with self.assertRaises(AuthenticationError):
             client.login()
 
+    @patch('core.services.broker.ig_api_client.requests.post')
+    def test_login_success_with_oauth_tokens(self, mock_post):
+        """Test successful login with OAuth tokens in response body."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {}  # No tokens in headers
+        mock_response.json.return_value = {
+            "currentAccountId": "ACC456",
+            "clientId": "CLIENT456",
+            "timezoneOffset": 1,
+            "oauthToken": {
+                "access_token": "oauth-access-token",
+                "refresh_token": "oauth-refresh-token",
+                "token_type": "Bearer",
+                "expires_in": "60",
+            }
+        }
+        mock_post.return_value = mock_response
+        
+        client = IgApiClient(
+            api_key="test-key",
+            username="test-user",
+            password="test-pass",
+        )
+        
+        session = client.login()
+        
+        self.assertEqual(session.cst, "oauth-access-token")
+        self.assertEqual(session.security_token, "oauth-refresh-token")
+        self.assertEqual(session.account_id, "ACC456")
+        self.assertTrue(client.is_authenticated)
+
+    @patch('core.services.broker.ig_api_client.requests.post')
+    def test_login_missing_tokens(self, mock_post):
+        """Test login fails when no tokens in headers or body."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {}  # No tokens in headers
+        mock_response.json.return_value = {
+            "currentAccountId": "ACC789",
+            "clientId": "CLIENT789",
+            # No oauthToken in body either
+        }
+        mock_post.return_value = mock_response
+        
+        client = IgApiClient(
+            api_key="test-key",
+            username="test-user",
+            password="test-pass",
+        )
+        
+        with self.assertRaises(AuthenticationError) as context:
+            client.login()
+        
+        self.assertIn("session tokens", str(context.exception))
+
 
 class IgBrokerServiceTest(TestCase):
     """Tests for IgBrokerService."""
