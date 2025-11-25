@@ -408,6 +408,7 @@ class LocalLLMEvaluatorTest(TestCase):
         self.assertIsNotNone(evaluator)
         self.assertEqual(evaluator._model, "gemma2:12b")
         self.assertEqual(evaluator._provider, "LOCAL")
+        self.assertEqual(evaluator._agent_name, "trading-evaluation-agent")
     
     def test_local_evaluator_custom_params(self):
         """Test LocalLLMEvaluator with custom parameters."""
@@ -420,6 +421,18 @@ class LocalLLMEvaluatorTest(TestCase):
         
         self.assertEqual(evaluator._model, "qwen:14b")
         self.assertEqual(evaluator._provider, "QWEN")
+    
+    def test_local_evaluator_custom_agent_name(self):
+        """Test LocalLLMEvaluator with custom agent name."""
+        evaluator = LocalLLMEvaluator(
+            model="llama:7b",
+            provider="ollama",
+            agent_name="custom-trading-agent",
+        )
+        
+        self.assertEqual(evaluator._agent_name, "custom-trading-agent")
+        self.assertEqual(evaluator._model, "llama:7b")
+        self.assertEqual(evaluator._provider, "ollama")
     
     def test_local_evaluator_evaluate_with_mock(self):
         """Test evaluate_with_mock() method."""
@@ -456,6 +469,25 @@ class LocalLLMEvaluatorTest(TestCase):
         self.assertIn("LONDON_CORE", prompt)
         self.assertIn("77.1", str(prompt))  # Float renders as 77.1, not 77.10
     
+    def test_local_evaluator_build_prompt_kigate_format(self):
+        """Test that prompt follows KIGate message format."""
+        evaluator = LocalLLMEvaluator()
+        setup = self._create_test_setup()
+        
+        prompt = evaluator._build_prompt(setup)
+        
+        # Verify KIGate message format sections
+        self.assertIn("## Setup-Daten", prompt)
+        self.assertIn("- Epic:", prompt)
+        self.assertIn("- Setup-Art:", prompt)
+        self.assertIn("- Marktphase:", prompt)
+        self.assertIn("- Referenzpreis:", prompt)
+        self.assertIn("- Aktuelle Richtung:", prompt)
+        self.assertIn("## Breakout-Kontext (falls vorhanden)", prompt)
+        self.assertIn("## EIA-Kontext (falls vorhanden)", prompt)
+        self.assertIn("## Qualitäts-Flags", prompt)
+        self.assertIn("## ATR/Range-Informationen", prompt)
+    
     def test_local_evaluator_parse_json_response(self):
         """Test JSON response parsing."""
         evaluator = LocalLLMEvaluator()
@@ -472,6 +504,39 @@ class LocalLLMEvaluatorTest(TestCase):
 ```'''
         parsed = evaluator._parse_llm_response(markdown_json)
         self.assertEqual(parsed['direction'], "SHORT")
+    
+    @patch('fiona.ki.local_evaluator._execute_agent')
+    @patch('fiona.ki.local_evaluator._kigate_available', True)
+    def test_local_evaluator_kigate_integration(self, mock_execute_agent):
+        """Test KIGate integration with trading-evaluation-agent."""
+        # Mock KIGate response
+        mock_response = MagicMock()
+        mock_response.success = True
+        mock_response.data = {
+            'result': '{"direction": "LONG", "sl": 75.00, "tp": 79.00, "size": 1.0, "reason": "Strong breakout"}',
+            'tokens_used': 150,
+        }
+        mock_execute_agent.return_value = mock_response
+        
+        evaluator = LocalLLMEvaluator()
+        setup = self._create_test_setup()
+        
+        result = evaluator.evaluate(setup)
+        
+        # Verify execute_agent was called with correct parameters
+        mock_execute_agent.assert_called_once()
+        call_kwargs = mock_execute_agent.call_args[1]
+        
+        self.assertEqual(call_kwargs['agent_name'], 'trading-evaluation-agent')
+        self.assertEqual(call_kwargs['model'], 'gemma2:12b')
+        self.assertEqual(call_kwargs['provider'], 'LOCAL')
+        self.assertEqual(call_kwargs['temperature'], 0.3)
+        self.assertIn('## Setup-Daten', call_kwargs['prompt'])
+        
+        # Verify result
+        self.assertEqual(result.direction, "LONG")
+        self.assertEqual(result.sl, 75.00)
+        self.assertEqual(result.tp, 79.00)
 
 
 class GPTReflectionEvaluatorTest(TestCase):
