@@ -1,8 +1,8 @@
 """
 LocalLLMEvaluator for Fiona KI Layer.
 
-Performs initial evaluation of SetupCandidates using a local LLM
-(Gemma 2 12B / Qwen 14B / Llama).
+Performs initial evaluation of SetupCandidates using KIGate with the
+trading-evaluation-agent for AI-based trade analysis.
 """
 import json
 import time
@@ -28,18 +28,21 @@ except ImportError:
 # Path to prompt template
 PROMPT_TEMPLATE_PATH = Path(__file__).parent / "prompts" / "local_llm_prompt.txt"
 
+# Default agent name for trade evaluation via KIGate
+DEFAULT_KIGATE_AGENT = "trading-evaluation-agent"
+
 
 class LocalLLMEvaluator:
     """
-    Evaluator using local LLM for initial setup analysis.
+    Evaluator using KIGate for AI-based trade analysis.
     
-    The LocalLLMEvaluator:
-    - Interprets market structure
-    - Recognizes trend direction
-    - Evaluates breakout or EIA setups
-    - Calculates sensible SL/TP/Size values
-    - Formulates textual reasoning
-    - Produces clean JSON output
+    The LocalLLMEvaluator uses KIGate's trading-evaluation-agent to:
+    - Interpret market structure
+    - Recognize trend direction
+    - Evaluate breakout or EIA setups
+    - Calculate sensible SL/TP/Size values
+    - Formulate textual reasoning
+    - Produce clean JSON output
     
     Example:
         >>> evaluator = LocalLLMEvaluator()
@@ -52,6 +55,7 @@ class LocalLLMEvaluator:
         llm_client: Optional[Any] = None,
         model: str = "gemma2:12b",
         provider: str = "LOCAL",
+        agent_name: str = DEFAULT_KIGATE_AGENT,
     ):
         """
         Initialize the LocalLLMEvaluator.
@@ -61,10 +65,12 @@ class LocalLLMEvaluator:
                        If None, will use KIGate integration.
             model: Model name to use (default: gemma2:12b).
             provider: LLM provider name.
+            agent_name: KIGate agent name (default: trading-evaluation-agent).
         """
         self._llm_client = llm_client
         self._model = model
         self._provider = provider
+        self._agent_name = agent_name
         self._prompt_template = self._load_prompt_template()
     
     def _load_prompt_template(self) -> str:
@@ -72,13 +78,25 @@ class LocalLLMEvaluator:
         if PROMPT_TEMPLATE_PATH.exists():
             return PROMPT_TEMPLATE_PATH.read_text(encoding='utf-8')
         
-        # Fallback inline template
-        return """Analyze the following trading setup and provide your evaluation as JSON:
-Setup: {epic} - {setup_kind} - {phase}
-Reference Price: {reference_price}
-Direction: {direction}
+        # Fallback inline template matching the format expected by trading-evaluation-agent
+        return """## Setup-Daten
+- Epic: {epic}
+- Setup-Art: {setup_kind}
+- Marktphase: {phase}
+- Referenzpreis: {reference_price}
+- Aktuelle Richtung: {direction}
 
-Respond with JSON only: {{"direction": "LONG"|"SHORT"|"NO_TRADE", "sl": float, "tp": float, "size": float, "reason": "string", "quality_flags": {{}}}}"""
+## Breakout-Kontext (falls vorhanden)
+{breakout_context}
+
+## EIA-Kontext (falls vorhanden)
+{eia_context}
+
+## Qualitäts-Flags
+{quality_flags}
+
+## ATR/Range-Informationen
+{atr_info}"""
 
     def _format_breakout_context(self, setup: Any) -> str:
         """Format breakout context for prompt."""
@@ -198,10 +216,10 @@ Respond with JSON only: {{"direction": "LONG"|"SHORT"|"NO_TRADE", "sl": float, "
 
     def _call_llm(self, prompt: str) -> tuple[str, int, int]:
         """
-        Call the LLM with the given prompt.
+        Call KIGate with the trading-evaluation-agent.
         
         Args:
-            prompt: The prompt to send.
+            prompt: The formatted message to send to KIGate.
             
         Returns:
             tuple: (response_text, tokens_used, latency_ms)
@@ -218,12 +236,14 @@ Respond with JSON only: {{"direction": "LONG"|"SHORT"|"NO_TRADE", "sl": float, "
                 latency_ms = int((time.time() - start_time) * 1000)
                 return json.dumps({"direction": None, "reason": f"LLM error: {str(e)}"}), 0, latency_ms
         
-        # Use KIGate if available (module-level import)
+        # Use KIGate with trading-evaluation-agent
         if _kigate_available and _execute_agent is not None:
             try:
                 response = _execute_agent(
                     prompt=prompt,
+                    agent_name=self._agent_name,
                     model=self._model,
+                    provider=self._provider,
                     temperature=0.3,  # Lower temperature for more deterministic output
                 )
                 
@@ -247,7 +267,7 @@ Respond with JSON only: {{"direction": "LONG"|"SHORT"|"NO_TRADE", "sl": float, "
             "sl": None,
             "tp": None,
             "size": None,
-            "reason": "LLM client not available",
+            "reason": "KIGate not available",
             "quality_flags": {},
         }
         return json.dumps(mock_response), 0, latency_ms
