@@ -131,13 +131,20 @@ class IgApiClient:
             "VERSION": version,
         }
 
+    # Token-related error codes that indicate the need to re-authenticate
+    TOKEN_INVALID_ERRORS = frozenset([
+        "error.security.client-token-invalid",
+        "error.security.oauth-token-invalid",
+    ])
+
     def _make_request(
         self,
         method: str,
         endpoint: str,
         headers: Dict[str, str],
         data: Optional[Dict] = None,
-        params: Optional[Dict] = None
+        params: Optional[Dict] = None,
+        retry_on_token_error: bool = True
     ) -> Dict[str, Any]:
         """
         Make an HTTP request to the IG API.
@@ -148,6 +155,8 @@ class IgApiClient:
             headers: Request headers.
             data: Request body (for POST/PUT).
             params: Query parameters.
+            retry_on_token_error: If True, automatically re-authenticate and retry
+                when a token-invalid error is received.
         
         Returns:
             Parsed JSON response.
@@ -176,16 +185,22 @@ class IgApiClient:
             
             # Handle errors
             error_msg = f"IG API error: {response.status_code}"
+            error_code = None
             try:
                 error_data = response.json()
                 error_code = error_data.get('errorCode', 'UNKNOWN')
                 error_msg = f"IG API error [{error_code}]: {response.text}"
-                
-                if response.status_code == 401:
-                    raise AuthenticationError(error_msg, code=error_code)
-                    
             except (ValueError, TypeError):
                 pass
+            
+            if response.status_code == 401:
+                # Check if this is a token-invalid error that we can retry
+                if retry_on_token_error and error_code in self.TOKEN_INVALID_ERRORS:
+                    logger.info(f"Token invalid ({error_code}), attempting to re-authenticate...")
+                    return self._retry_with_fresh_session(
+                        method, endpoint, headers, data, params
+                    )
+                raise AuthenticationError(error_msg, code=error_code)
             
             raise BrokerError(error_msg, code=str(response.status_code))
             
@@ -193,6 +208,54 @@ class IgApiClient:
             raise BrokerError(f"Request timeout after {self.timeout}s")
         except requests.RequestException as e:
             raise BrokerError(f"Request failed: {str(e)}")
+
+    def _retry_with_fresh_session(
+        self,
+        method: str,
+        endpoint: str,
+        headers: Dict[str, str],
+        data: Optional[Dict] = None,
+        params: Optional[Dict] = None
+    ) -> Dict[str, Any]:
+        """
+        Refresh the session and retry the request.
+        
+        This is called when a token-invalid error is received to automatically
+        re-authenticate and retry the original request once.
+        
+        Args:
+            method: HTTP method (GET, POST, PUT, DELETE).
+            endpoint: API endpoint (without base URL).
+            headers: Original request headers (tokens will be updated).
+            data: Request body (for POST/PUT).
+            params: Query parameters.
+        
+        Returns:
+            Parsed JSON response.
+        
+        Raises:
+            AuthenticationError: If re-authentication fails.
+            BrokerError: If the retried request fails.
+        """
+        try:
+            # Re-authenticate
+            self.login()
+            logger.info("Re-authentication successful, retrying request...")
+            
+            # Update the headers with new tokens
+            new_headers = headers.copy()
+            if self._session:
+                new_headers["CST"] = self._session.cst
+                new_headers["X-SECURITY-TOKEN"] = self._session.security_token
+            
+            # Retry the request without allowing another retry to prevent infinite loops
+            return self._make_request(
+                method, endpoint, new_headers, data, params,
+                retry_on_token_error=False
+            )
+        except AuthenticationError:
+            logger.error("Re-authentication failed")
+            raise
 
     def login(self) -> IgSession:
         """

@@ -501,6 +501,204 @@ class IgApiClientTest(TestCase):
         
         self.assertIn("session tokens", str(context.exception))
 
+    @patch('core.services.broker.ig_api_client.requests.request')
+    @patch('core.services.broker.ig_api_client.requests.post')
+    def test_token_invalid_triggers_reauth_and_retry(self, mock_post, mock_request):
+        """Test that token-invalid error triggers re-authentication and retry."""
+        # First login succeeds
+        mock_login_response = MagicMock()
+        mock_login_response.status_code = 200
+        mock_login_response.headers = {
+            "CST": "test-cst-token",
+            "X-SECURITY-TOKEN": "test-security-token",
+        }
+        mock_login_response.json.return_value = {
+            "currentAccountId": "ACC123",
+            "clientId": "CLIENT123",
+            "timezoneOffset": 0,
+        }
+        
+        # Re-login response (after re-auth)
+        mock_relogin_response = MagicMock()
+        mock_relogin_response.status_code = 200
+        mock_relogin_response.headers = {
+            "CST": "new-cst-token",
+            "X-SECURITY-TOKEN": "new-security-token",
+        }
+        mock_relogin_response.json.return_value = {
+            "currentAccountId": "ACC123",
+            "clientId": "CLIENT123",
+            "timezoneOffset": 0,
+        }
+        
+        mock_post.side_effect = [mock_login_response, mock_relogin_response]
+        
+        # First request fails with token-invalid
+        mock_error_response = MagicMock()
+        mock_error_response.status_code = 401
+        mock_error_response.text = '{"errorCode":"error.security.client-token-invalid"}'
+        mock_error_response.json.return_value = {
+            "errorCode": "error.security.client-token-invalid"
+        }
+        
+        # Retry succeeds
+        mock_success_response = MagicMock()
+        mock_success_response.status_code = 200
+        mock_success_response.text = '{"accounts": []}'
+        mock_success_response.json.return_value = {"accounts": []}
+        
+        mock_request.side_effect = [mock_error_response, mock_success_response]
+        
+        client = IgApiClient(
+            api_key="test-key",
+            username="test-user",
+            password="test-pass",
+        )
+        client.login()
+        
+        # This should trigger re-auth and retry
+        result = client.get_accounts()
+        
+        self.assertEqual(result, [])
+        # Verify re-auth was called (login called twice)
+        self.assertEqual(mock_post.call_count, 2)
+        # Verify original request and retry were called
+        self.assertEqual(mock_request.call_count, 2)
+
+    @patch('core.services.broker.ig_api_client.requests.request')
+    @patch('core.services.broker.ig_api_client.requests.post')
+    def test_token_invalid_oauth_triggers_reauth(self, mock_post, mock_request):
+        """Test that oauth-token-invalid error also triggers re-authentication."""
+        # First login succeeds
+        mock_login_response = MagicMock()
+        mock_login_response.status_code = 200
+        mock_login_response.headers = {}
+        mock_login_response.json.return_value = {
+            "currentAccountId": "ACC123",
+            "clientId": "CLIENT123",
+            "oauthToken": {
+                "access_token": "oauth-access-token",
+                "refresh_token": "oauth-refresh-token",
+            }
+        }
+        
+        mock_post.side_effect = [mock_login_response, mock_login_response]
+        
+        # First request fails with oauth-token-invalid
+        mock_error_response = MagicMock()
+        mock_error_response.status_code = 401
+        mock_error_response.text = '{"errorCode":"error.security.oauth-token-invalid"}'
+        mock_error_response.json.return_value = {
+            "errorCode": "error.security.oauth-token-invalid"
+        }
+        
+        # Retry succeeds
+        mock_success_response = MagicMock()
+        mock_success_response.status_code = 200
+        mock_success_response.json.return_value = {"accounts": []}
+        
+        mock_request.side_effect = [mock_error_response, mock_success_response]
+        
+        client = IgApiClient(
+            api_key="test-key",
+            username="test-user",
+            password="test-pass",
+        )
+        client.login()
+        
+        # This should trigger re-auth and retry
+        result = client.get_accounts()
+        
+        self.assertEqual(result, [])
+        self.assertEqual(mock_post.call_count, 2)
+
+    @patch('core.services.broker.ig_api_client.requests.request')
+    @patch('core.services.broker.ig_api_client.requests.post')
+    def test_token_invalid_reauth_fails_raises_error(self, mock_post, mock_request):
+        """Test that when re-authentication fails, the error is raised."""
+        # First login succeeds
+        mock_login_response = MagicMock()
+        mock_login_response.status_code = 200
+        mock_login_response.headers = {
+            "CST": "test-cst-token",
+            "X-SECURITY-TOKEN": "test-security-token",
+        }
+        mock_login_response.json.return_value = {
+            "currentAccountId": "ACC123",
+            "clientId": "CLIENT123",
+        }
+        
+        # Re-login fails
+        mock_relogin_fail = MagicMock()
+        mock_relogin_fail.status_code = 401
+        mock_relogin_fail.json.return_value = {
+            "errorCode": "INVALID_CREDENTIALS"
+        }
+        
+        mock_post.side_effect = [mock_login_response, mock_relogin_fail]
+        
+        # Request fails with token-invalid
+        mock_error_response = MagicMock()
+        mock_error_response.status_code = 401
+        mock_error_response.text = '{"errorCode":"error.security.client-token-invalid"}'
+        mock_error_response.json.return_value = {
+            "errorCode": "error.security.client-token-invalid"
+        }
+        
+        mock_request.return_value = mock_error_response
+        
+        client = IgApiClient(
+            api_key="test-key",
+            username="test-user",
+            password="test-pass",
+        )
+        client.login()
+        
+        # This should fail after re-auth fails
+        with self.assertRaises(AuthenticationError):
+            client.get_accounts()
+
+    @patch('core.services.broker.ig_api_client.requests.request')
+    @patch('core.services.broker.ig_api_client.requests.post')
+    def test_other_401_errors_not_retried(self, mock_post, mock_request):
+        """Test that other 401 errors (not token-invalid) are not retried."""
+        # Login succeeds
+        mock_login_response = MagicMock()
+        mock_login_response.status_code = 200
+        mock_login_response.headers = {
+            "CST": "test-cst-token",
+            "X-SECURITY-TOKEN": "test-security-token",
+        }
+        mock_login_response.json.return_value = {
+            "currentAccountId": "ACC123",
+            "clientId": "CLIENT123",
+        }
+        mock_post.return_value = mock_login_response
+        
+        # Request fails with different 401 error
+        mock_error_response = MagicMock()
+        mock_error_response.status_code = 401
+        mock_error_response.text = '{"errorCode":"error.security.forbidden"}'
+        mock_error_response.json.return_value = {
+            "errorCode": "error.security.forbidden"
+        }
+        
+        mock_request.return_value = mock_error_response
+        
+        client = IgApiClient(
+            api_key="test-key",
+            username="test-user",
+            password="test-pass",
+        )
+        client.login()
+        
+        # This should fail without retrying (only login called once)
+        with self.assertRaises(AuthenticationError):
+            client.get_accounts()
+        
+        # Verify no re-auth attempt was made
+        self.assertEqual(mock_post.call_count, 1)
+
 
 class IgBrokerServiceTest(TestCase):
     """Tests for IgBrokerService."""
