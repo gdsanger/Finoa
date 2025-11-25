@@ -12,7 +12,10 @@ from .models import (
     SymbolPrice,
     OrderType,
     OrderDirection,
+    PositionDirection,
+    Direction,
     OrderStatus,
+    BrokerErrorData,
 )
 
 from .broker_service import BrokerService, BrokerError, AuthenticationError
@@ -32,7 +35,10 @@ __all__ = [
     'SymbolPrice',
     'OrderType',
     'OrderDirection',
+    'PositionDirection',
+    'Direction',
     'OrderStatus',
+    'BrokerErrorData',
     # Service interface
     'BrokerService',
     'BrokerError',

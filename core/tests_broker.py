@@ -19,6 +19,8 @@ from core.services.broker import (
     SymbolPrice,
     OrderType,
     OrderDirection,
+    PositionDirection,
+    Direction,
     OrderStatus,
     BrokerService,
     BrokerError,
@@ -27,6 +29,7 @@ from core.services.broker import (
     IgBrokerService,
     get_active_ig_broker_config,
     create_ig_broker_service,
+    BrokerErrorData,
 )
 
 
@@ -695,3 +698,229 @@ class CreateIgBrokerServiceTest(TestCase):
         """Test error when no active config."""
         with self.assertRaises(ImproperlyConfigured):
             create_ig_broker_service()
+
+
+class DirectionEnumTest(TestCase):
+    """Tests for Direction and PositionDirection enums."""
+
+    def test_direction_enum_values(self):
+        """Test Direction enum has all required values."""
+        self.assertEqual(Direction.BUY.value, "BUY")
+        self.assertEqual(Direction.SELL.value, "SELL")
+        self.assertEqual(Direction.LONG.value, "LONG")
+        self.assertEqual(Direction.SHORT.value, "SHORT")
+
+    def test_direction_is_order_direction(self):
+        """Test is_order_direction method."""
+        self.assertTrue(Direction.BUY.is_order_direction())
+        self.assertTrue(Direction.SELL.is_order_direction())
+        self.assertFalse(Direction.LONG.is_order_direction())
+        self.assertFalse(Direction.SHORT.is_order_direction())
+
+    def test_direction_is_position_direction(self):
+        """Test is_position_direction method."""
+        self.assertFalse(Direction.BUY.is_position_direction())
+        self.assertFalse(Direction.SELL.is_position_direction())
+        self.assertTrue(Direction.LONG.is_position_direction())
+        self.assertTrue(Direction.SHORT.is_position_direction())
+
+    def test_direction_to_order_direction(self):
+        """Test conversion to OrderDirection."""
+        self.assertEqual(Direction.BUY.to_order_direction(), OrderDirection.BUY)
+        self.assertEqual(Direction.SELL.to_order_direction(), OrderDirection.SELL)
+        self.assertEqual(Direction.LONG.to_order_direction(), OrderDirection.BUY)
+        self.assertEqual(Direction.SHORT.to_order_direction(), OrderDirection.SELL)
+
+    def test_direction_to_position_direction(self):
+        """Test conversion to PositionDirection."""
+        self.assertEqual(Direction.BUY.to_position_direction(), PositionDirection.LONG)
+        self.assertEqual(Direction.SELL.to_position_direction(), PositionDirection.SHORT)
+        self.assertEqual(Direction.LONG.to_position_direction(), PositionDirection.LONG)
+        self.assertEqual(Direction.SHORT.to_position_direction(), PositionDirection.SHORT)
+
+    def test_direction_is_string_subclass(self):
+        """Test that Direction is a string subclass for JSON serialization."""
+        self.assertIsInstance(Direction.BUY, str)
+        # Direction.value gives the raw string value for serialization
+        self.assertEqual(Direction.BUY.value, "BUY")
+
+    def test_position_direction_enum_values(self):
+        """Test PositionDirection enum values."""
+        self.assertEqual(PositionDirection.LONG.value, "LONG")
+        self.assertEqual(PositionDirection.SHORT.value, "SHORT")
+
+    def test_position_direction_from_order_direction(self):
+        """Test converting OrderDirection to PositionDirection."""
+        self.assertEqual(
+            PositionDirection.from_order_direction(OrderDirection.BUY),
+            PositionDirection.LONG
+        )
+        self.assertEqual(
+            PositionDirection.from_order_direction(OrderDirection.SELL),
+            PositionDirection.SHORT
+        )
+
+
+class SerializationTest(TestCase):
+    """Tests for to_dict() serialization methods."""
+
+    def test_account_state_to_dict(self):
+        """Test AccountState to_dict serialization."""
+        state = AccountState(
+            account_id="TEST123",
+            account_name="Test Account",
+            balance=Decimal("10000.00"),
+            available=Decimal("8000.00"),
+            equity=Decimal("10500.00"),
+            margin_used=Decimal("2000.00"),
+            margin_available=Decimal("8000.00"),
+            unrealized_pnl=Decimal("500.00"),
+            currency="EUR",
+        )
+        
+        data = state.to_dict()
+        
+        self.assertEqual(data['account_id'], "TEST123")
+        self.assertEqual(data['balance'], 10000.00)
+        self.assertEqual(data['available'], 8000.00)
+        self.assertEqual(data['currency'], "EUR")
+        self.assertIsInstance(data['balance'], float)
+        self.assertIn('timestamp', data)
+
+    def test_position_to_dict(self):
+        """Test Position to_dict serialization."""
+        position = Position(
+            position_id="POS123",
+            deal_id="DEAL123",
+            epic="CC.D.CL.UNC.IP",
+            market_name="WTI Crude Oil",
+            direction=OrderDirection.BUY,
+            size=Decimal("1.0"),
+            open_price=Decimal("75.50"),
+            current_price=Decimal("76.00"),
+            unrealized_pnl=Decimal("50.00"),
+            stop_loss=Decimal("74.00"),
+            take_profit=Decimal("78.00"),
+        )
+        
+        data = position.to_dict()
+        
+        self.assertEqual(data['position_id'], "POS123")
+        self.assertEqual(data['epic'], "CC.D.CL.UNC.IP")
+        self.assertEqual(data['direction'], "BUY")
+        self.assertEqual(data['size'], 1.0)
+        self.assertEqual(data['stop_loss'], 74.00)
+        self.assertIsInstance(data['open_price'], float)
+
+    def test_order_request_to_dict(self):
+        """Test OrderRequest to_dict serialization."""
+        order = OrderRequest(
+            epic="CC.D.CL.UNC.IP",
+            direction=OrderDirection.BUY,
+            size=Decimal("1.0"),
+            order_type=OrderType.MARKET,
+            stop_loss=Decimal("74.00"),
+            take_profit=Decimal("78.00"),
+        )
+        
+        data = order.to_dict()
+        
+        self.assertEqual(data['epic'], "CC.D.CL.UNC.IP")
+        self.assertEqual(data['direction'], "BUY")
+        self.assertEqual(data['order_type'], "MARKET")
+        self.assertEqual(data['size'], 1.0)
+        self.assertIsNone(data['limit_price'])
+
+    def test_order_result_to_dict(self):
+        """Test OrderResult to_dict serialization."""
+        result = OrderResult(
+            success=True,
+            deal_id="DEAL456",
+            deal_reference="REF123",
+            status=OrderStatus.OPEN,
+            affected_deals=["DEAL456"],
+        )
+        
+        data = result.to_dict()
+        
+        self.assertTrue(data['success'])
+        self.assertEqual(data['deal_id'], "DEAL456")
+        self.assertEqual(data['status'], "OPEN")
+        self.assertEqual(data['affected_deals'], ["DEAL456"])
+
+    def test_symbol_price_to_dict(self):
+        """Test SymbolPrice to_dict serialization."""
+        price = SymbolPrice(
+            epic="CC.D.CL.UNC.IP",
+            market_name="WTI Crude Oil",
+            bid=Decimal("75.45"),
+            ask=Decimal("75.50"),
+            spread=Decimal("0.05"),
+            high=Decimal("76.00"),
+            low=Decimal("74.50"),
+        )
+        
+        data = price.to_dict()
+        
+        self.assertEqual(data['epic'], "CC.D.CL.UNC.IP")
+        self.assertEqual(data['bid'], 75.45)
+        self.assertEqual(data['ask'], 75.50)
+        self.assertEqual(data['mid_price'], 75.475)
+        self.assertIn('timestamp', data)
+
+    def test_symbol_price_to_dict_optional_fields(self):
+        """Test SymbolPrice to_dict with None optional fields."""
+        price = SymbolPrice(
+            epic="TEST",
+            market_name="Test",
+            bid=Decimal("100.00"),
+            ask=Decimal("100.10"),
+            spread=Decimal("0.10"),
+        )
+        
+        data = price.to_dict()
+        
+        self.assertIsNone(data['high'])
+        self.assertIsNone(data['low'])
+        self.assertIsNone(data['change'])
+
+
+class BrokerErrorDataTest(TestCase):
+    """Tests for BrokerErrorData dataclass."""
+
+    def test_broker_error_data_creation(self):
+        """Test BrokerErrorData dataclass creation."""
+        error = BrokerErrorData(
+            error_code="TEST_CODE",
+            message="Test error message",
+            raw={"key": "value"}
+        )
+        
+        self.assertEqual(error.error_code, "TEST_CODE")
+        self.assertEqual(error.message, "Test error message")
+        self.assertEqual(error.raw, {"key": "value"})
+
+    def test_broker_error_data_to_dict(self):
+        """Test BrokerErrorData to_dict serialization."""
+        error = BrokerErrorData(
+            error_code="INSUFFICIENT_MARGIN",
+            message="Not enough margin",
+            raw={"balance": 100, "required": 200}
+        )
+        
+        data = error.to_dict()
+        
+        self.assertEqual(data['error_code'], "INSUFFICIENT_MARGIN")
+        self.assertEqual(data['message'], "Not enough margin")
+        self.assertEqual(data['raw'], {"balance": 100, "required": 200})
+
+    def test_broker_error_data_optional_raw(self):
+        """Test BrokerErrorData with None raw field."""
+        error = BrokerErrorData(
+            error_code="UNKNOWN",
+            message="Unknown error"
+        )
+        
+        data = error.to_dict()
+        
+        self.assertIsNone(data['raw'])
