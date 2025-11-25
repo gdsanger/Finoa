@@ -1,5 +1,5 @@
 """
-Strategy Engine for Finoa.
+Strategy Engine for Fiona.
 
 Analyzes market data and generates SetupCandidate objects for potential trades.
 Does NOT make trading decisions or place orders.
@@ -246,6 +246,8 @@ class StrategyEngine:
             return candidates
         
         # Get candles since EIA release
+        # We fetch impulse_window + 5 extra candles to analyze follow-through
+        # after the initial impulse period
         candles = self.market_state.get_recent_candles(
             epic,
             '1m',
@@ -317,9 +319,11 @@ class StrategyEngine:
         low = min(c.low for c in candles)
         
         # Determine direction based on net movement
+        # Use tick_size as minimum threshold for significant movement
         net_move = last_close - first_open
+        min_movement = self.config.tick_size if hasattr(self, 'config') else 0.001
         
-        if abs(net_move) < 0.001:  # No significant movement
+        if abs(net_move) < min_movement:
             return None, high, low
         
         direction: Literal["LONG", "SHORT"] = "LONG" if net_move > 0 else "SHORT"

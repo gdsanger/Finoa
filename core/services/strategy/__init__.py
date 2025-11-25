@@ -1,5 +1,5 @@
 """
-Strategy Engine module for Finoa.
+Strategy Engine module for Fiona.
 
 Provides the Strategy Engine for identifying potential trading setups
 based on market data and configurable strategies.
