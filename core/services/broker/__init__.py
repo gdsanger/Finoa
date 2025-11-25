@@ -15,7 +15,7 @@ from .models import (
     PositionDirection,
     Direction,
     OrderStatus,
-    BrokerError as BrokerErrorData,
+    BrokerErrorData,
 )
 
 from .broker_service import BrokerService, BrokerError, AuthenticationError

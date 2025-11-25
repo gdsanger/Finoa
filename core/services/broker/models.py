@@ -418,7 +418,7 @@ class SymbolPrice:
 
 
 @dataclass
-class BrokerError:
+class BrokerErrorData:
     """
     Dataclass for broker error information (for serialization).
     
