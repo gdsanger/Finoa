@@ -562,6 +562,135 @@
         font-size: 0.875rem;
         text-align: center;
         padding: 1rem;
+    }
+    
+    /* Diagnostic Criteria List - Accordion Style */
+    .diagnostic-criteria {
+        margin-top: 0.75rem;
+        background-color: rgba(0, 0, 0, 0.2);
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    
+    .diagnostic-criteria-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.5rem 0.75rem;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+    
+    .diagnostic-criteria-header:hover {
+        background-color: rgba(255, 255, 255, 0.05);
+    }
+    
+    .diagnostic-criteria .label {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--fiona-text-muted);
+        margin: 0;
+    }
+    
+    .diagnostic-criteria-toggle {
+        color: var(--fiona-text-muted);
+        font-size: 0.8rem;
+        transition: transform 0.2s;
+    }
+    
+    .diagnostic-criteria-toggle.expanded {
+        transform: rotate(180deg);
+    }
+    
+    .diagnostic-criteria-content {
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease-out;
+        padding: 0 0.75rem;
+    }
+    
+    .diagnostic-criteria-content.expanded {
+        max-height: 500px;
+        padding: 0 0.75rem 0.5rem 0.75rem;
+    }
+    
+    .criteria-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+    
+    .criteria-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.5rem;
+        padding: 0.25rem 0;
+        font-size: 0.8rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    
+    .criteria-item:last-child {
+        border-bottom: none;
+    }
+    
+    .criteria-icon {
+        flex-shrink: 0;
+        font-size: 0.9rem;
+    }
+    
+    .criteria-icon.passed {
+        color: var(--signal-long);
+    }
+    
+    .criteria-icon.failed {
+        color: var(--signal-short);
+    }
+    
+    .criteria-content {
+        flex: 1;
+    }
+    
+    .criteria-name {
+        color: var(--fiona-text-light);
+        font-weight: 500;
+    }
+    
+    .criteria-detail {
+        color: var(--fiona-text-muted);
+        font-size: 0.75rem;
+        margin-top: 0.1rem;
+    }
+    
+    /* Countdown Timer */
+    .worker-countdown {
+        margin-top: 0.75rem;
+        padding: 0.5rem 0.75rem;
+        background-color: rgba(0, 0, 0, 0.2);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    
+    .countdown-label {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--fiona-text-muted);
+    }
+    
+    .countdown-value {
+        font-size: 1.1rem;
+        font-weight: 700;
+        font-family: 'Roboto Mono', monospace;
+        color: var(--fiona-text-light);
+    }
+    
+    .countdown-value.imminent {
+        color: var(--confidence-medium);
+    }
+    
     /* Badge pulse animation for new signals */
     .badge-pulse {
         animation: pulse 1s ease-in-out;
@@ -714,9 +843,31 @@
                         <div class="worker-status-label">Intervall</div>
                     </div>
                 </div>
+                <!-- Countdown Timer -->
+                <div class="worker-countdown" id="worker-countdown">
+                    <span class="countdown-label"><i class="bi bi-clock"></i> Nächster Lauf in</span>
+                    <span class="countdown-value" id="worker-countdown-value">--</span>
+                </div>
                 <div class="worker-diagnostic" id="worker-diagnostic">
                     <div class="label">Diagnose</div>
                     <div class="message" id="worker-diagnostic-message">--</div>
+                </div>
+                <!-- Diagnostic Criteria List - Accordion -->
+                <div class="diagnostic-criteria" id="diagnostic-criteria">
+                    <div class="diagnostic-criteria-header" onclick="toggleCriteriaAccordion()">
+                        <div class="label">Kriterien-Prüfung</div>
+                        <span class="diagnostic-criteria-toggle" id="criteria-toggle"><i class="bi bi-chevron-down"></i></span>
+                    </div>
+                    <div class="diagnostic-criteria-content" id="criteria-content">
+                        <ul class="criteria-list" id="criteria-list">
+                            <li class="criteria-item">
+                                <span class="criteria-icon"><i class="bi bi-dash"></i></span>
+                            <span class="criteria-content">
+                                <span class="criteria-name">Keine Daten</span>
+                            </span>
+                        </li>
+                    </ul>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1146,7 +1297,7 @@
         }) + ' UTC';
     }
     
-    function updateWorkerInfo(data) {
+    function updateWorkerInfo(data, isOnline) {
         // Update last activity
         const lastActivityEl = document.getElementById('worker-last-activity');
         if (lastActivityEl && data.last_run_at) {
@@ -1199,12 +1350,144 @@
         if (diagnosticEl) {
             diagnosticEl.textContent = data.diagnostic_message || 'Keine Diagnose verfügbar';
         }
+        
+        // Update countdown - pass the isOnline status
+        updateCountdown(data.seconds_until_next_run, data.worker_interval, isOnline);
+        
+        // Update diagnostic criteria
+        updateDiagnosticCriteria(data.diagnostic_criteria || []);
+    }
+    
+    // Countdown state
+    let countdownInterval = null;
+    let currentCountdownValue = 0;
+    let workerInterval = 60;
+    let workerIsOnline = false;
+    
+    function updateCountdown(secondsUntilNextRun, interval, isOnline) {
+        // Store worker online status
+        workerIsOnline = isOnline;
+        
+        // Store worker interval for countdown reset
+        workerInterval = interval || 60;
+        currentCountdownValue = secondsUntilNextRun || 0;
+        
+        // Clear existing interval
+        if (countdownInterval) {
+            clearInterval(countdownInterval);
+            countdownInterval = null;
+        }
+        
+        // Only show countdown if worker is online
+        if (!workerIsOnline) {
+            displayCountdownValue(-1); // Show offline state
+            return;
+        }
+        
+        // Display the initial countdown value
+        displayCountdownValue(currentCountdownValue);
+        
+        // Start countdown timer (updates every second)
+        countdownInterval = setInterval(function() {
+            currentCountdownValue--;
+            
+            if (currentCountdownValue <= 0) {
+                // Reset to worker interval when countdown reaches 0
+                currentCountdownValue = workerInterval;
+            }
+            
+            displayCountdownValue(currentCountdownValue);
+        }, 1000);
+    }
+    
+    function displayCountdownValue(seconds) {
+        const countdownEl = document.getElementById('worker-countdown-value');
+        if (countdownEl) {
+            if (seconds < 0) {
+                // Offline or no data state
+                countdownEl.textContent = '--';
+                countdownEl.classList.remove('imminent');
+                return;
+            }
+            countdownEl.textContent = seconds + 's';
+            // Add visual emphasis when countdown is imminent
+            if (seconds <= 5) {
+                countdownEl.classList.add('imminent');
+            } else {
+                countdownEl.classList.remove('imminent');
+            }
+        }
+    }
+    
+    function updateDiagnosticCriteria(criteria) {
+        const criteriaListEl = document.getElementById('criteria-list');
+        if (!criteriaListEl) return;
+        
+        if (!criteria || criteria.length === 0) {
+            criteriaListEl.innerHTML = `
+                <li class="criteria-item">
+                    <span class="criteria-icon"><i class="bi bi-dash"></i></span>
+                    <span class="criteria-content">
+                        <span class="criteria-name">Keine Kriterien verfügbar</span>
+                    </span>
+                </li>
+            `;
+            return;
+        }
+        
+        // Build criteria list HTML
+        let html = '';
+        for (const criterion of criteria) {
+            const iconClass = criterion.passed ? 'passed' : 'failed';
+            const iconSymbol = criterion.passed ? 'bi-check-circle-fill' : 'bi-x-circle-fill';
+            
+            html += `
+                <li class="criteria-item">
+                    <span class="criteria-icon ${iconClass}"><i class="bi ${iconSymbol}"></i></span>
+                    <span class="criteria-content">
+                        <span class="criteria-name">${escapeHtml(criterion.name)}</span>
+                        ${criterion.detail ? `<div class="criteria-detail">${escapeHtml(criterion.detail)}</div>` : ''}
+                    </span>
+                </li>
+            `;
+        }
+        
+        criteriaListEl.innerHTML = html;
+    }
+    
+    // HTML escape using a lookup table for better security
+    const HTML_ESCAPE_MAP = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;',
+    };
+    
+    function escapeHtml(text) {
+        if (!text || typeof text !== 'string') {
+            return '';
+        }
+        return text.replace(/[&<>"']/g, function(match) {
+            return HTML_ESCAPE_MAP[match];
+        });
+    }
+    
+    // Accordion toggle for Criteria
+    function toggleCriteriaAccordion() {
+        const content = document.getElementById('criteria-content');
+        const toggle = document.getElementById('criteria-toggle');
+        
+        if (content && toggle) {
+            content.classList.toggle('expanded');
+            toggle.classList.toggle('expanded');
+        }
     }
     
     function showWorkerError(errorMessage) {
         const contentEl = document.getElementById('worker-status-content');
         if (contentEl) {
-            contentEl.innerHTML = '<div class="worker-status-error"><i class="bi bi-exclamation-triangle"></i> ' + errorMessage + '</div>';
+            contentEl.innerHTML = '<div class="worker-status-error"><i class="bi bi-exclamation-triangle"></i> ' + escapeHtml(errorMessage) + '</div>';
         }
     }
     
@@ -1236,9 +1519,29 @@
                 <div class="worker-status-label">Intervall</div>
             </div>
         </div>
+        <div class="worker-countdown" id="worker-countdown">
+            <span class="countdown-label"><i class="bi bi-clock"></i> Nächster Lauf in</span>
+            <span class="countdown-value" id="worker-countdown-value">--</span>
+        </div>
         <div class="worker-diagnostic" id="worker-diagnostic">
             <div class="label">Diagnose</div>
             <div class="message" id="worker-diagnostic-message">--</div>
+        </div>
+        <div class="diagnostic-criteria" id="diagnostic-criteria">
+            <div class="diagnostic-criteria-header" onclick="toggleCriteriaAccordion()">
+                <div class="label">Kriterien-Prüfung</div>
+                <span class="diagnostic-criteria-toggle" id="criteria-toggle"><i class="bi bi-chevron-down"></i></span>
+            </div>
+            <div class="diagnostic-criteria-content" id="criteria-content">
+                <ul class="criteria-list" id="criteria-list">
+                    <li class="criteria-item">
+                        <span class="criteria-icon"><i class="bi bi-dash"></i></span>
+                        <span class="criteria-content">
+                            <span class="criteria-name">Keine Daten</span>
+                        </span>
+                    </li>
+                </ul>
+            </div>
         </div>
     `;
     
@@ -1268,18 +1571,20 @@
                     updateWorkerStatusIndicator('no-data', 'Keine Daten');
                     resetWorkerStatusGrid();
                     document.getElementById('worker-diagnostic-message').textContent = data.status_message;
+                    updateCountdown(0, 60, false);  // Stop countdown
                 } else if (data.worker_status === 'ONLINE') {
                     updateWorkerStatusIndicator('online', 'ONLINE');
                     resetWorkerStatusGrid();
-                    updateWorkerInfo(data.data);
+                    updateWorkerInfo(data.data, true);  // Pass isOnline = true
                 } else {
                     updateWorkerStatusIndicator('offline', 'OFFLINE');
                     resetWorkerStatusGrid();
-                    updateWorkerInfo(data.data);
+                    updateWorkerInfo(data.data, false);  // Pass isOnline = false
                 }
             } else {
                 updateWorkerStatusIndicator('offline', 'Fehler');
                 showWorkerError(data.status_message || 'Unbekannter Fehler');
+                updateCountdown(0, 60, false);  // Stop countdown
             }
         })
         .catch(error => {
@@ -1287,6 +1592,7 @@
             setWorkerRefreshButtonLoading(false);
             updateWorkerStatusIndicator('offline', 'Fehler');
             showWorkerError('Verbindungsfehler');
+            updateCountdown(0, 60, false);  // Stop countdown
         });
     }
     

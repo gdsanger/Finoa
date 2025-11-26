@@ -233,6 +233,14 @@ class WorkerStatus(models.Model):
         help_text='Human-readable diagnostic message (e.g., why no setups found)'
     )
     
+    # Detailed diagnostic criteria list (JSON structure)
+    # Format: [{"name": "Asia Range valid", "passed": true, "detail": "Range: 74.5 - 75.5"}, ...]
+    diagnostic_criteria = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='List of diagnostic criteria with pass/fail status (JSON)'
+    )
+    
     # Worker configuration
     worker_interval = models.PositiveIntegerField(
         default=60,
@@ -262,12 +270,17 @@ class WorkerStatus(models.Model):
         ask_price=None,
         spread=None,
         diagnostic_message='',
+        diagnostic_criteria=None,
         worker_interval=60
     ):
         """
         Update or create the worker status record.
         
         Uses update_or_create to maintain a single status record.
+        
+        Args:
+            diagnostic_criteria: List of dicts with keys 'name', 'passed', 'detail'.
+                Example: [{"name": "Asia Range valid", "passed": True, "detail": "75.5 - 74.5"}]
         """
         # Delete all existing records and create a new one
         # This ensures we only have one record (singleton)
@@ -282,5 +295,6 @@ class WorkerStatus(models.Model):
             ask_price=ask_price,
             spread=spread,
             diagnostic_message=diagnostic_message,
+            diagnostic_criteria=diagnostic_criteria or [],
             worker_interval=worker_interval,
         )
