@@ -15,11 +15,19 @@ class AssetBreakoutConfigInline(admin.StackedInline):
                 ('asia_min_range_ticks', 'asia_max_range_ticks'),
             )
         }),
-        ('US Core Range', {
+        ('Pre-US Range (Range Formation Only)', {
             'fields': (
                 ('pre_us_start', 'pre_us_end'),
                 ('us_min_range_ticks', 'us_max_range_ticks'),
-            )
+            ),
+            'description': 'Time window for Pre-US Range formation (no breakouts). Default: 13:00-15:00 UTC'
+        }),
+        ('US Core Trading Session (Breakouts Allowed)', {
+            'fields': (
+                ('us_core_trading_start', 'us_core_trading_end'),
+                'us_core_trading_enabled',
+            ),
+            'description': 'Time window for US Core Trading session (breakouts active). Default: 15:00-22:00 UTC'
         }),
         ('Breakout Requirements', {
             'fields': (
@@ -75,8 +83,8 @@ class TradingAssetAdmin(admin.ModelAdmin):
 @admin.register(AssetBreakoutConfig)
 class AssetBreakoutConfigAdmin(admin.ModelAdmin):
     """Admin for breakout configurations."""
-    list_display = ['asset', 'asia_range_start', 'asia_range_end', 'min_breakout_body_fraction', 'updated_at']
-    list_filter = ['asset__category']
+    list_display = ['asset', 'asia_range_start', 'asia_range_end', 'pre_us_start', 'pre_us_end', 'us_core_trading_start', 'us_core_trading_end', 'us_core_trading_enabled', 'updated_at']
+    list_filter = ['asset__category', 'us_core_trading_enabled']
     search_fields = ['asset__name', 'asset__symbol']
     readonly_fields = ['created_at', 'updated_at']
     
@@ -90,11 +98,19 @@ class AssetBreakoutConfigAdmin(admin.ModelAdmin):
                 ('asia_min_range_ticks', 'asia_max_range_ticks'),
             )
         }),
-        ('US Core Configuration', {
+        ('Pre-US Range Configuration (Range Formation Only)', {
             'fields': (
                 ('pre_us_start', 'pre_us_end'),
                 ('us_min_range_ticks', 'us_max_range_ticks'),
-            )
+            ),
+            'description': 'Time window for Pre-US Range formation. No breakouts generated during this phase.'
+        }),
+        ('US Core Trading Session (Breakouts Allowed)', {
+            'fields': (
+                ('us_core_trading_start', 'us_core_trading_end'),
+                'us_core_trading_enabled',
+            ),
+            'description': 'Time window for US Core Trading. Breakouts are generated during this phase if enabled.'
         }),
         ('Breakout Candle Requirements', {
             'fields': ('min_breakout_body_fraction',)

@@ -20,15 +20,20 @@ logger = logging.getLogger(__name__)
 # Default session phase time boundaries (UTC)
 # Asia session: 00:00 - 08:00 UTC
 # London session: 08:00 - 15:00 UTC (core: 08:00 - 11:00)
-# US session: 13:00 - 21:00 UTC (core: 14:30 - 17:30)
+# Pre-US Range: 13:00 - 15:00 UTC (range formation only)
+# US Core Trading: 15:00 - 22:00 UTC (breakouts allowed)
 # EIA release: typically Wednesday 15:30 UTC
 DEFAULT_SESSION_TIMES = {
     'asia_start': 0,   # 00:00 UTC
     'asia_end': 8,     # 08:00 UTC
     'london_core_start': 8,   # 08:00 UTC
     'london_core_end': 11,    # 11:00 UTC
-    'us_core_start': 14,      # 14:00 UTC (14:30 more precisely)
-    'us_core_end': 17,        # 17:00 UTC (17:30 more precisely)
+    'pre_us_start': 13,       # 13:00 UTC (Pre-US Range start)
+    'pre_us_end': 15,         # 15:00 UTC (Pre-US Range end)
+    'us_core_trading_start': 15,  # 15:00 UTC (US Core Trading start)
+    'us_core_trading_end': 22,    # 22:00 UTC (US Core Trading end)
+    'us_core_start': 14,      # 14:00 UTC (deprecated, for backwards compat)
+    'us_core_end': 17,        # 17:00 UTC (deprecated, for backwards compat)
     'friday_late': 21,        # 21:00 UTC
 }
 
@@ -43,13 +48,29 @@ class SessionTimesConfig:
     
     Times are in hours (0-23) for start/end, or (hour, minute) tuples
     for more precise control.
+    
+    The US session is split into two phases:
+    - Pre-US Range (13:00-15:00 UTC): Range formation only, no breakouts
+    - US Core Trading (15:00-22:00 UTC): Trading allowed, breakouts enabled
     """
     asia_start: int = 0         # 00:00 UTC
     asia_end: int = 8           # 08:00 UTC
     london_core_start: int = 8  # 08:00 UTC
     london_core_end: int = 11   # 11:00 UTC
+    
+    # Pre-US Range (range formation only)
+    pre_us_start: int = 13      # 13:00 UTC
+    pre_us_end: int = 15        # 15:00 UTC
+    
+    # US Core Trading session (breakouts allowed)
+    us_core_trading_start: int = 15  # 15:00 UTC
+    us_core_trading_end: int = 22    # 22:00 UTC
+    us_core_trading_enabled: bool = True
+    
+    # Deprecated: kept for backwards compatibility
     us_core_start: int = 14     # 14:00 UTC
     us_core_end: int = 17       # 17:00 UTC
+    
     friday_late: int = 21       # 21:00 UTC
     
     # Optional minute-level precision (0-59)
@@ -57,6 +78,10 @@ class SessionTimesConfig:
     asia_end_minute: int = 0
     london_core_start_minute: int = 0
     london_core_end_minute: int = 0
+    pre_us_start_minute: int = 0
+    pre_us_end_minute: int = 0
+    us_core_trading_start_minute: int = 0
+    us_core_trading_end_minute: int = 0
     us_core_start_minute: int = 0
     us_core_end_minute: int = 0
     
@@ -67,6 +92,11 @@ class SessionTimesConfig:
         asia_end: str = "08:00",
         london_core_start: str = "08:00",
         london_core_end: str = "11:00",
+        pre_us_start: str = "13:00",
+        pre_us_end: str = "15:00",
+        us_core_trading_start: str = "15:00",
+        us_core_trading_end: str = "22:00",
+        us_core_trading_enabled: bool = True,
         us_core_start: str = "14:00",
         us_core_end: str = "17:00",
         friday_late: int = 21,
@@ -79,8 +109,13 @@ class SessionTimesConfig:
             asia_end: Asia range end (HH:MM format, e.g., "08:00")
             london_core_start: London core start (HH:MM format)
             london_core_end: London core end (HH:MM format)
-            us_core_start: US core start (HH:MM format, default: "14:00")
-            us_core_end: US core end (HH:MM format, default: "17:00")
+            pre_us_start: Pre-US range start (HH:MM format, default: "13:00")
+            pre_us_end: Pre-US range end (HH:MM format, default: "15:00")
+            us_core_trading_start: US Core Trading start (HH:MM format, default: "15:00")
+            us_core_trading_end: US Core Trading end (HH:MM format, default: "22:00")
+            us_core_trading_enabled: Whether trading is enabled in US Core Trading
+            us_core_start: Deprecated, kept for backwards compatibility
+            us_core_end: Deprecated, kept for backwards compatibility
             friday_late: Friday late cutoff hour
             
         Returns:
@@ -97,6 +132,10 @@ class SessionTimesConfig:
         asia_end_h, asia_end_m = parse_time(asia_end)
         london_start_h, london_start_m = parse_time(london_core_start)
         london_end_h, london_end_m = parse_time(london_core_end)
+        pre_us_start_h, pre_us_start_m = parse_time(pre_us_start)
+        pre_us_end_h, pre_us_end_m = parse_time(pre_us_end)
+        us_trading_start_h, us_trading_start_m = parse_time(us_core_trading_start)
+        us_trading_end_h, us_trading_end_m = parse_time(us_core_trading_end)
         us_start_h, us_start_m = parse_time(us_core_start)
         us_end_h, us_end_m = parse_time(us_core_end)
         
@@ -105,6 +144,11 @@ class SessionTimesConfig:
             asia_end=asia_end_h,
             london_core_start=london_start_h,
             london_core_end=london_end_h,
+            pre_us_start=pre_us_start_h,
+            pre_us_end=pre_us_end_h,
+            us_core_trading_start=us_trading_start_h,
+            us_core_trading_end=us_trading_end_h,
+            us_core_trading_enabled=us_core_trading_enabled,
             us_core_start=us_start_h,
             us_core_end=us_end_h,
             friday_late=friday_late,
@@ -112,6 +156,10 @@ class SessionTimesConfig:
             asia_end_minute=asia_end_m,
             london_core_start_minute=london_start_m,
             london_core_end_minute=london_end_m,
+            pre_us_start_minute=pre_us_start_m,
+            pre_us_end_minute=pre_us_end_m,
+            us_core_trading_start_minute=us_trading_start_m,
+            us_core_trading_end_minute=us_trading_end_m,
             us_core_start_minute=us_start_m,
             us_core_end_minute=us_end_m,
         )
@@ -221,11 +269,25 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         if london_start <= current_time < london_end:
             return SessionPhase.LONDON_CORE
         
-        # US Core (default: 14:00 - 17:00 UTC, but configurable)
-        us_start = to_minutes(cfg.us_core_start, cfg.us_core_start_minute)
-        us_end = to_minutes(cfg.us_core_end, cfg.us_core_end_minute)
-        if us_start <= current_time < us_end:
-            return SessionPhase.US_CORE
+        # Pre-US Range (default: 13:00 - 15:00 UTC) - Range formation only
+        pre_us_start = to_minutes(cfg.pre_us_start, cfg.pre_us_start_minute)
+        pre_us_end = to_minutes(cfg.pre_us_end, cfg.pre_us_end_minute)
+        if pre_us_start <= current_time < pre_us_end:
+            return SessionPhase.PRE_US_RANGE
+        
+        # US Core Trading (default: 15:00 - 22:00 UTC) - Trading allowed
+        if cfg.us_core_trading_enabled:
+            us_trading_start = to_minutes(cfg.us_core_trading_start, cfg.us_core_trading_start_minute)
+            us_trading_end = to_minutes(cfg.us_core_trading_end, cfg.us_core_trading_end_minute)
+            if us_trading_start <= current_time < us_trading_end:
+                return SessionPhase.US_CORE_TRADING
+        else:
+            # Deprecated US Core (kept for backwards compatibility)
+            # Only used if us_core_trading_enabled is False
+            us_start = to_minutes(cfg.us_core_start, cfg.us_core_start_minute)
+            us_end = to_minutes(cfg.us_core_end, cfg.us_core_end_minute)
+            if us_start <= current_time < us_end:
+                return SessionPhase.US_CORE
         
         return SessionPhase.OTHER
 

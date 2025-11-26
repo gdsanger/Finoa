@@ -129,6 +129,9 @@ class TradingAsset(models.Model):
             us_core = UsCoreConfig(
                 pre_us_start=breakout_cfg.pre_us_start,
                 pre_us_end=breakout_cfg.pre_us_end,
+                us_core_trading_start=breakout_cfg.us_core_trading_start,
+                us_core_trading_end=breakout_cfg.us_core_trading_end,
+                us_core_trading_enabled=breakout_cfg.us_core_trading_enabled,
                 min_range_ticks=breakout_cfg.us_min_range_ticks,
                 max_range_ticks=breakout_cfg.us_max_range_ticks,
                 min_breakout_body_fraction=float(breakout_cfg.min_breakout_body_fraction),
@@ -269,7 +272,7 @@ class AssetBreakoutConfig(models.Model):
     )
     
     # =========================================================================
-    # Pre-US / US Core Configuration
+    # Pre-US Range Configuration (Range Formation Only)
     # =========================================================================
     pre_us_start = models.CharField(
         max_length=5,
@@ -290,6 +293,24 @@ class AssetBreakoutConfig(models.Model):
         default=200,
         validators=[MinValueValidator(1)],
         help_text='Maximum range height in ticks for valid Pre-US range'
+    )
+    
+    # =========================================================================
+    # US Core Trading Session Configuration (Breakouts Allowed)
+    # =========================================================================
+    us_core_trading_start = models.CharField(
+        max_length=5,
+        default='15:00',
+        help_text='US Core Trading session start time (UTC, HH:MM format)'
+    )
+    us_core_trading_end = models.CharField(
+        max_length=5,
+        default='22:00',
+        help_text='US Core Trading session end time (UTC, HH:MM format)'
+    )
+    us_core_trading_enabled = models.BooleanField(
+        default=True,
+        help_text='Whether breakouts are allowed during US Core Trading session'
     )
     
     # =========================================================================
@@ -489,7 +510,9 @@ class AssetEventConfig(models.Model):
     SESSION_PHASES = [
         ('ASIA_RANGE', 'Asia Range'),
         ('LONDON_CORE', 'London Core'),
-        ('US_CORE', 'US Core'),
+        ('PRE_US_RANGE', 'Pre-US Range'),
+        ('US_CORE_TRADING', 'US Core Trading'),
+        ('US_CORE', 'US Core'),  # Deprecated, kept for backwards compatibility
         ('EIA_PRE', 'EIA Pre'),
         ('EIA_POST', 'EIA Post'),
     ]
@@ -577,7 +600,9 @@ class Signal(models.Model):
     # Session Phases
     SESSION_PHASES = [
         ('LONDON_CORE', 'London Core'),
-        ('US_CORE', 'US Core'),
+        ('PRE_US_RANGE', 'Pre-US Range'),
+        ('US_CORE_TRADING', 'US Core Trading'),
+        ('US_CORE', 'US Core'),  # Deprecated, kept for backwards compatibility
         ('EIA_PRE', 'EIA Pre'),
         ('EIA_POST', 'EIA Post'),
         ('ASIAN', 'Asian Session'),
@@ -741,7 +766,9 @@ class WorkerStatus(models.Model):
     SESSION_PHASES = [
         ('ASIA_RANGE', 'Asia Range'),
         ('LONDON_CORE', 'London Core'),
-        ('US_CORE', 'US Core'),
+        ('PRE_US_RANGE', 'Pre-US Range'),
+        ('US_CORE_TRADING', 'US Core Trading'),
+        ('US_CORE', 'US Core'),  # Deprecated, kept for backwards compatibility
         ('EIA_PRE', 'EIA Pre'),
         ('EIA_POST', 'EIA Post'),
         ('FRIDAY_LATE', 'Friday Late'),
@@ -755,7 +782,7 @@ class WorkerStatus(models.Model):
     
     # Current session phase
     phase = models.CharField(
-        max_length=20,
+        max_length=30,  # Increased to fit US_CORE_TRADING
         choices=SESSION_PHASES,
         help_text='Current session phase'
     )
