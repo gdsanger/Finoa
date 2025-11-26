@@ -2223,3 +2223,485 @@ class BreakoutConfigFormTest(TestCase):
         self.assertIsNone(config.min_atr_value)
         self.assertIsNone(config.max_atr_value)
         self.assertIsNone(config.min_volume_spike)
+
+
+# =============================================================================
+# Session Phase Configuration Tests
+# =============================================================================
+
+from .models import AssetSessionPhaseConfig
+
+
+class AssetSessionPhaseConfigModelTest(TestCase):
+    """Tests for AssetSessionPhaseConfig model."""
+    
+    def setUp(self):
+        self.asset = TradingAsset.objects.create(
+            name='US Crude Oil',
+            symbol='OIL',
+            epic='CC.D.CL.UNC.IP',
+            category='commodity',
+            is_active=True,
+        )
+    
+    def test_phase_config_creation(self):
+        """Test basic phase configuration creation."""
+        config = AssetSessionPhaseConfig.objects.create(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time_utc='00:00',
+            end_time_utc='08:00',
+            is_range_build_phase=True,
+            is_trading_phase=False,
+            event_type='NONE',
+            requires_event=False,
+            enabled=True,
+        )
+        
+        self.assertEqual(config.phase, 'ASIA_RANGE')
+        self.assertEqual(config.start_time_utc, '00:00')
+        self.assertEqual(config.end_time_utc, '08:00')
+        self.assertTrue(config.is_range_build_phase)
+        self.assertFalse(config.is_trading_phase)
+        self.assertTrue(config.enabled)
+    
+    def test_phase_config_str_representation(self):
+        """Test phase config string representation."""
+        config = AssetSessionPhaseConfig.objects.create(
+            asset=self.asset,
+            phase='US_CORE_TRADING',
+            start_time_utc='15:00',
+            end_time_utc='22:00',
+            is_range_build_phase=False,
+            is_trading_phase=True,
+            enabled=True,
+        )
+        
+        str_repr = str(config)
+        self.assertIn('OIL', str_repr)
+        self.assertIn('Trading', str_repr)
+        self.assertIn('✓', str_repr)
+    
+    def test_phase_config_disabled_str_representation(self):
+        """Test disabled phase config string representation."""
+        config = AssetSessionPhaseConfig.objects.create(
+            asset=self.asset,
+            phase='EIA_PRE',
+            start_time_utc='15:25',
+            end_time_utc='15:30',
+            event_type='EIA',
+            requires_event=True,
+            enabled=False,
+        )
+        
+        self.assertIn('✗', str(config))
+    
+    def test_phase_config_to_dict(self):
+        """Test phase config to_dict method."""
+        config = AssetSessionPhaseConfig.objects.create(
+            asset=self.asset,
+            phase='LONDON_CORE',
+            start_time_utc='08:00',
+            end_time_utc='12:00',
+            is_range_build_phase=True,
+            is_trading_phase=False,
+            event_type='NONE',
+            requires_event=False,
+            enabled=True,
+            notes='Test notes',
+        )
+        
+        data = config.to_dict()
+        self.assertEqual(data['phase'], 'LONDON_CORE')
+        self.assertEqual(data['start_time_utc'], '08:00')
+        self.assertEqual(data['end_time_utc'], '12:00')
+        self.assertTrue(data['is_range_build_phase'])
+        self.assertFalse(data['is_trading_phase'])
+        self.assertEqual(data['notes'], 'Test notes')
+    
+    def test_get_default_phases_for_oil(self):
+        """Test default phases for oil assets."""
+        defaults = AssetSessionPhaseConfig.get_default_phases_for_asset('OIL')
+        
+        # Should have all standard phases including EIA
+        phases = [d['phase'] for d in defaults]
+        self.assertIn('ASIA_RANGE', phases)
+        self.assertIn('LONDON_CORE', phases)
+        self.assertIn('PRE_US_RANGE', phases)
+        self.assertIn('US_CORE_TRADING', phases)
+        self.assertIn('EIA_PRE', phases)
+        self.assertIn('EIA_POST', phases)
+        
+        # Check EIA phases have correct event type
+        eia_pre = next(d for d in defaults if d['phase'] == 'EIA_PRE')
+        self.assertEqual(eia_pre['event_type'], 'EIA')
+        self.assertTrue(eia_pre['requires_event'])
+    
+    def test_get_default_phases_for_nas100(self):
+        """Test default phases for NAS100 assets."""
+        defaults = AssetSessionPhaseConfig.get_default_phases_for_asset('NAS100')
+        
+        phases = [d['phase'] for d in defaults]
+        self.assertIn('ASIA_RANGE', phases)
+        self.assertIn('LONDON_CORE', phases)
+        self.assertIn('PRE_US_RANGE', phases)
+        self.assertIn('US_CORE_TRADING', phases)
+        # NAS100 should NOT have EIA phases
+        self.assertNotIn('EIA_PRE', phases)
+        self.assertNotIn('EIA_POST', phases)
+        
+        # Check US Core Trading timing for NAS100
+        us_core = next(d for d in defaults if d['phase'] == 'US_CORE_TRADING')
+        self.assertEqual(us_core['start_time_utc'], '14:30')  # Different from oil
+    
+    def test_create_default_phases_for_asset(self):
+        """Test creating default phases for an asset."""
+        created = AssetSessionPhaseConfig.create_default_phases_for_asset(self.asset)
+        
+        # Should have created multiple phases
+        self.assertGreater(len(created), 4)
+        
+        # Verify they're in the database
+        configs = AssetSessionPhaseConfig.objects.filter(asset=self.asset)
+        self.assertEqual(configs.count(), len(created))
+    
+    def test_create_default_phases_idempotent(self):
+        """Test that creating default phases is idempotent."""
+        # Create defaults first time
+        created1 = AssetSessionPhaseConfig.create_default_phases_for_asset(self.asset)
+        count1 = AssetSessionPhaseConfig.objects.filter(asset=self.asset).count()
+        
+        # Create again - should not create duplicates
+        created2 = AssetSessionPhaseConfig.create_default_phases_for_asset(self.asset)
+        count2 = AssetSessionPhaseConfig.objects.filter(asset=self.asset).count()
+        
+        self.assertEqual(count1, count2)
+        self.assertEqual(len(created2), 0)  # Nothing new created
+    
+    def test_get_phases_for_asset(self):
+        """Test getting phases for an asset."""
+        # Create some phases
+        AssetSessionPhaseConfig.objects.create(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time_utc='00:00',
+            end_time_utc='08:00',
+        )
+        AssetSessionPhaseConfig.objects.create(
+            asset=self.asset,
+            phase='LONDON_CORE',
+            start_time_utc='08:00',
+            end_time_utc='12:00',
+        )
+        
+        phases = AssetSessionPhaseConfig.get_phases_for_asset(self.asset)
+        self.assertEqual(phases.count(), 2)
+    
+    def test_get_enabled_phases_for_asset(self):
+        """Test getting only enabled phases for an asset."""
+        AssetSessionPhaseConfig.objects.create(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time_utc='00:00',
+            end_time_utc='08:00',
+            enabled=True,
+        )
+        AssetSessionPhaseConfig.objects.create(
+            asset=self.asset,
+            phase='LONDON_CORE',
+            start_time_utc='08:00',
+            end_time_utc='12:00',
+            enabled=False,  # Disabled
+        )
+        
+        enabled = AssetSessionPhaseConfig.get_enabled_phases_for_asset(self.asset)
+        self.assertEqual(enabled.count(), 1)
+        self.assertEqual(enabled.first().phase, 'ASIA_RANGE')
+    
+    def test_unique_together_constraint(self):
+        """Test that phase + asset must be unique."""
+        AssetSessionPhaseConfig.objects.create(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time_utc='00:00',
+            end_time_utc='08:00',
+        )
+        
+        # Creating duplicate should raise exception
+        from django.db import IntegrityError
+        with self.assertRaises(IntegrityError):
+            AssetSessionPhaseConfig.objects.create(
+                asset=self.asset,
+                phase='ASIA_RANGE',  # Same phase
+                start_time_utc='01:00',
+                end_time_utc='09:00',
+            )
+
+
+class PhaseConfigViewsTest(TestCase):
+    """Tests for phase configuration views."""
+    
+    def setUp(self):
+        self.user = User.objects.create_user('testuser', 'test@test.com', 'testpass')
+        self.client.login(username='testuser', password='testpass')
+        
+        self.asset = TradingAsset.objects.create(
+            name='US Crude Oil',
+            symbol='OIL',
+            epic='CC.D.CL.UNC.IP',
+            category='commodity',
+            is_active=True,
+        )
+    
+    def test_phase_config_list_view(self):
+        """Test phase config list view."""
+        response = self.client.get(f'/fiona/assets/{self.asset.id}/phases/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Sessions & Phases')
+    
+    def test_phase_config_list_with_configs(self):
+        """Test phase config list view with existing configurations."""
+        AssetSessionPhaseConfig.objects.create(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time_utc='00:00',
+            end_time_utc='08:00',
+            is_range_build_phase=True,
+        )
+        
+        response = self.client.get(f'/fiona/assets/{self.asset.id}/phases/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Asia Range')
+    
+    def test_phase_config_create_defaults(self):
+        """Test creating default phase configurations."""
+        response = self.client.post(f'/fiona/assets/{self.asset.id}/phases/create-defaults/')
+        self.assertEqual(response.status_code, 302)  # Redirect
+        
+        # Verify phases were created
+        configs = AssetSessionPhaseConfig.objects.filter(asset=self.asset)
+        self.assertGreater(configs.count(), 4)
+    
+    def test_phase_config_edit_view_get(self):
+        """Test GET request to phase config edit view."""
+        response = self.client.get(f'/fiona/assets/{self.asset.id}/phases/US_CORE_TRADING/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'US Core Trading')
+    
+    def test_phase_config_edit_view_create(self):
+        """Test creating a new phase config via POST."""
+        response = self.client.post(f'/fiona/assets/{self.asset.id}/phases/US_CORE_TRADING/', {
+            'start_time_utc': '15:00',
+            'end_time_utc': '22:00',
+            'is_range_build_phase': '',  # False
+            'is_trading_phase': 'on',
+            'event_type': 'NONE',
+            'requires_event': '',  # False
+            'event_offset_minutes': '0',
+            'enabled': 'on',
+            'notes': 'Test config',
+        })
+        self.assertEqual(response.status_code, 302)  # Redirect
+        
+        # Verify config was created
+        config = AssetSessionPhaseConfig.objects.get(asset=self.asset, phase='US_CORE_TRADING')
+        self.assertEqual(config.start_time_utc, '15:00')
+        self.assertEqual(config.end_time_utc, '22:00')
+        self.assertTrue(config.is_trading_phase)
+        self.assertFalse(config.is_range_build_phase)
+    
+    def test_phase_config_edit_view_update(self):
+        """Test updating an existing phase config via POST."""
+        config = AssetSessionPhaseConfig.objects.create(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time_utc='00:00',
+            end_time_utc='08:00',
+            is_range_build_phase=True,
+        )
+        
+        response = self.client.post(f'/fiona/assets/{self.asset.id}/phases/ASIA_RANGE/', {
+            'start_time_utc': '01:00',  # Changed
+            'end_time_utc': '09:00',    # Changed
+            'is_range_build_phase': 'on',
+            'is_trading_phase': '',
+            'event_type': 'NONE',
+            'requires_event': '',
+            'event_offset_minutes': '0',
+            'enabled': 'on',
+            'notes': '',
+        })
+        self.assertEqual(response.status_code, 302)
+        
+        config.refresh_from_db()
+        self.assertEqual(config.start_time_utc, '01:00')
+        self.assertEqual(config.end_time_utc, '09:00')
+    
+    def test_phase_config_delete(self):
+        """Test deleting a phase config."""
+        AssetSessionPhaseConfig.objects.create(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time_utc='00:00',
+            end_time_utc='08:00',
+        )
+        
+        response = self.client.post(f'/fiona/assets/{self.asset.id}/phases/ASIA_RANGE/delete/')
+        self.assertEqual(response.status_code, 302)
+        
+        # Verify config was deleted
+        self.assertFalse(
+            AssetSessionPhaseConfig.objects.filter(asset=self.asset, phase='ASIA_RANGE').exists()
+        )
+    
+    def test_phase_config_toggle(self):
+        """Test toggling phase config enabled status."""
+        config = AssetSessionPhaseConfig.objects.create(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time_utc='00:00',
+            end_time_utc='08:00',
+            enabled=True,
+        )
+        
+        response = self.client.post(f'/fiona/assets/{self.asset.id}/phases/ASIA_RANGE/toggle/')
+        self.assertEqual(response.status_code, 200)
+        
+        config.refresh_from_db()
+        self.assertFalse(config.enabled)
+        
+        # Toggle again
+        response = self.client.post(f'/fiona/assets/{self.asset.id}/phases/ASIA_RANGE/toggle/')
+        config.refresh_from_db()
+        self.assertTrue(config.enabled)
+
+
+class PhaseConfigAPITest(TestCase):
+    """Tests for phase configuration API endpoints."""
+    
+    def setUp(self):
+        self.user = User.objects.create_user('testuser', 'test@test.com', 'testpass')
+        self.client.login(username='testuser', password='testpass')
+        
+        self.asset = TradingAsset.objects.create(
+            name='US Crude Oil',
+            symbol='OIL',
+            epic='CC.D.CL.UNC.IP',
+            category='commodity',
+            is_active=True,
+        )
+    
+    def test_api_get_phase_configs(self):
+        """Test GET /api/assets/{id}/phases/ endpoint."""
+        AssetSessionPhaseConfig.objects.create(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time_utc='00:00',
+            end_time_utc='08:00',
+            is_range_build_phase=True,
+        )
+        
+        response = self.client.get(f'/fiona/api/assets/{self.asset.id}/phases/')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['count'], 1)
+        self.assertEqual(data['phases'][0]['phase'], 'ASIA_RANGE')
+    
+    def test_api_post_phase_config(self):
+        """Test POST /api/assets/{id}/phases/ endpoint to create config."""
+        import json
+        
+        response = self.client.post(
+            f'/fiona/api/assets/{self.asset.id}/phases/',
+            data=json.dumps({
+                'phase': 'US_CORE_TRADING',
+                'start_time_utc': '15:00',
+                'end_time_utc': '22:00',
+                'is_range_build_phase': False,
+                'is_trading_phase': True,
+                'event_type': 'NONE',
+                'requires_event': False,
+                'enabled': True,
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertTrue(data['created'])
+        
+        # Verify config was created
+        config = AssetSessionPhaseConfig.objects.get(asset=self.asset, phase='US_CORE_TRADING')
+        self.assertTrue(config.is_trading_phase)
+    
+    def test_api_post_phase_config_update(self):
+        """Test POST /api/assets/{id}/phases/ endpoint to update config."""
+        import json
+        
+        # Create initial config
+        AssetSessionPhaseConfig.objects.create(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time_utc='00:00',
+            end_time_utc='08:00',
+            is_range_build_phase=True,
+        )
+        
+        # Update via API
+        response = self.client.post(
+            f'/fiona/api/assets/{self.asset.id}/phases/',
+            data=json.dumps({
+                'phase': 'ASIA_RANGE',
+                'start_time_utc': '01:00',  # Changed
+                'end_time_utc': '09:00',    # Changed
+                'is_range_build_phase': True,
+                'is_trading_phase': False,
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertFalse(data['created'])  # Updated, not created
+        
+        # Verify update
+        config = AssetSessionPhaseConfig.objects.get(asset=self.asset, phase='ASIA_RANGE')
+        self.assertEqual(config.start_time_utc, '01:00')
+    
+    def test_api_active_assets_includes_phase_configs(self):
+        """Test that api_active_assets includes session phase configs."""
+        # Create phase configs
+        AssetSessionPhaseConfig.objects.create(
+            asset=self.asset,
+            phase='US_CORE_TRADING',
+            start_time_utc='15:00',
+            end_time_utc='22:00',
+            is_trading_phase=True,
+            enabled=True,
+        )
+        AssetSessionPhaseConfig.objects.create(
+            asset=self.asset,
+            phase='EIA_PRE',
+            start_time_utc='15:25',
+            end_time_utc='15:30',
+            event_type='EIA',
+            requires_event=True,
+            enabled=False,  # Disabled
+        )
+        
+        response = self.client.get('/fiona/api/assets/')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['count'], 1)
+        
+        asset_data = data['assets'][0]
+        self.assertIn('session_phase_configs', asset_data)
+        # Should only include enabled phase configs
+        self.assertEqual(len(asset_data['session_phase_configs']), 1)
+        self.assertEqual(asset_data['session_phase_configs'][0]['phase'], 'US_CORE_TRADING')

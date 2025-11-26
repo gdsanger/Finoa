@@ -113,7 +113,7 @@
                 <!-- =================================================== -->
                 <div class="card mb-4">
                     <div class="card-header">
-                        <i class="bi bi-sun"></i> US Core / Pre-US Range
+                        <i class="bi bi-sun"></i> Pre-US Range (Range-Bildung)
                         <span class="badge bg-info ms-2">13:00 - 15:00 UTC Standard</span>
                     </div>
                     <div class="card-body">
@@ -141,6 +141,51 @@
                                 <label for="us_max_range_ticks" class="form-label">Max. Range-Höhe (Ticks)</label>
                                 <input type="number" class="form-control" id="us_max_range_ticks" name="us_max_range_ticks"
                                        value="{{ config.us_max_range_ticks }}" min="1">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- =================================================== -->
+                <!-- US Core Trading Section (NEW) -->
+                <!-- =================================================== -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <i class="bi bi-lightning-charge-fill"></i> US Core Trading (Handels-Session)
+                        <span class="badge bg-success ms-2">NEU</span>
+                        <span class="badge bg-info ms-2">15:00 - 22:00 UTC Standard</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-info small mb-3">
+                            <i class="bi bi-info-circle"></i>
+                            <strong>US Core Trading</strong> ist die Haupt-Handelsphase. Hier werden Breakout-Signale
+                            basierend auf den vorher gebildeten Ranges (Asia, London, Pre-US) generiert.
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="us_core_trading_start" class="form-label">Start-Zeit (UTC)</label>
+                                <input type="time" class="form-control" id="us_core_trading_start" name="us_core_trading_start"
+                                       value="{{ config.us_core_trading_start }}">
+                                <small class="form-text text-muted">Beginn der US Core Trading Session</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="us_core_trading_end" class="form-label">End-Zeit (UTC)</label>
+                                <input type="time" class="form-control" id="us_core_trading_end" name="us_core_trading_end"
+                                       value="{{ config.us_core_trading_end }}">
+                                <small class="form-text text-muted">Ende der US Core Trading Session</small>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" id="us_core_trading_enabled" name="us_core_trading_enabled"
+                                           {% if config.us_core_trading_enabled %}checked{% endif %}>
+                                    <label class="form-check-label" for="us_core_trading_enabled">
+                                        <strong>Trading aktiviert</strong>
+                                    </label>
+                                </div>
+                                <small class="form-text text-muted">Breakout-Signale während US Core Trading erlauben</small>
                             </div>
                         </div>
                     </div>

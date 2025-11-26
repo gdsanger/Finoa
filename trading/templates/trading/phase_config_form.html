@@ -1,0 +1,302 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Fiona - {{ phase_display }} für {{ asset.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'signal_dashboard' %}">Fiona Trading</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'asset_list' %}">Assets</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'asset_detail' asset.id %}">{{ asset.name }}</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'phase_config_list' asset.id %}">Sessions & Phases</a></li>
+            <li class="breadcrumb-item active" aria-current="page">{{ phase_display }}</li>
+        </ol>
+    </nav>
+    
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3 mb-0">
+            <i class="bi bi-clock"></i> 
+            {% if config %}Bearbeiten:{% else %}Erstellen:{% endif %}
+            {{ phase_display }}
+            <span class="badge bg-secondary">{{ asset.symbol }}</span>
+        </h1>
+    </div>
+    
+    <!-- Form -->
+    <div class="row">
+        <div class="col-lg-8">
+            <form method="post">
+                {% csrf_token %}
+                
+                <!-- Time Configuration -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <i class="bi bi-clock"></i> Zeitfenster (UTC)
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <label for="start_time_utc" class="form-label">Start-Zeit <span class="text-danger">*</span></label>
+                                <input type="time" class="form-control" id="start_time_utc" name="start_time_utc"
+                                       value="{{ config.start_time_utc|default:'00:00' }}" required>
+                                <small class="form-text text-muted">Beginn der Phase in UTC</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="end_time_utc" class="form-label">End-Zeit <span class="text-danger">*</span></label>
+                                <input type="time" class="form-control" id="end_time_utc" name="end_time_utc"
+                                       value="{{ config.end_time_utc|default:'00:00' }}" required>
+                                <small class="form-text text-muted">Ende der Phase in UTC</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Phase Type Flags -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <i class="bi bi-toggles"></i> Phase-Typ
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" id="is_range_build_phase" name="is_range_build_phase"
+                                           {% if config.is_range_build_phase %}checked{% endif %}>
+                                    <label class="form-check-label" for="is_range_build_phase">
+                                        <strong>Range-Bildung</strong>
+                                    </label>
+                                </div>
+                                <small class="form-text text-muted">
+                                    <i class="bi bi-layers"></i> 
+                                    Diese Phase wird zur Ermittlung von High/Low-Ranges verwendet.
+                                    <br>Typisch für: Asia Range, London Core, Pre-US Range
+                                </small>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" id="is_trading_phase" name="is_trading_phase"
+                                           {% if config.is_trading_phase %}checked{% endif %}>
+                                    <label class="form-check-label" for="is_trading_phase">
+                                        <strong>Trading-Phase</strong>
+                                    </label>
+                                </div>
+                                <small class="form-text text-muted">
+                                    <i class="bi bi-lightning"></i> 
+                                    In dieser Phase werden Signale generiert und Trades ausgeführt.
+                                    <br>Typisch für: US Core Trading, EIA Post
+                                </small>
+                            </div>
+                        </div>
+                        
+                        <div class="alert alert-info small mt-3 mb-0">
+                            <i class="bi bi-info-circle"></i>
+                            <strong>Hinweis:</strong> Eine Phase kann sowohl Range-Bildung als auch Trading erlauben,
+                            aber typischerweise wird entweder das eine oder das andere aktiviert.
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Event Configuration -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <i class="bi bi-calendar-event"></i> Event-Konfiguration
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="event_type" class="form-label">Event-Typ</label>
+                                <select class="form-select" id="event_type" name="event_type">
+                                    {% for value, label in event_type_choices %}
+                                        <option value="{{ value }}" {% if config.event_type == value %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                                <small class="form-text text-muted">Art des Events, das mit dieser Phase verknüpft ist</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="event_offset_minutes" class="form-label">Event-Offset (Minuten)</label>
+                                <input type="number" class="form-control" id="event_offset_minutes" name="event_offset_minutes"
+                                       value="{{ config.event_offset_minutes|default:0 }}">
+                                <small class="form-text text-muted">Zeit-Offset vom Event (z.B. -5 für 5 Minuten vorher)</small>
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="requires_event" name="requires_event"
+                                           {% if config.requires_event %}checked{% endif %}>
+                                    <label class="form-check-label" for="requires_event">
+                                        <strong>Event erforderlich</strong>
+                                    </label>
+                                </div>
+                                <small class="form-text text-muted">
+                                    <i class="bi bi-exclamation-triangle text-warning"></i>
+                                    Phase ist nur aktiv, wenn das Event vorhanden ist.
+                                    <br>Typisch für: EIA Pre/Post (nur an EIA-Tagen aktiv)
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Active Status -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <i class="bi bi-toggle-on"></i> Status
+                    </div>
+                    <div class="card-body">
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="enabled" name="enabled"
+                                   {% if config.enabled or not config %}checked{% endif %}>
+                            <label class="form-check-label" for="enabled">
+                                <strong>Phase aktiv</strong>
+                            </label>
+                        </div>
+                        <small class="form-text text-muted">
+                            Deaktivierte Phasen werden vom Worker ignoriert, bleiben aber konfiguriert.
+                        </small>
+                    </div>
+                </div>
+                
+                <!-- Notes -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <i class="bi bi-chat-left-text"></i> Notizen (optional)
+                    </div>
+                    <div class="card-body">
+                        <textarea class="form-control" id="notes" name="notes" rows="3"
+                                  placeholder="Optionale Notizen zu dieser Phase...">{{ config.notes|default:'' }}</textarea>
+                    </div>
+                </div>
+                
+                <!-- Submit -->
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg"></i> Speichern
+                    </button>
+                    <a href="{% url 'phase_config_list' asset.id %}" class="btn btn-outline-secondary">
+                        Abbrechen
+                    </a>
+                </div>
+            </form>
+        </div>
+        
+        <!-- Help Panel -->
+        <div class="col-lg-4">
+            <div class="card bg-light sticky-top" style="top: 1rem;">
+                <div class="card-body">
+                    <h6><i class="bi bi-lightbulb"></i> {{ phase_display }}</h6>
+                    
+                    {% if phase == 'ASIA_RANGE' %}
+                    <p class="small text-muted mb-3">
+                        Die Asia Range bildet sich typischerweise zwischen Mitternacht und 08:00 UTC.
+                        Sie definiert die erste wichtige Support/Resistance-Zone des Tages.
+                    </p>
+                    <p class="small text-muted">
+                        <strong>Standard:</strong> 00:00 - 08:00 UTC<br>
+                        <strong>Typ:</strong> Range-Bildung (kein Trading)
+                    </p>
+                    
+                    {% elif phase == 'LONDON_CORE' %}
+                    <p class="small text-muted mb-3">
+                        Die London Core Session beginnt mit der Öffnung der europäischen Märkte.
+                        Oft werden hier die Asia-Ranges getestet oder erweitert.
+                    </p>
+                    <p class="small text-muted">
+                        <strong>Standard:</strong> 08:00 - 12:00 UTC<br>
+                        <strong>Typ:</strong> Range-Bildung (kein Trading)
+                    </p>
+                    
+                    {% elif phase == 'PRE_US_RANGE' %}
+                    <p class="small text-muted mb-3">
+                        Die Pre-US Range bildet sich vor der US-Marktöffnung.
+                        Sie dient als Ausgangspunkt für Breakout-Strategien.
+                    </p>
+                    <p class="small text-muted">
+                        <strong>Standard:</strong> 13:00 - 15:00 UTC<br>
+                        <strong>Typ:</strong> Range-Bildung (kein Trading)
+                    </p>
+                    
+                    {% elif phase == 'US_CORE_TRADING' %}
+                    <p class="small text-muted mb-3">
+                        Die US Core Trading Session ist die Haupthandelszeit.
+                        Hier werden Breakouts aus den vorherigen Ranges getradet.
+                    </p>
+                    <p class="small text-muted">
+                        <strong>Standard OIL:</strong> 15:00 - 22:00 UTC<br>
+                        <strong>Standard NAS100:</strong> 14:30 - 21:00 UTC<br>
+                        <strong>Typ:</strong> Trading-Phase
+                    </p>
+                    
+                    {% elif phase == 'EIA_PRE' %}
+                    <p class="small text-muted mb-3">
+                        Die Phase direkt vor dem EIA-Report. Trading wird pausiert,
+                        um unvorhersehbare Bewegungen zu vermeiden.
+                    </p>
+                    <p class="small text-muted">
+                        <strong>Standard:</strong> 15:25 - 15:30 UTC (Mi)<br>
+                        <strong>Typ:</strong> Event-Pause (kein Trading)<br>
+                        <strong>Event:</strong> EIA Report erforderlich
+                    </p>
+                    
+                    {% elif phase == 'EIA_POST' %}
+                    <p class="small text-muted mb-3">
+                        Die Phase nach dem EIA-Report. Hier werden Impulse-Reversions
+                        oder Trend-Continuations getradet.
+                    </p>
+                    <p class="small text-muted">
+                        <strong>Standard:</strong> 15:30 - 17:00 UTC (Mi)<br>
+                        <strong>Typ:</strong> Trading-Phase<br>
+                        <strong>Event:</strong> EIA Report erforderlich
+                    </p>
+                    
+                    {% else %}
+                    <p class="small text-muted mb-3">
+                        Konfigurieren Sie diese Phase mit den passenden Zeitfenstern und Flags.
+                    </p>
+                    {% endif %}
+                    
+                    <hr>
+                    
+                    <h6>Typische Setups:</h6>
+                    <ul class="small text-muted mb-0">
+                        <li class="mb-1">
+                            <strong>Range-Phase:</strong><br>
+                            ✓ Range-Bildung, ✗ Trading, ✗ Event
+                        </li>
+                        <li class="mb-1">
+                            <strong>Trading-Phase:</strong><br>
+                            ✗ Range-Bildung, ✓ Trading, ✗ Event
+                        </li>
+                        <li>
+                            <strong>Event-Phase:</strong><br>
+                            ✗ Range-Bildung, ✓/✗ Trading, ✓ Event erforderlich
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            
+            {% if config %}
+            <div class="card mt-3">
+                <div class="card-body">
+                    <h6><i class="bi bi-clock-history"></i> Metadaten</h6>
+                    <table class="table table-sm small mb-0">
+                        <tr>
+                            <td class="text-muted">Erstellt:</td>
+                            <td>{{ config.created_at|date:"d.m.Y H:i" }}</td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">Geändert:</td>
+                            <td>{{ config.updated_at|date:"d.m.Y H:i" }}</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
