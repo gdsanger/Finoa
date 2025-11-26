@@ -10,8 +10,6 @@ and the background worker. Supports:
 """
 import logging
 import os
-from datetime import datetime
-from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
 # Check if Sentry SDK is available
@@ -110,52 +108,6 @@ def setup_sentry() -> None:
     )
 
 
-class DailyRotatingFileHandler(TimedRotatingFileHandler):
-    """
-    A file handler that rotates logs daily and deletes logs older than 7 days.
-    
-    Log files are named with the pattern: fiona-YYYY-MM-DD.log
-    """
-    
-    def __init__(self, log_dir: Path, prefix: str = 'fiona', backup_count: int = 7):
-        """
-        Initialize the daily rotating file handler.
-        
-        Args:
-            log_dir: Directory to store log files.
-            prefix: Prefix for log file names (default: 'fiona').
-            backup_count: Number of days to keep log files (default: 7).
-        """
-        # Generate initial filename with current date
-        today = datetime.now().strftime('%Y-%m-%d')
-        log_file = log_dir / f'{prefix}-{today}.log'
-        
-        super().__init__(
-            filename=str(log_file),
-            when='midnight',
-            interval=1,
-            backupCount=backup_count,
-            encoding='utf-8',
-        )
-        
-        self.prefix = prefix
-        self.log_dir = log_dir
-        
-        # Set the suffix for rotated files
-        self.suffix = '%Y-%m-%d'
-        
-    def doRollover(self):
-        """
-        Perform the rollover and clean up old log files.
-        """
-        super().doRollover()
-        
-        # Update the base filename to use today's date
-        today = datetime.now().strftime('%Y-%m-%d')
-        new_log_file = self.log_dir / f'{self.prefix}-{today}.log'
-        self.baseFilename = str(new_log_file)
-
-
 def get_log_format() -> str:
     """
     Get the log format string.
@@ -182,8 +134,11 @@ def configure_logging() -> dict:
     
     This function sets up:
     - Console handler for stdout output
-    - File handler with daily rotation
-    - Sentry integration (if configured)
+    - File handler with daily rotation (rotates at midnight)
+    - 7-day retention (older log files are automatically deleted)
+    
+    Log files are named 'fiona.log' with rotated files having date suffixes
+    like 'fiona.log.2025-11-26'.
     
     Returns:
         dict: Django LOGGING configuration dictionary.
