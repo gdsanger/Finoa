@@ -681,25 +681,111 @@ def breakout_config_edit(request, asset_id):
     
     if request.method == 'POST':
         try:
+            # Helper function to parse optional decimal fields
+            def parse_decimal(value, default=None):
+                if value and value.strip():
+                    return Decimal(value.strip())
+                return default
+            
+            # Helper function to parse optional int fields
+            def parse_int(value, default=None):
+                if value and value.strip():
+                    return int(value.strip())
+                return default
+            
+            # =========================================================
             # Asia Range settings
+            # =========================================================
             breakout_config.asia_range_start = request.POST.get('asia_range_start', '00:00')
             breakout_config.asia_range_end = request.POST.get('asia_range_end', '08:00')
             breakout_config.asia_min_range_ticks = int(request.POST.get('asia_min_range_ticks', 10))
             breakout_config.asia_max_range_ticks = int(request.POST.get('asia_max_range_ticks', 200))
             
+            # =========================================================
+            # London Core settings (NEW)
+            # =========================================================
+            breakout_config.london_range_start = request.POST.get('london_range_start', '08:00')
+            breakout_config.london_range_end = request.POST.get('london_range_end', '12:00')
+            breakout_config.london_min_range_ticks = int(request.POST.get('london_min_range_ticks', 10))
+            breakout_config.london_max_range_ticks = int(request.POST.get('london_max_range_ticks', 200))
+            
+            # =========================================================
             # US Core settings
+            # =========================================================
             breakout_config.pre_us_start = request.POST.get('pre_us_start', '13:00')
             breakout_config.pre_us_end = request.POST.get('pre_us_end', '15:00')
             breakout_config.us_min_range_ticks = int(request.POST.get('us_min_range_ticks', 10))
             breakout_config.us_max_range_ticks = int(request.POST.get('us_max_range_ticks', 200))
             
-            # Breakout requirements
-            breakout_config.min_breakout_body_fraction = Decimal(request.POST.get('min_breakout_body_fraction', '0.50'))
+            # =========================================================
+            # EIA Pre/Post settings (NEW)
+            # =========================================================
+            breakout_config.eia_min_body_fraction = parse_decimal(
+                request.POST.get('eia_min_body_fraction'), Decimal('0.60'))
+            breakout_config.eia_min_impulse_atr = parse_decimal(
+                request.POST.get('eia_min_impulse_atr'))
+            breakout_config.eia_impulse_range_high = parse_decimal(
+                request.POST.get('eia_impulse_range_high'))
+            breakout_config.eia_impulse_range_low = parse_decimal(
+                request.POST.get('eia_impulse_range_low'))
+            breakout_config.eia_required_impulse_strength = parse_decimal(
+                request.POST.get('eia_required_impulse_strength'), Decimal('0.50'))
+            breakout_config.eia_reversion_window_min_sec = parse_int(
+                request.POST.get('eia_reversion_window_min_sec'), 30)
+            breakout_config.eia_reversion_window_max_sec = parse_int(
+                request.POST.get('eia_reversion_window_max_sec'), 300)
+            breakout_config.eia_max_impulse_duration_min = parse_int(
+                request.POST.get('eia_max_impulse_duration_min'), 5)
             
-            # ATR settings
+            # =========================================================
+            # Breakout requirements
+            # =========================================================
+            breakout_config.min_breakout_body_fraction = parse_decimal(
+                request.POST.get('min_breakout_body_fraction'), Decimal('0.50'))
+            breakout_config.max_breakout_body_fraction = parse_decimal(
+                request.POST.get('max_breakout_body_fraction'))
+            breakout_config.min_breakout_distance_ticks = parse_int(
+                request.POST.get('min_breakout_distance_ticks'), 1)
+            
+            # =========================================================
+            # Candle Quality filters (NEW)
+            # =========================================================
+            breakout_config.min_wick_ratio = parse_decimal(
+                request.POST.get('min_wick_ratio'))
+            breakout_config.max_wick_ratio = parse_decimal(
+                request.POST.get('max_wick_ratio'))
+            breakout_config.min_candle_body_absolute = parse_decimal(
+                request.POST.get('min_candle_body_absolute'))
+            breakout_config.max_spread_ticks = parse_int(
+                request.POST.get('max_spread_ticks'))
+            breakout_config.filter_doji_breakouts = request.POST.get('filter_doji_breakouts') == 'on'
+            
+            # =========================================================
+            # Advanced Filter settings (NEW)
+            # =========================================================
+            breakout_config.consecutive_candle_filter = parse_int(
+                request.POST.get('consecutive_candle_filter'), 0)
+            breakout_config.momentum_threshold = parse_decimal(
+                request.POST.get('momentum_threshold'))
+            breakout_config.volatility_throttle_min_atr = parse_decimal(
+                request.POST.get('volatility_throttle_min_atr'))
+            breakout_config.session_volatility_cap = parse_decimal(
+                request.POST.get('session_volatility_cap'))
+            
+            # =========================================================
+            # ATR settings (Extended)
+            # =========================================================
             breakout_config.require_atr_minimum = request.POST.get('require_atr_minimum') == 'on'
-            min_atr_str = request.POST.get('min_atr_value', '')
-            breakout_config.min_atr_value = Decimal(min_atr_str) if min_atr_str else None
+            breakout_config.min_atr_value = parse_decimal(
+                request.POST.get('min_atr_value'))
+            breakout_config.max_atr_value = parse_decimal(
+                request.POST.get('max_atr_value'))
+            
+            # =========================================================
+            # Volume settings (NEW)
+            # =========================================================
+            breakout_config.min_volume_spike = parse_decimal(
+                request.POST.get('min_volume_spike'))
             
             breakout_config.save()
             messages.success(request, 'Breakout-Konfiguration erfolgreich gespeichert.')
@@ -822,17 +908,51 @@ def api_active_assets(request):
         try:
             bc = asset.breakout_config
             asset_data['breakout_config'] = {
+                # Asia Range
                 'asia_range_start': bc.asia_range_start,
                 'asia_range_end': bc.asia_range_end,
                 'asia_min_range_ticks': bc.asia_min_range_ticks,
                 'asia_max_range_ticks': bc.asia_max_range_ticks,
+                # London Core (NEW)
+                'london_range_start': bc.london_range_start,
+                'london_range_end': bc.london_range_end,
+                'london_min_range_ticks': bc.london_min_range_ticks,
+                'london_max_range_ticks': bc.london_max_range_ticks,
+                # US Core
                 'pre_us_start': bc.pre_us_start,
                 'pre_us_end': bc.pre_us_end,
                 'us_min_range_ticks': bc.us_min_range_ticks,
                 'us_max_range_ticks': bc.us_max_range_ticks,
+                # EIA Pre/Post (NEW)
+                'eia_min_body_fraction': str(bc.eia_min_body_fraction),
+                'eia_min_impulse_atr': str(bc.eia_min_impulse_atr) if bc.eia_min_impulse_atr else None,
+                'eia_impulse_range_high': str(bc.eia_impulse_range_high) if bc.eia_impulse_range_high else None,
+                'eia_impulse_range_low': str(bc.eia_impulse_range_low) if bc.eia_impulse_range_low else None,
+                'eia_required_impulse_strength': str(bc.eia_required_impulse_strength),
+                'eia_reversion_window_min_sec': bc.eia_reversion_window_min_sec,
+                'eia_reversion_window_max_sec': bc.eia_reversion_window_max_sec,
+                'eia_max_impulse_duration_min': bc.eia_max_impulse_duration_min,
+                # Breakout Requirements
                 'min_breakout_body_fraction': str(bc.min_breakout_body_fraction),
+                'max_breakout_body_fraction': str(bc.max_breakout_body_fraction) if bc.max_breakout_body_fraction else None,
+                'min_breakout_distance_ticks': bc.min_breakout_distance_ticks,
+                # Candle Quality (NEW)
+                'min_wick_ratio': str(bc.min_wick_ratio) if bc.min_wick_ratio else None,
+                'max_wick_ratio': str(bc.max_wick_ratio) if bc.max_wick_ratio else None,
+                'min_candle_body_absolute': str(bc.min_candle_body_absolute) if bc.min_candle_body_absolute else None,
+                'max_spread_ticks': bc.max_spread_ticks,
+                'filter_doji_breakouts': bc.filter_doji_breakouts,
+                # Advanced Filter (NEW)
+                'consecutive_candle_filter': bc.consecutive_candle_filter,
+                'momentum_threshold': str(bc.momentum_threshold) if bc.momentum_threshold else None,
+                'volatility_throttle_min_atr': str(bc.volatility_throttle_min_atr) if bc.volatility_throttle_min_atr else None,
+                'session_volatility_cap': str(bc.session_volatility_cap) if bc.session_volatility_cap else None,
+                # ATR (Extended)
                 'require_atr_minimum': bc.require_atr_minimum,
                 'min_atr_value': str(bc.min_atr_value) if bc.min_atr_value else None,
+                'max_atr_value': str(bc.max_atr_value) if bc.max_atr_value else None,
+                # Volume (NEW)
+                'min_volume_spike': str(bc.min_volume_spike) if bc.min_volume_spike else None,
             }
         except Exception:
             pass
