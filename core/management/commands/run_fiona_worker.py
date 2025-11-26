@@ -489,9 +489,11 @@ class Command(BaseCommand):
         epic = asset.epic
         
         # 1. Configure session times from asset's Sessions & Phases configuration
+        # Pre-fetch all phase configs for this asset to avoid N+1 queries
+        phase_configs_by_phase = {}
         try:
-            # Get enabled phase configs for this asset
-            phase_configs = AssetSessionPhaseConfig.get_enabled_phases_for_asset(asset)
+            phase_configs = list(AssetSessionPhaseConfig.get_enabled_phases_for_asset(asset))
+            phase_configs_by_phase = {pc.phase: pc for pc in phase_configs}
             
             # Build session times from phase configs
             session_times_kwargs = {}
@@ -515,19 +517,21 @@ class Command(BaseCommand):
                 self.market_state_provider.set_session_times(session_times)
             else:
                 # Fallback to breakout config if no session phase configs exist
+                logger.debug(f"No AssetSessionPhaseConfig found for {epic}, falling back to AssetBreakoutConfig")
                 try:
                     breakout_cfg = asset.breakout_config
                     session_times = SessionTimesConfig.from_time_strings(
-                        asia_start=breakout_cfg.asia_range_start,
-                        asia_end=breakout_cfg.asia_range_end,
-                        pre_us_start=breakout_cfg.pre_us_start,
-                        pre_us_end=breakout_cfg.pre_us_end,
-                        us_core_trading_start=breakout_cfg.us_core_trading_start,
-                        us_core_trading_end=breakout_cfg.us_core_trading_end,
-                        us_core_trading_enabled=breakout_cfg.us_core_trading_enabled,
+                        asia_start=getattr(breakout_cfg, 'asia_range_start', '00:00'),
+                        asia_end=getattr(breakout_cfg, 'asia_range_end', '08:00'),
+                        pre_us_start=getattr(breakout_cfg, 'pre_us_start', '13:00'),
+                        pre_us_end=getattr(breakout_cfg, 'pre_us_end', '15:00'),
+                        us_core_trading_start=getattr(breakout_cfg, 'us_core_trading_start', '15:00'),
+                        us_core_trading_end=getattr(breakout_cfg, 'us_core_trading_end', '22:00'),
+                        us_core_trading_enabled=getattr(breakout_cfg, 'us_core_trading_enabled', True),
                     )
                     self.market_state_provider.set_session_times(session_times)
                 except Exception:
+                    logger.debug(f"No AssetBreakoutConfig found for {epic}, using default session times")
                     self.market_state_provider.set_session_times(SessionTimesConfig())
         except Exception as e:
             logger.debug(f"Using default session times for {epic}: {e}")
@@ -552,19 +556,20 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING(f"     Could not get price: {e}"))
         
         # 5. Skip if not in tradeable phase - check using is_trading_phase flag
+        # Use pre-fetched phase configs to avoid additional DB query
         is_tradeable = False
-        try:
-            # Check if the current phase is marked as tradeable in AssetSessionPhaseConfig
-            phase_config = AssetSessionPhaseConfig.objects.filter(
-                asset=asset,
-                phase=phase.value,
-                enabled=True
-            ).first()
-            if phase_config:
-                is_tradeable = phase_config.is_trading_phase
-        except Exception:
-            # Fallback to legacy behavior if config lookup fails
-            is_tradeable = phase not in [SessionPhase.FRIDAY_LATE, SessionPhase.OTHER]
+        phase_config = phase_configs_by_phase.get(phase.value)
+        if phase_config:
+            is_tradeable = phase_config.is_trading_phase
+        else:
+            # Fallback to legacy behavior for phases not in config (e.g., FRIDAY_LATE, OTHER)
+            # These phases are not tradeable by default
+            if phase in [SessionPhase.FRIDAY_LATE, SessionPhase.OTHER]:
+                is_tradeable = False
+            else:
+                # For other phases without config, log a warning and don't trade
+                logger.debug(f"No phase config for {phase.value} on {epic}, using fallback (not tradeable)")
+                is_tradeable = False
         
         if not is_tradeable:
             self.stdout.write("     → Phase not tradeable, skipping")
