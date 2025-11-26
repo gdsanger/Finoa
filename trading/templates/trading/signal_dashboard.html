@@ -1092,6 +1092,10 @@
         }
     }
     
+    // Constants for display formatting
+    const EPIC_MAX_DISPLAY_LENGTH = 15;
+    const EPIC_TRUNCATED_LENGTH = 12;
+    
     function formatTimeAgo(seconds) {
         if (seconds < 60) {
             return 'vor ' + seconds + 's';
@@ -1105,6 +1109,7 @@
     }
     
     function formatTime(isoString) {
+        // Note: UTC is used intentionally for trading time consistency
         const date = new Date(isoString);
         return date.toLocaleTimeString('de-DE', { 
             hour: '2-digit', 
@@ -1132,9 +1137,11 @@
         // Update epic
         const epicEl = document.getElementById('worker-epic');
         if (epicEl) {
-            // Shorten the epic for display
+            // Shorten the epic for display if too long
             const epic = data.epic || '--';
-            epicEl.textContent = epic.length > 15 ? epic.substring(0, 12) + '...' : epic;
+            epicEl.textContent = epic.length > EPIC_MAX_DISPLAY_LENGTH 
+                ? epic.substring(0, EPIC_TRUNCATED_LENGTH) + '...' 
+                : epic;
             epicEl.title = epic;
         }
         

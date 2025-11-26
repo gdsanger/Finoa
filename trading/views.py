@@ -297,7 +297,7 @@ def api_account_state(request):
 @login_required
 def api_worker_status(request):
     """
-    GET /api/worker/status - Return current worker status.
+    GET /fiona/api/worker/status/ - Return current worker status.
     
     Returns JSON with worker status information including:
     - worker_status: ONLINE or OFFLINE (based on last_run_at threshold)

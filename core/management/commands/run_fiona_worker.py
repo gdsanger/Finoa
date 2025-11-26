@@ -150,7 +150,7 @@ class Command(BaseCommand):
                     break
                 
                 try:
-                    self._run_cycle(epic, shadow_only, dry_run)
+                    self._run_cycle(epic, shadow_only, dry_run, interval)
                 except BrokerError as e:
                     self.stdout.write(self.style.ERROR(f"Broker error: {e}"))
                     logger.exception("Broker error in main loop")
@@ -266,7 +266,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("\n✓ All services initialized successfully!"))
         self.stdout.write("")
 
-    def _run_cycle(self, epic: str, shadow_only: bool, dry_run: bool) -> None:
+    def _run_cycle(self, epic: str, shadow_only: bool, dry_run: bool, worker_interval: int = 60) -> None:
         """Run one cycle of the worker loop."""
         now = datetime.now(timezone.utc)
         
@@ -306,7 +306,7 @@ class Command(BaseCommand):
             self.stdout.write("  → Phase not tradeable, skipping strategy evaluation")
             diagnostic_message = f"Phase {phase.value} not tradeable, skipping strategy evaluation"
             self._update_worker_status(
-                now, phase, epic, setup_count, bid_price, ask_price, spread, diagnostic_message
+                now, phase, epic, setup_count, bid_price, ask_price, spread, diagnostic_message, worker_interval
             )
             return
         
@@ -321,7 +321,7 @@ class Command(BaseCommand):
             logger.exception("Strategy evaluation failed")
             diagnostic_message = f"Strategy evaluation error: {e}"
             self._update_worker_status(
-                now, phase, epic, setup_count, bid_price, ask_price, spread, diagnostic_message
+                now, phase, epic, setup_count, bid_price, ask_price, spread, diagnostic_message, worker_interval
             )
             return
         
@@ -329,14 +329,14 @@ class Command(BaseCommand):
             self.stdout.write("  → No setups found")
             diagnostic_message = self._generate_no_setup_reason(phase, price)
             self._update_worker_status(
-                now, phase, epic, setup_count, bid_price, ask_price, spread, diagnostic_message
+                now, phase, epic, setup_count, bid_price, ask_price, spread, diagnostic_message, worker_interval
             )
             return
         
         # Setups found - update status with success message
         diagnostic_message = f"Found {setup_count} setup(s)"
         self._update_worker_status(
-            now, phase, epic, setup_count, bid_price, ask_price, spread, diagnostic_message
+            now, phase, epic, setup_count, bid_price, ask_price, spread, diagnostic_message, worker_interval
         )
         
         # 6. Process each setup
@@ -352,7 +352,8 @@ class Command(BaseCommand):
         bid_price,
         ask_price,
         spread,
-        diagnostic_message: str
+        diagnostic_message: str,
+        worker_interval: int = 60
     ) -> None:
         """Update the worker status in the database."""
         try:
@@ -366,7 +367,7 @@ class Command(BaseCommand):
                 ask_price=Decimal(str(ask_price)) if ask_price is not None else None,
                 spread=Decimal(str(spread)) if spread is not None else None,
                 diagnostic_message=diagnostic_message,
-                worker_interval=60,  # Default interval
+                worker_interval=worker_interval,
             )
         except Exception as e:
             logger.warning(f"Failed to update worker status: {e}")
