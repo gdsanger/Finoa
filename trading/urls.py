@@ -30,4 +30,5 @@ urlpatterns = [
     path('api/account-state/', views.api_account_state, name='api_account_state'),
     path('api/worker/status/', views.api_worker_status, name='api_worker_status'),
     path('api/assets/', views.api_active_assets, name='api_active_assets'),
+    path('api/debug/breakout-range/', views.api_breakout_range_diagnostics, name='api_breakout_range_diagnostics'),
 ]

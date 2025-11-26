@@ -737,6 +737,57 @@ class StrategyEngineIntegrationTest(TestCase):
         self.assertEqual(len(candidates2), 0)
 
 
+class BreakoutRangeDiagnosticsTest(TestCase):
+    """Tests for BreakoutRangeDiagnostics dataclass."""
+    
+    def test_diagnostics_to_dict(self):
+        """Test BreakoutRangeDiagnostics to_dict serialization."""
+        from core.services.strategy import (
+            BreakoutRangeDiagnostics,
+            PricePosition,
+            BreakoutStatus,
+            RangeValidation,
+            SessionPhase,
+        )
+        
+        diagnostics = BreakoutRangeDiagnostics(
+            range_type="Asia Range",
+            range_period_start="00:00",
+            range_period_end="08:00",
+            range_high=75.50,
+            range_low=74.50,
+            range_height=1.00,
+            range_height_ticks=100,
+            current_price=75.60,
+            price_position=PricePosition.ABOVE,
+            breakout_status=BreakoutStatus.VALID_BREAKOUT,
+            potential_direction="LONG",
+            range_validation=RangeValidation.VALID,
+            current_phase=SessionPhase.LONDON_CORE,
+            diagnostic_message="Valid LONG breakout!",
+            detailed_explanation="A valid breakout detected.",
+        )
+        
+        data = diagnostics.to_dict()
+        
+        self.assertEqual(data['range_type'], "Asia Range")
+        self.assertEqual(data['range_data']['high'], 75.50)
+        self.assertEqual(data['range_data']['low'], 74.50)
+        self.assertEqual(data['current_market']['price'], 75.60)
+        self.assertEqual(data['current_market']['position'], "ABOVE")
+        self.assertEqual(data['breakout_status']['status'], "VALID_BREAKOUT")
+        self.assertEqual(data['validation']['range_validation'], "VALID")
+        self.assertEqual(data['current_phase'], "LONDON_CORE")
+
+
+class BreakoutRangeDiagnosticServiceTest(TestCase):
+    """Tests for BreakoutRangeDiagnosticService."""
+    
+    def test_asia_range_diagnostics_no_data(self):
+        """Test diagnostics when no Asia range data is available."""
+        from core.services.strategy import (
+            BreakoutRangeDiagnosticService,
+            RangeValidation,
 class StrategyEngineDiagnosticsTest(TestCase):
     """Tests for StrategyEngine evaluate_with_diagnostics method."""
 
@@ -775,6 +826,69 @@ class StrategyEngineDiagnosticsTest(TestCase):
         
         provider = DummyMarketStateProvider(
             phase=SessionPhase.LONDON_CORE,
+            asia_range=None,
+        )
+        service = BreakoutRangeDiagnosticService(provider)
+        
+        ts = datetime(2025, 1, 15, 10, 0, tzinfo=timezone.utc)
+        diagnostics = service.get_asia_range_diagnostics("CC.D.CL.UNC.IP", ts)
+        
+        self.assertEqual(diagnostics.range_type, "Asia Range")
+        self.assertEqual(diagnostics.range_validation, RangeValidation.NOT_AVAILABLE)
+        # Check for presence of "No" and "available" in the message
+        self.assertIn("No", diagnostics.diagnostic_message)
+        self.assertIn("available", diagnostics.diagnostic_message.lower())
+    
+    def test_asia_range_diagnostics_valid_range(self):
+        """Test diagnostics with valid Asia range data."""
+        from core.services.strategy import (
+            BreakoutRangeDiagnosticService,
+            RangeValidation,
+        )
+        
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.LONDON_CORE,
+            asia_range=(75.20, 75.00),  # 0.20 range = 20 ticks
+        )
+        service = BreakoutRangeDiagnosticService(provider)
+        
+        ts = datetime(2025, 1, 15, 10, 0, tzinfo=timezone.utc)
+        diagnostics = service.get_asia_range_diagnostics("CC.D.CL.UNC.IP", ts)
+        
+        self.assertEqual(diagnostics.range_type, "Asia Range")
+        self.assertEqual(diagnostics.range_high, 75.20)
+        self.assertEqual(diagnostics.range_low, 75.00)
+        self.assertAlmostEqual(diagnostics.range_height, 0.20, places=5)
+        self.assertEqual(diagnostics.range_height_ticks, 20)
+        self.assertEqual(diagnostics.range_validation, RangeValidation.VALID)
+    
+    def test_asia_range_diagnostics_range_too_small(self):
+        """Test diagnostics when range is too small."""
+        from core.services.strategy import (
+            BreakoutRangeDiagnosticService,
+            StrategyConfig,
+            RangeValidation,
+        )
+        
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.LONDON_CORE,
+            asia_range=(75.05, 75.00),  # 0.05 range = 5 ticks (below min 10)
+        )
+        config = StrategyConfig()
+        config.breakout.asia_range.min_range_ticks = 10
+        service = BreakoutRangeDiagnosticService(provider, config)
+        
+        ts = datetime(2025, 1, 15, 10, 0, tzinfo=timezone.utc)
+        diagnostics = service.get_asia_range_diagnostics("CC.D.CL.UNC.IP", ts)
+        
+        self.assertEqual(diagnostics.range_validation, RangeValidation.TOO_SMALL)
+        self.assertIn("below", diagnostics.diagnostic_message.lower())
+    
+    def test_asia_range_diagnostics_price_position(self):
+        """Test diagnostics shows correct price position."""
+        from core.services.strategy import (
+            BreakoutRangeDiagnosticService,
+            PricePosition,
             candles=[candle],
             asia_range=(75.20, 75.00),  # 0.20 range
             atr=0.50,
@@ -825,6 +939,77 @@ class StrategyEngineDiagnosticsTest(TestCase):
         
         provider = DummyMarketStateProvider(
             phase=SessionPhase.LONDON_CORE,
+            asia_range=(75.20, 75.00),
+        )
+        service = BreakoutRangeDiagnosticService(provider)
+        
+        ts = datetime(2025, 1, 15, 10, 0, tzinfo=timezone.utc)
+        
+        # Price above range
+        diagnostics = service.get_asia_range_diagnostics("CC.D.CL.UNC.IP", ts, current_price=75.30)
+        self.assertEqual(diagnostics.price_position, PricePosition.ABOVE)
+        
+        # Price inside range
+        diagnostics = service.get_asia_range_diagnostics("CC.D.CL.UNC.IP", ts, current_price=75.10)
+        self.assertEqual(diagnostics.price_position, PricePosition.INSIDE)
+        
+        # Price below range
+        diagnostics = service.get_asia_range_diagnostics("CC.D.CL.UNC.IP", ts, current_price=74.90)
+        self.assertEqual(diagnostics.price_position, PricePosition.BELOW)
+    
+    def test_pre_us_range_diagnostics(self):
+        """Test Pre-US range diagnostics."""
+        from core.services.strategy import (
+            BreakoutRangeDiagnosticService,
+            RangeValidation,
+        )
+        
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.US_CORE,
+            pre_us_range=(76.00, 75.50),  # 0.50 range = 50 ticks
+        )
+        service = BreakoutRangeDiagnosticService(provider)
+        
+        ts = datetime(2025, 1, 15, 16, 0, tzinfo=timezone.utc)
+        diagnostics = service.get_pre_us_range_diagnostics("CC.D.CL.UNC.IP", ts)
+        
+        self.assertEqual(diagnostics.range_type, "Pre-US Range")
+        self.assertEqual(diagnostics.range_high, 76.00)
+        self.assertEqual(diagnostics.range_low, 75.50)
+        self.assertEqual(diagnostics.range_validation, RangeValidation.VALID)
+    
+    def test_diagnostics_breakout_status_detection(self):
+        """Test that breakout status is correctly detected."""
+        from core.services.strategy import (
+            BreakoutRangeDiagnosticService,
+            BreakoutStatus,
+        )
+        
+        ts = datetime(2025, 1, 15, 10, 0, tzinfo=timezone.utc)
+        
+        # Create a bullish breakout candle with body >= 50% of range
+        # Range is 0.20 (75.20 - 75.00), so min body is 0.10
+        breakout_candle = Candle(
+            timestamp=ts,
+            open=75.15,
+            high=75.35,
+            low=75.10,
+            close=75.30,  # Above range high (75.20), body = 0.15
+        )
+        
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.LONDON_CORE,
+            candles=[breakout_candle],
+            asia_range=(75.20, 75.00),  # 0.20 range = 20 ticks
+        )
+        service = BreakoutRangeDiagnosticService(provider)
+        
+        diagnostics = service.get_asia_range_diagnostics(
+            "CC.D.CL.UNC.IP", ts, current_price=75.30
+        )
+        
+        self.assertEqual(diagnostics.breakout_status, BreakoutStatus.VALID_BREAKOUT)
+        self.assertEqual(diagnostics.potential_direction, "LONG")
             candles=[candle],
             asia_range=(75.20, 75.00),  # 0.20 range
         )
