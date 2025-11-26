@@ -281,13 +281,13 @@ class IGMarketStateProvider(BaseMarketStateProvider):
             us_trading_end = to_minutes(cfg.us_core_trading_end, cfg.us_core_trading_end_minute)
             if us_trading_start <= current_time < us_trading_end:
                 return SessionPhase.US_CORE_TRADING
-        
-        # Deprecated US Core (kept for backwards compatibility)
-        # Only used if us_core_trading_enabled is False
-        us_start = to_minutes(cfg.us_core_start, cfg.us_core_start_minute)
-        us_end = to_minutes(cfg.us_core_end, cfg.us_core_end_minute)
-        if us_start <= current_time < us_end:
-            return SessionPhase.US_CORE
+        else:
+            # Deprecated US Core (kept for backwards compatibility)
+            # Only used if us_core_trading_enabled is False
+            us_start = to_minutes(cfg.us_core_start, cfg.us_core_start_minute)
+            us_end = to_minutes(cfg.us_core_end, cfg.us_core_end_minute)
+            if us_start <= current_time < us_end:
+                return SessionPhase.US_CORE
         
         return SessionPhase.OTHER
 

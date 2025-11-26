@@ -817,6 +817,11 @@ class StrategyEngineDiagnosticsTest(TestCase):
 
     def test_diagnostics_asia_breakout(self):
         """Test diagnostics for Asia breakout evaluation."""
+        from core.services.strategy import (
+            BreakoutRangeDiagnosticService,
+            RangeValidation,
+        )
+        
         ts = datetime(2025, 1, 15, 9, 0, tzinfo=timezone.utc)
         
         # Create a bullish breakout candle
