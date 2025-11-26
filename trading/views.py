@@ -441,6 +441,419 @@ def api_worker_status(request):
         }, status=500)
 
 
+# ============================================================================
+# Asset Management Views
+# ============================================================================
+
+@login_required
+def asset_list(request):
+    """
+    List all trading assets with their status and configuration summary.
+    """
+    from .models import TradingAsset
+    
+    assets = TradingAsset.objects.all().prefetch_related('breakout_config', 'event_configs')
+    
+    # Count active vs inactive
+    active_count = assets.filter(is_active=True).count()
+    inactive_count = assets.filter(is_active=False).count()
+    
+    # Group by category for display
+    categories = {}
+    for asset in assets:
+        cat = asset.get_category_display()
+        if cat not in categories:
+            categories[cat] = []
+        categories[cat].append(asset)
+    
+    context = {
+        'assets': assets,
+        'categories': categories,
+        'active_count': active_count,
+        'inactive_count': inactive_count,
+    }
+    
+    return render(request, 'trading/asset_list.html', context)
+
+
+@login_required
+def asset_detail(request, asset_id):
+    """
+    View/Edit details for a specific trading asset.
+    """
+    from .models import TradingAsset, AssetBreakoutConfig, AssetEventConfig
+    from django.contrib import messages
+    
+    asset = get_object_or_404(TradingAsset, id=asset_id)
+    
+    # Get or create breakout config
+    try:
+        breakout_config = asset.breakout_config
+    except AssetBreakoutConfig.DoesNotExist:
+        breakout_config = None
+    
+    # Get event configs
+    event_configs = asset.event_configs.all().order_by('phase')
+    
+    context = {
+        'asset': asset,
+        'breakout_config': breakout_config,
+        'event_configs': event_configs,
+        'session_phases': AssetEventConfig.SESSION_PHASES,
+        'event_types': AssetEventConfig.EVENT_TYPES,
+    }
+    
+    return render(request, 'trading/asset_detail.html', context)
+
+
+@login_required
+def asset_create(request):
+    """
+    Create a new trading asset.
+    """
+    from .models import TradingAsset, AssetBreakoutConfig
+    from django.contrib import messages
+    from decimal import Decimal, InvalidOperation
+    
+    if request.method == 'POST':
+        # Get form data
+        name = request.POST.get('name', '').strip()
+        symbol = request.POST.get('symbol', '').strip()
+        epic = request.POST.get('epic', '').strip()
+        category = request.POST.get('category', 'commodity')
+        tick_size_str = request.POST.get('tick_size', '0.01')
+        is_active = request.POST.get('is_active') == 'on'
+        
+        # Validate required fields
+        if not name or not symbol or not epic:
+            messages.error(request, 'Name, Symbol und EPIC sind Pflichtfelder.')
+            return render(request, 'trading/asset_form.html', {
+                'asset': None,
+                'categories': TradingAsset.ASSET_CATEGORIES,
+                'strategy_types': TradingAsset.STRATEGY_TYPES,
+            })
+        
+        # Check for duplicate epic
+        if TradingAsset.objects.filter(epic=epic).exists():
+            messages.error(request, f'Ein Asset mit EPIC "{epic}" existiert bereits.')
+            return render(request, 'trading/asset_form.html', {
+                'asset': None,
+                'categories': TradingAsset.ASSET_CATEGORIES,
+                'strategy_types': TradingAsset.STRATEGY_TYPES,
+            })
+        
+        try:
+            tick_size = Decimal(tick_size_str)
+        except InvalidOperation:
+            messages.error(request, 'Ungültiger Tick Size Wert.')
+            return render(request, 'trading/asset_form.html', {
+                'asset': None,
+                'categories': TradingAsset.ASSET_CATEGORIES,
+                'strategy_types': TradingAsset.STRATEGY_TYPES,
+            })
+        
+        # Create asset
+        asset = TradingAsset.objects.create(
+            name=name,
+            symbol=symbol,
+            epic=epic,
+            category=category,
+            tick_size=tick_size,
+            is_active=is_active,
+        )
+        
+        # Create default breakout config
+        AssetBreakoutConfig.objects.create(asset=asset)
+        
+        messages.success(request, f'Asset "{name}" erfolgreich erstellt.')
+        return redirect('asset_detail', asset_id=asset.id)
+    
+    context = {
+        'asset': None,
+        'categories': TradingAsset.ASSET_CATEGORIES,
+        'strategy_types': TradingAsset.STRATEGY_TYPES,
+    }
+    
+    return render(request, 'trading/asset_form.html', context)
+
+
+@login_required
+def asset_edit(request, asset_id):
+    """
+    Edit an existing trading asset.
+    """
+    from .models import TradingAsset, AssetBreakoutConfig
+    from django.contrib import messages
+    from decimal import Decimal, InvalidOperation
+    
+    asset = get_object_or_404(TradingAsset, id=asset_id)
+    
+    if request.method == 'POST':
+        # Get form data
+        name = request.POST.get('name', '').strip()
+        symbol = request.POST.get('symbol', '').strip()
+        epic = request.POST.get('epic', '').strip()
+        category = request.POST.get('category', 'commodity')
+        tick_size_str = request.POST.get('tick_size', '0.01')
+        is_active = request.POST.get('is_active') == 'on'
+        
+        # Validate required fields
+        if not name or not symbol or not epic:
+            messages.error(request, 'Name, Symbol und EPIC sind Pflichtfelder.')
+            return render(request, 'trading/asset_form.html', {
+                'asset': asset,
+                'categories': TradingAsset.ASSET_CATEGORIES,
+                'strategy_types': TradingAsset.STRATEGY_TYPES,
+            })
+        
+        # Check for duplicate epic (excluding current asset)
+        if TradingAsset.objects.filter(epic=epic).exclude(id=asset.id).exists():
+            messages.error(request, f'Ein anderes Asset mit EPIC "{epic}" existiert bereits.')
+            return render(request, 'trading/asset_form.html', {
+                'asset': asset,
+                'categories': TradingAsset.ASSET_CATEGORIES,
+                'strategy_types': TradingAsset.STRATEGY_TYPES,
+            })
+        
+        try:
+            tick_size = Decimal(tick_size_str)
+        except InvalidOperation:
+            messages.error(request, 'Ungültiger Tick Size Wert.')
+            return render(request, 'trading/asset_form.html', {
+                'asset': asset,
+                'categories': TradingAsset.ASSET_CATEGORIES,
+                'strategy_types': TradingAsset.STRATEGY_TYPES,
+            })
+        
+        # Update asset
+        asset.name = name
+        asset.symbol = symbol
+        asset.epic = epic
+        asset.category = category
+        asset.tick_size = tick_size
+        asset.is_active = is_active
+        asset.save()
+        
+        messages.success(request, f'Asset "{name}" erfolgreich aktualisiert.')
+        return redirect('asset_detail', asset_id=asset.id)
+    
+    context = {
+        'asset': asset,
+        'categories': TradingAsset.ASSET_CATEGORIES,
+        'strategy_types': TradingAsset.STRATEGY_TYPES,
+    }
+    
+    return render(request, 'trading/asset_form.html', context)
+
+
+@login_required
+@require_http_methods(['POST'])
+def asset_toggle_active(request, asset_id):
+    """
+    Toggle the active status of an asset via HTMX/AJAX.
+    """
+    from .models import TradingAsset
+    
+    asset = get_object_or_404(TradingAsset, id=asset_id)
+    asset.is_active = not asset.is_active
+    asset.save()
+    
+    return JsonResponse({
+        'success': True,
+        'is_active': asset.is_active,
+        'message': f'Asset "{asset.name}" ist jetzt {"aktiv" if asset.is_active else "inaktiv"}.',
+    })
+
+
+@login_required
+def breakout_config_edit(request, asset_id):
+    """
+    Edit breakout configuration for an asset.
+    """
+    from .models import TradingAsset, AssetBreakoutConfig
+    from django.contrib import messages
+    from decimal import Decimal, InvalidOperation
+    
+    asset = get_object_or_404(TradingAsset, id=asset_id)
+    
+    # Get or create breakout config
+    breakout_config, created = AssetBreakoutConfig.objects.get_or_create(asset=asset)
+    
+    if request.method == 'POST':
+        try:
+            # Asia Range settings
+            breakout_config.asia_range_start = request.POST.get('asia_range_start', '00:00')
+            breakout_config.asia_range_end = request.POST.get('asia_range_end', '08:00')
+            breakout_config.asia_min_range_ticks = int(request.POST.get('asia_min_range_ticks', 10))
+            breakout_config.asia_max_range_ticks = int(request.POST.get('asia_max_range_ticks', 200))
+            
+            # US Core settings
+            breakout_config.pre_us_start = request.POST.get('pre_us_start', '13:00')
+            breakout_config.pre_us_end = request.POST.get('pre_us_end', '15:00')
+            breakout_config.us_min_range_ticks = int(request.POST.get('us_min_range_ticks', 10))
+            breakout_config.us_max_range_ticks = int(request.POST.get('us_max_range_ticks', 200))
+            
+            # Breakout requirements
+            breakout_config.min_breakout_body_fraction = Decimal(request.POST.get('min_breakout_body_fraction', '0.50'))
+            
+            # ATR settings
+            breakout_config.require_atr_minimum = request.POST.get('require_atr_minimum') == 'on'
+            min_atr_str = request.POST.get('min_atr_value', '')
+            breakout_config.min_atr_value = Decimal(min_atr_str) if min_atr_str else None
+            
+            breakout_config.save()
+            messages.success(request, 'Breakout-Konfiguration erfolgreich gespeichert.')
+            return redirect('asset_detail', asset_id=asset.id)
+            
+        except (ValueError, InvalidOperation) as e:
+            messages.error(request, f'Ungültige Eingabe: {e}')
+    
+    context = {
+        'asset': asset,
+        'config': breakout_config,
+    }
+    
+    return render(request, 'trading/breakout_config_form.html', context)
+
+
+@login_required
+def event_config_edit(request, asset_id, phase=None):
+    """
+    Edit or create event configuration for an asset/phase.
+    """
+    from .models import TradingAsset, AssetEventConfig
+    from django.contrib import messages
+    
+    asset = get_object_or_404(TradingAsset, id=asset_id)
+    
+    if request.method == 'POST':
+        phase = request.POST.get('phase')
+        event_type = request.POST.get('event_type', 'NONE')
+        is_required = request.POST.get('is_required') == 'on'
+        time_offset = int(request.POST.get('time_offset_minutes', 0))
+        filter_enabled = request.POST.get('filter_enabled') == 'on'
+        notes = request.POST.get('notes', '')
+        
+        # Get or create event config
+        event_config, created = AssetEventConfig.objects.update_or_create(
+            asset=asset,
+            phase=phase,
+            defaults={
+                'event_type': event_type,
+                'is_required': is_required,
+                'time_offset_minutes': time_offset,
+                'filter_enabled': filter_enabled,
+                'notes': notes,
+            }
+        )
+        
+        action = 'erstellt' if created else 'aktualisiert'
+        messages.success(request, f'Event-Konfiguration für {event_config.get_phase_display()} {action}.')
+        return redirect('asset_detail', asset_id=asset.id)
+    
+    # Get existing config if editing
+    event_config = None
+    if phase:
+        try:
+            event_config = AssetEventConfig.objects.get(asset=asset, phase=phase)
+        except AssetEventConfig.DoesNotExist:
+            pass
+    
+    context = {
+        'asset': asset,
+        'config': event_config,
+        'phase': phase,
+        'session_phases': AssetEventConfig.SESSION_PHASES,
+        'event_types': AssetEventConfig.EVENT_TYPES,
+    }
+    
+    return render(request, 'trading/event_config_form.html', context)
+
+
+@login_required
+@require_http_methods(['POST'])
+def event_config_delete(request, asset_id, phase):
+    """
+    Delete an event configuration.
+    """
+    from .models import TradingAsset, AssetEventConfig
+    from django.contrib import messages
+    
+    asset = get_object_or_404(TradingAsset, id=asset_id)
+    
+    try:
+        event_config = AssetEventConfig.objects.get(asset=asset, phase=phase)
+        phase_display = event_config.get_phase_display()
+        event_config.delete()
+        messages.success(request, f'Event-Konfiguration für {phase_display} gelöscht.')
+    except AssetEventConfig.DoesNotExist:
+        messages.error(request, 'Event-Konfiguration nicht gefunden.')
+    
+    return redirect('asset_detail', asset_id=asset.id)
+
+
+@login_required
+def api_active_assets(request):
+    """
+    API endpoint returning all active assets with their configurations.
+    Used by the worker to dynamically load assets.
+    """
+    from .models import TradingAsset
+    
+    assets = TradingAsset.objects.filter(is_active=True).prefetch_related(
+        'breakout_config', 'event_configs'
+    )
+    
+    result = []
+    for asset in assets:
+        asset_data = {
+            'id': asset.id,
+            'name': asset.name,
+            'symbol': asset.symbol,
+            'epic': asset.epic,
+            'category': asset.category,
+            'tick_size': str(asset.tick_size),
+            'strategy_type': asset.strategy_type,
+            'breakout_config': None,
+            'event_configs': [],
+        }
+        
+        # Add breakout config if exists
+        try:
+            bc = asset.breakout_config
+            asset_data['breakout_config'] = {
+                'asia_range_start': bc.asia_range_start,
+                'asia_range_end': bc.asia_range_end,
+                'asia_min_range_ticks': bc.asia_min_range_ticks,
+                'asia_max_range_ticks': bc.asia_max_range_ticks,
+                'pre_us_start': bc.pre_us_start,
+                'pre_us_end': bc.pre_us_end,
+                'us_min_range_ticks': bc.us_min_range_ticks,
+                'us_max_range_ticks': bc.us_max_range_ticks,
+                'min_breakout_body_fraction': str(bc.min_breakout_body_fraction),
+                'require_atr_minimum': bc.require_atr_minimum,
+                'min_atr_value': str(bc.min_atr_value) if bc.min_atr_value else None,
+            }
+        except Exception:
+            pass
+        
+        # Add event configs
+        for ec in asset.event_configs.all():
+            asset_data['event_configs'].append({
+                'phase': ec.phase,
+                'event_type': ec.event_type,
+                'is_required': ec.is_required,
+                'time_offset_minutes': ec.time_offset_minutes,
+                'filter_enabled': ec.filter_enabled,
+            })
+        
+        result.append(asset_data)
+    
+    return JsonResponse({
+        'success': True,
+        'count': len(result),
+        'assets': result,
+    })
 @login_required
 def api_breakout_range_diagnostics(request):
     """

@@ -1,0 +1,352 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Fiona - {{ asset.name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .config-section {
+        margin-bottom: 1.5rem;
+    }
+    
+    .config-section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid #dee2e6;
+    }
+    
+    .config-section-title {
+        font-size: 1rem;
+        font-weight: 600;
+        margin: 0;
+    }
+    
+    .config-table {
+        font-size: 0.9rem;
+    }
+    
+    .config-table th {
+        width: 40%;
+        font-weight: 500;
+        color: #6c757d;
+    }
+    
+    .event-config-row {
+        transition: background-color 0.2s;
+    }
+    
+    .event-config-row:hover {
+        background-color: rgba(0, 0, 0, 0.02);
+    }
+    
+    .badge-phase {
+        font-family: monospace;
+        font-size: 0.75rem;
+    }
+    
+    .epic-display {
+        font-family: 'Roboto Mono', monospace;
+        font-size: 0.9rem;
+        background-color: #f8f9fa;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'signal_dashboard' %}">Fiona Trading</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'asset_list' %}">Assets</a></li>
+            <li class="breadcrumb-item active" aria-current="page">{{ asset.name }}</li>
+        </ol>
+    </nav>
+    
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-start mb-4">
+        <div>
+            <h1 class="h3 mb-1">
+                {% if asset.is_active %}
+                    <i class="bi bi-check-circle-fill text-success"></i>
+                {% else %}
+                    <i class="bi bi-pause-circle text-secondary"></i>
+                {% endif %}
+                {{ asset.name }}
+                <span class="badge bg-secondary">{{ asset.symbol }}</span>
+            </h1>
+            <code class="epic-display">{{ asset.epic }}</code>
+            <span class="ms-2 text-muted">| {{ asset.get_category_display }}</span>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{% url 'asset_edit' asset.id %}" class="btn btn-outline-primary">
+                <i class="bi bi-pencil"></i> Bearbeiten
+            </a>
+            <button type="button" 
+                    class="btn {% if asset.is_active %}btn-warning{% else %}btn-success{% endif %}"
+                    onclick="toggleAssetStatus({{ asset.id }})">
+                {% if asset.is_active %}
+                    <i class="bi bi-pause-fill"></i> Deaktivieren
+                {% else %}
+                    <i class="bi bi-play-fill"></i> Aktivieren
+                {% endif %}
+            </button>
+        </div>
+    </div>
+    
+    <div class="row">
+        <!-- Left Column: Basic Info & Breakout Config -->
+        <div class="col-lg-6">
+            <!-- Basic Info -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <i class="bi bi-info-circle"></i> Grunddaten
+                </div>
+                <div class="card-body">
+                    <table class="table config-table mb-0">
+                        <tr>
+                            <th>Status</th>
+                            <td>
+                                {% if asset.is_active %}
+                                    <span class="badge bg-success">Aktiv</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Inaktiv</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>Strategie</th>
+                            <td>{{ asset.get_strategy_type_display }}</td>
+                        </tr>
+                        <tr>
+                            <th>Tick Size</th>
+                            <td><code>{{ asset.tick_size }}</code></td>
+                        </tr>
+                        <tr>
+                            <th>Erstellt am</th>
+                            <td>{{ asset.created_at|date:"d.m.Y H:i" }}</td>
+                        </tr>
+                        <tr>
+                            <th>Zuletzt geändert</th>
+                            <td>{{ asset.updated_at|date:"d.m.Y H:i" }}</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- Breakout Configuration -->
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-sliders"></i> Breakout-Konfiguration</span>
+                    <a href="{% url 'breakout_config_edit' asset.id %}" class="btn btn-sm btn-outline-primary">
+                        <i class="bi bi-pencil"></i> Bearbeiten
+                    </a>
+                </div>
+                <div class="card-body">
+                    {% if breakout_config %}
+                        <h6 class="text-muted mb-2">Asia Range</h6>
+                        <table class="table config-table mb-3">
+                            <tr>
+                                <th>Zeitfenster</th>
+                                <td><code>{{ breakout_config.asia_range_start }}</code> - <code>{{ breakout_config.asia_range_end }}</code> UTC</td>
+                            </tr>
+                            <tr>
+                                <th>Range-Höhe</th>
+                                <td>{{ breakout_config.asia_min_range_ticks }} - {{ breakout_config.asia_max_range_ticks }} Ticks</td>
+                            </tr>
+                        </table>
+                        
+                        <h6 class="text-muted mb-2">US Core</h6>
+                        <table class="table config-table mb-3">
+                            <tr>
+                                <th>Zeitfenster</th>
+                                <td><code>{{ breakout_config.pre_us_start }}</code> - <code>{{ breakout_config.pre_us_end }}</code> UTC</td>
+                            </tr>
+                            <tr>
+                                <th>Range-Höhe</th>
+                                <td>{{ breakout_config.us_min_range_ticks }} - {{ breakout_config.us_max_range_ticks }} Ticks</td>
+                            </tr>
+                        </table>
+                        
+                        <h6 class="text-muted mb-2">Breakout-Anforderungen</h6>
+                        <table class="table config-table mb-0">
+                            <tr>
+                                <th>Min. Körpergröße</th>
+                                <td>{{ breakout_config.min_breakout_body_fraction|floatformat:0 }}% der Range</td>
+                            </tr>
+                            <tr>
+                                <th>ATR-Minimum</th>
+                                <td>
+                                    {% if breakout_config.require_atr_minimum %}
+                                        <span class="text-success"><i class="bi bi-check"></i> Aktiv</span>
+                                        {% if breakout_config.min_atr_value %}
+                                            (min. {{ breakout_config.min_atr_value }})
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="text-muted">Nicht aktiv</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        </table>
+                    {% else %}
+                        <div class="text-center py-4">
+                            <i class="bi bi-gear display-4 text-muted"></i>
+                            <p class="text-muted mt-2">Keine Breakout-Konfiguration vorhanden</p>
+                            <a href="{% url 'breakout_config_edit' asset.id %}" class="btn btn-primary btn-sm">
+                                <i class="bi bi-plus"></i> Konfiguration erstellen
+                            </a>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Right Column: Event Configurations -->
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-calendar-event"></i> Event-Konfigurationen</span>
+                    <a href="{% url 'event_config_create' asset.id %}" class="btn btn-sm btn-outline-primary">
+                        <i class="bi bi-plus"></i> Hinzufügen
+                    </a>
+                </div>
+                <div class="card-body p-0">
+                    {% if event_configs %}
+                        <table class="table mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Phase</th>
+                                    <th>Event-Typ</th>
+                                    <th>Status</th>
+                                    <th class="text-end">Aktionen</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for config in event_configs %}
+                                <tr class="event-config-row">
+                                    <td>
+                                        <span class="badge bg-secondary badge-phase">{{ config.get_phase_display }}</span>
+                                    </td>
+                                    <td>{{ config.get_event_type_display }}</td>
+                                    <td>
+                                        {% if config.filter_enabled %}
+                                            {% if config.is_required %}
+                                                <span class="badge bg-warning text-dark">
+                                                    <i class="bi bi-exclamation-triangle"></i> Erforderlich
+                                                </span>
+                                            {% else %}
+                                                <span class="badge bg-info">
+                                                    <i class="bi bi-check"></i> Aktiv
+                                                </span>
+                                            {% endif %}
+                                        {% else %}
+                                            <span class="badge bg-secondary">
+                                                <i class="bi bi-pause"></i> Deaktiviert
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end">
+                                        <a href="{% url 'event_config_edit' asset.id config.phase %}" class="btn btn-sm btn-outline-primary">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                        <form method="post" action="{% url 'event_config_delete' asset.id config.phase %}" style="display: inline;">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Event-Konfiguration wirklich löschen?')">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    {% else %}
+                        <div class="text-center py-5">
+                            <i class="bi bi-calendar-x display-4 text-muted"></i>
+                            <p class="text-muted mt-2">Keine Event-Konfigurationen vorhanden</p>
+                            <a href="{% url 'event_config_create' asset.id %}" class="btn btn-primary btn-sm">
+                                <i class="bi bi-plus"></i> Event-Konfiguration erstellen
+                            </a>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Configured Phases Overview -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <i class="bi bi-clock-history"></i> Phasen-Übersicht
+                </div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        {% for phase_code, phase_name in session_phases %}
+                        <div class="col-6">
+                            {% with configured=False %}
+                            {% for config in event_configs %}
+                                {% if config.phase == phase_code %}
+                                    <div class="d-flex align-items-center p-2 bg-success bg-opacity-10 rounded">
+                                        <i class="bi bi-check-circle-fill text-success me-2"></i>
+                                        <small>{{ phase_name }}</small>
+                                    </div>
+                                {% endif %}
+                            {% empty %}
+                                <div class="d-flex align-items-center p-2 bg-light rounded">
+                                    <i class="bi bi-circle text-muted me-2"></i>
+                                    <small class="text-muted">{{ phase_name }}</small>
+                                </div>
+                            {% endfor %}
+                            {% endwith %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+function toggleAssetStatus(assetId) {
+    fetch(`/fiona/assets/${assetId}/toggle-active/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'Content-Type': 'application/json',
+        },
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Fehler: ' + (data.error || 'Unbekannter Fehler'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Ein Fehler ist aufgetreten.');
+    });
+}
+</script>
+{% endblock %}
