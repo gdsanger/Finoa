@@ -1102,6 +1102,162 @@ class AssetBreakoutConfigTest(TestCase):
         
         with self.assertRaises(Exception):
             AssetBreakoutConfig.objects.create(asset=asset)
+    
+    # =========================================================================
+    # NEW TESTS for Extended Breakout Configuration
+    # =========================================================================
+    
+    def test_breakout_config_london_core_fields(self):
+        """Test that London Core fields are properly stored and retrieved."""
+        asset = TradingAsset.objects.create(
+            name='Gold',
+            symbol='GOLD',
+            epic='CC.D.GOLD.UNC.IP',
+        )
+        
+        config = AssetBreakoutConfig.objects.create(
+            asset=asset,
+            london_range_start='08:00',
+            london_range_end='12:00',
+            london_min_range_ticks=15,
+            london_max_range_ticks=150,
+        )
+        
+        self.assertEqual(config.london_range_start, '08:00')
+        self.assertEqual(config.london_range_end, '12:00')
+        self.assertEqual(config.london_min_range_ticks, 15)
+        self.assertEqual(config.london_max_range_ticks, 150)
+    
+    def test_breakout_config_eia_fields(self):
+        """Test that EIA Pre/Post fields are properly stored and retrieved."""
+        asset = TradingAsset.objects.create(
+            name='WTI EIA',
+            symbol='CL',
+            epic='CC.D.CL.EIA.IP',
+        )
+        
+        config = AssetBreakoutConfig.objects.create(
+            asset=asset,
+            eia_min_body_fraction=Decimal('0.70'),
+            eia_required_impulse_strength=Decimal('0.60'),
+            eia_reversion_window_min_sec=45,
+            eia_reversion_window_max_sec=360,
+            eia_max_impulse_duration_min=3,
+            eia_min_impulse_atr=Decimal('0.15'),
+            eia_impulse_range_high=Decimal('1.50'),
+            eia_impulse_range_low=Decimal('0.25'),
+        )
+        
+        self.assertEqual(config.eia_min_body_fraction, Decimal('0.70'))
+        self.assertEqual(config.eia_required_impulse_strength, Decimal('0.60'))
+        self.assertEqual(config.eia_reversion_window_min_sec, 45)
+        self.assertEqual(config.eia_reversion_window_max_sec, 360)
+        self.assertEqual(config.eia_max_impulse_duration_min, 3)
+        self.assertEqual(config.eia_min_impulse_atr, Decimal('0.15'))
+        self.assertEqual(config.eia_impulse_range_high, Decimal('1.50'))
+        self.assertEqual(config.eia_impulse_range_low, Decimal('0.25'))
+    
+    def test_breakout_config_candle_quality_fields(self):
+        """Test that candle quality filter fields are properly stored."""
+        asset = TradingAsset.objects.create(
+            name='NAS100',
+            symbol='NAS100',
+            epic='IX.D.NAS.UNC.IP',
+        )
+        
+        config = AssetBreakoutConfig.objects.create(
+            asset=asset,
+            min_wick_ratio=Decimal('0.30'),
+            max_wick_ratio=Decimal('2.00'),
+            min_candle_body_absolute=Decimal('0.05'),
+            max_spread_ticks=5,
+            filter_doji_breakouts=True,
+        )
+        
+        self.assertEqual(config.min_wick_ratio, Decimal('0.30'))
+        self.assertEqual(config.max_wick_ratio, Decimal('2.00'))
+        self.assertEqual(config.min_candle_body_absolute, Decimal('0.05'))
+        self.assertEqual(config.max_spread_ticks, 5)
+        self.assertTrue(config.filter_doji_breakouts)
+    
+    def test_breakout_config_advanced_filter_fields(self):
+        """Test that advanced filter fields are properly stored."""
+        asset = TradingAsset.objects.create(
+            name='DAX',
+            symbol='DAX',
+            epic='IX.D.DAX.UNC.IP',
+        )
+        
+        config = AssetBreakoutConfig.objects.create(
+            asset=asset,
+            consecutive_candle_filter=3,
+            momentum_threshold=Decimal('0.25'),
+            volatility_throttle_min_atr=Decimal('0.10'),
+            session_volatility_cap=Decimal('2.50'),
+        )
+        
+        self.assertEqual(config.consecutive_candle_filter, 3)
+        self.assertEqual(config.momentum_threshold, Decimal('0.25'))
+        self.assertEqual(config.volatility_throttle_min_atr, Decimal('0.10'))
+        self.assertEqual(config.session_volatility_cap, Decimal('2.50'))
+    
+    def test_breakout_config_extended_atr_fields(self):
+        """Test that extended ATR fields (including max ATR) are properly stored."""
+        asset = TradingAsset.objects.create(
+            name='EURUSD',
+            symbol='EURUSD',
+            epic='CS.D.EURUSD.UNC.IP',
+        )
+        
+        config = AssetBreakoutConfig.objects.create(
+            asset=asset,
+            require_atr_minimum=True,
+            min_atr_value=Decimal('0.0015'),
+            max_atr_value=Decimal('0.0050'),
+        )
+        
+        self.assertTrue(config.require_atr_minimum)
+        self.assertEqual(config.min_atr_value, Decimal('0.0015'))
+        self.assertEqual(config.max_atr_value, Decimal('0.0050'))
+    
+    def test_breakout_config_volume_spike_field(self):
+        """Test that volume spike field is properly stored."""
+        asset = TradingAsset.objects.create(
+            name='SP500',
+            symbol='SP500',
+            epic='IX.D.SP500.UNC.IP',
+        )
+        
+        config = AssetBreakoutConfig.objects.create(
+            asset=asset,
+            min_volume_spike=Decimal('1.50'),
+        )
+        
+        self.assertEqual(config.min_volume_spike, Decimal('1.50'))
+    
+    def test_breakout_config_defaults(self):
+        """Test that breakout config has correct default values."""
+        asset = TradingAsset.objects.create(
+            name='Default Test',
+            symbol='TEST',
+            epic='CC.D.TEST.UNC.IP',
+        )
+        
+        config = AssetBreakoutConfig.objects.create(asset=asset)
+        
+        # Check all new default values
+        self.assertEqual(config.london_range_start, '08:00')
+        self.assertEqual(config.london_range_end, '12:00')
+        self.assertEqual(config.london_min_range_ticks, 10)
+        self.assertEqual(config.london_max_range_ticks, 200)
+        self.assertEqual(config.eia_min_body_fraction, Decimal('0.60'))
+        self.assertEqual(config.eia_required_impulse_strength, Decimal('0.50'))
+        self.assertEqual(config.eia_reversion_window_min_sec, 30)
+        self.assertEqual(config.eia_reversion_window_max_sec, 300)
+        self.assertEqual(config.eia_max_impulse_duration_min, 5)
+        self.assertEqual(config.consecutive_candle_filter, 0)
+        self.assertTrue(config.filter_doji_breakouts)
+        self.assertEqual(config.min_breakout_distance_ticks, 1)
 
 
 class AssetEventConfigTest(TestCase):

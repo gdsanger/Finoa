@@ -20,7 +20,11 @@ from .config import (
     BreakoutConfig,
     EiaConfig,
     AsiaRangeConfig,
+    LondonCoreConfig,
     UsCoreConfig,
+    CandleQualityConfig,
+    AdvancedFilterConfig,
+    AtrConfig,
 )
 
 from .providers import (
@@ -57,7 +61,11 @@ __all__ = [
     'BreakoutConfig',
     'EiaConfig',
     'AsiaRangeConfig',
+    'LondonCoreConfig',
     'UsCoreConfig',
+    'CandleQualityConfig',
+    'AdvancedFilterConfig',
+    'AtrConfig',
     # Providers
     'MarketStateProvider',
     'BaseMarketStateProvider',

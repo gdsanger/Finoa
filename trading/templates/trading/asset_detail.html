@@ -148,7 +148,10 @@
                 </div>
                 <div class="card-body">
                     {% if breakout_config %}
-                        <h6 class="text-muted mb-2">Asia Range</h6>
+                        <!-- Asia Range -->
+                        <h6 class="text-muted mb-2">
+                            <i class="bi bi-sunrise"></i> Asia Range
+                        </h6>
                         <table class="table config-table mb-3">
                             <tr>
                                 <th>Zeitfenster</th>
@@ -160,7 +163,26 @@
                             </tr>
                         </table>
                         
-                        <h6 class="text-muted mb-2">US Core</h6>
+                        <!-- London Core (NEW) -->
+                        <h6 class="text-muted mb-2">
+                            <i class="bi bi-building"></i> London Core
+                            <span class="badge bg-success badge-sm">NEU</span>
+                        </h6>
+                        <table class="table config-table mb-3">
+                            <tr>
+                                <th>Zeitfenster</th>
+                                <td><code>{{ breakout_config.london_range_start }}</code> - <code>{{ breakout_config.london_range_end }}</code> UTC</td>
+                            </tr>
+                            <tr>
+                                <th>Range-Höhe</th>
+                                <td>{{ breakout_config.london_min_range_ticks }} - {{ breakout_config.london_max_range_ticks }} Ticks</td>
+                            </tr>
+                        </table>
+                        
+                        <!-- US Core -->
+                        <h6 class="text-muted mb-2">
+                            <i class="bi bi-sun"></i> US Core
+                        </h6>
                         <table class="table config-table mb-3">
                             <tr>
                                 <th>Zeitfenster</th>
@@ -172,19 +194,96 @@
                             </tr>
                         </table>
                         
-                        <h6 class="text-muted mb-2">Breakout-Anforderungen</h6>
-                        <table class="table config-table mb-0">
+                        <!-- EIA Pre/Post (NEW) -->
+                        <h6 class="text-muted mb-2">
+                            <i class="bi bi-lightning-charge"></i> EIA Pre/Post
+                            <span class="badge bg-success badge-sm">NEU</span>
+                        </h6>
+                        <table class="table config-table mb-3">
+                            <tr>
+                                <th>Min Body EIA</th>
+                                <td>{{ breakout_config.eia_min_body_fraction|floatformat:0 }}%</td>
+                            </tr>
+                            <tr>
+                                <th>Impulse Strength</th>
+                                <td>{{ breakout_config.eia_required_impulse_strength|floatformat:0 }}%</td>
+                            </tr>
+                            <tr>
+                                <th>Reversion Window</th>
+                                <td>{{ breakout_config.eia_reversion_window_min_sec }}s - {{ breakout_config.eia_reversion_window_max_sec }}s</td>
+                            </tr>
+                            <tr>
+                                <th>Max Impulse Duration</th>
+                                <td>{{ breakout_config.eia_max_impulse_duration_min }} Minuten</td>
+                            </tr>
+                        </table>
+                        
+                        <!-- Breakout Requirements -->
+                        <h6 class="text-muted mb-2">
+                            <i class="bi bi-lightning"></i> Breakout-Anforderungen
+                        </h6>
+                        <table class="table config-table mb-3">
                             <tr>
                                 <th>Min. Körpergröße</th>
                                 <td>{{ breakout_config.min_breakout_body_fraction|floatformat:0 }}% der Range</td>
                             </tr>
+                            {% if breakout_config.max_breakout_body_fraction %}
                             <tr>
-                                <th>ATR-Minimum</th>
+                                <th>Max. Körpergröße</th>
+                                <td>{{ breakout_config.max_breakout_body_fraction|floatformat:0 }}% der Range</td>
+                            </tr>
+                            {% endif %}
+                            <tr>
+                                <th>Min. Breakout Distance</th>
+                                <td>{{ breakout_config.min_breakout_distance_ticks }} Ticks</td>
+                            </tr>
+                        </table>
+                        
+                        <!-- Candle Quality (NEW) -->
+                        <h6 class="text-muted mb-2">
+                            <i class="bi bi-bar-chart-line"></i> Candle-Quality
+                            <span class="badge bg-success badge-sm">NEU</span>
+                        </h6>
+                        <table class="table config-table mb-3">
+                            <tr>
+                                <th>Doji-Filter</th>
+                                <td>
+                                    {% if breakout_config.filter_doji_breakouts %}
+                                        <span class="text-success"><i class="bi bi-check"></i> Aktiv</span>
+                                    {% else %}
+                                        <span class="text-muted">Deaktiviert</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% if breakout_config.min_wick_ratio or breakout_config.max_wick_ratio %}
+                            <tr>
+                                <th>Wick Ratio</th>
+                                <td>{{ breakout_config.min_wick_ratio|default:'-' }} - {{ breakout_config.max_wick_ratio|default:'-' }}</td>
+                            </tr>
+                            {% endif %}
+                            {% if breakout_config.max_spread_ticks %}
+                            <tr>
+                                <th>Max Spread</th>
+                                <td>{{ breakout_config.max_spread_ticks }} Ticks</td>
+                            </tr>
+                            {% endif %}
+                        </table>
+                        
+                        <!-- ATR Settings -->
+                        <h6 class="text-muted mb-2">
+                            <i class="bi bi-activity"></i> ATR Einstellungen
+                        </h6>
+                        <table class="table config-table mb-0">
+                            <tr>
+                                <th>ATR-Filter</th>
                                 <td>
                                     {% if breakout_config.require_atr_minimum %}
                                         <span class="text-success"><i class="bi bi-check"></i> Aktiv</span>
                                         {% if breakout_config.min_atr_value %}
                                             (min. {{ breakout_config.min_atr_value }})
+                                        {% endif %}
+                                        {% if breakout_config.max_atr_value %}
+                                            / max. {{ breakout_config.max_atr_value }}
                                         {% endif %}
                                     {% else %}
                                         <span class="text-muted">Nicht aktiv</span>

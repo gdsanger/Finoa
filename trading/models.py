@@ -95,13 +95,19 @@ class TradingAsset(models.Model):
             StrategyConfig,
             BreakoutConfig,
             AsiaRangeConfig,
+            LondonCoreConfig,
             UsCoreConfig,
+            CandleQualityConfig,
+            AdvancedFilterConfig,
+            AtrConfig,
             EiaConfig,
         )
         
         # Get breakout config for this asset
         try:
             breakout_cfg = self.breakout_config
+            
+            # Asia Range
             asia_range = AsiaRangeConfig(
                 start=breakout_cfg.asia_range_start,
                 end=breakout_cfg.asia_range_end,
@@ -109,6 +115,17 @@ class TradingAsset(models.Model):
                 max_range_ticks=breakout_cfg.asia_max_range_ticks,
                 min_breakout_body_fraction=float(breakout_cfg.min_breakout_body_fraction),
             )
+            
+            # London Core (NEW)
+            london_core = LondonCoreConfig(
+                start=breakout_cfg.london_range_start,
+                end=breakout_cfg.london_range_end,
+                min_range_ticks=breakout_cfg.london_min_range_ticks,
+                max_range_ticks=breakout_cfg.london_max_range_ticks,
+                min_breakout_body_fraction=float(breakout_cfg.min_breakout_body_fraction),
+            )
+            
+            # US Core
             us_core = UsCoreConfig(
                 pre_us_start=breakout_cfg.pre_us_start,
                 pre_us_end=breakout_cfg.pre_us_end,
@@ -116,14 +133,65 @@ class TradingAsset(models.Model):
                 max_range_ticks=breakout_cfg.us_max_range_ticks,
                 min_breakout_body_fraction=float(breakout_cfg.min_breakout_body_fraction),
             )
-            breakout = BreakoutConfig(asia_range=asia_range, us_core=us_core)
+            
+            # Candle Quality (NEW)
+            candle_quality = CandleQualityConfig(
+                min_wick_ratio=float(breakout_cfg.min_wick_ratio) if breakout_cfg.min_wick_ratio else None,
+                max_wick_ratio=float(breakout_cfg.max_wick_ratio) if breakout_cfg.max_wick_ratio else None,
+                min_candle_body_absolute=float(breakout_cfg.min_candle_body_absolute) if breakout_cfg.min_candle_body_absolute else None,
+                max_spread_ticks=breakout_cfg.max_spread_ticks,
+                filter_doji_breakouts=breakout_cfg.filter_doji_breakouts,
+            )
+            
+            # Advanced Filter (NEW)
+            advanced_filter = AdvancedFilterConfig(
+                consecutive_candle_filter=breakout_cfg.consecutive_candle_filter,
+                momentum_threshold=float(breakout_cfg.momentum_threshold) if breakout_cfg.momentum_threshold else None,
+                volatility_throttle_min_atr=float(breakout_cfg.volatility_throttle_min_atr) if breakout_cfg.volatility_throttle_min_atr else None,
+                session_volatility_cap=float(breakout_cfg.session_volatility_cap) if breakout_cfg.session_volatility_cap else None,
+            )
+            
+            # ATR Config (Extended)
+            atr = AtrConfig(
+                require_atr_minimum=breakout_cfg.require_atr_minimum,
+                min_atr_value=float(breakout_cfg.min_atr_value) if breakout_cfg.min_atr_value else None,
+                max_atr_value=float(breakout_cfg.max_atr_value) if breakout_cfg.max_atr_value else None,
+            )
+            
+            # Breakout Config with all components
+            breakout = BreakoutConfig(
+                asia_range=asia_range,
+                london_core=london_core,
+                us_core=us_core,
+                candle_quality=candle_quality,
+                advanced_filter=advanced_filter,
+                atr=atr,
+                min_breakout_body_fraction=float(breakout_cfg.min_breakout_body_fraction),
+                max_breakout_body_fraction=float(breakout_cfg.max_breakout_body_fraction) if breakout_cfg.max_breakout_body_fraction else None,
+                min_breakout_distance_ticks=breakout_cfg.min_breakout_distance_ticks,
+                min_volume_spike=float(breakout_cfg.min_volume_spike) if breakout_cfg.min_volume_spike else None,
+            )
+            
+            # EIA Config (NEW - from breakout_cfg)
+            eia = EiaConfig(
+                min_body_fraction=float(breakout_cfg.eia_min_body_fraction),
+                min_impulse_atr=float(breakout_cfg.eia_min_impulse_atr) if breakout_cfg.eia_min_impulse_atr else None,
+                impulse_range_high=float(breakout_cfg.eia_impulse_range_high) if breakout_cfg.eia_impulse_range_high else None,
+                impulse_range_low=float(breakout_cfg.eia_impulse_range_low) if breakout_cfg.eia_impulse_range_low else None,
+                required_impulse_strength=float(breakout_cfg.eia_required_impulse_strength),
+                reversion_window_min_sec=breakout_cfg.eia_reversion_window_min_sec,
+                reversion_window_max_sec=breakout_cfg.eia_reversion_window_max_sec,
+                max_impulse_duration_min=breakout_cfg.eia_max_impulse_duration_min,
+            )
+            
         except AssetBreakoutConfig.DoesNotExist:
             # Use defaults if no breakout config exists
             breakout = BreakoutConfig()
+            eia = EiaConfig()
         
         return StrategyConfig(
             breakout=breakout,
-            eia=EiaConfig(),  # EIA config handled via event configs
+            eia=eia,
             default_epic=self.epic,
             tick_size=float(self.tick_size),
         )
@@ -135,6 +203,14 @@ class AssetBreakoutConfig(models.Model):
     
     Defines range formation parameters, breakout candle requirements,
     and timing windows for the breakout strategy.
+    
+    Extended to support:
+    - London Core Range
+    - EIA Pre/Post parameters
+    - Candle Quality filters
+    - Advanced filters (Momentum, Volatility)
+    - ATR extensions
+    - Wick ratio filters
     """
     
     asset = models.OneToOneField(
@@ -144,7 +220,9 @@ class AssetBreakoutConfig(models.Model):
         help_text='Asset this configuration belongs to'
     )
     
+    # =========================================================================
     # Asia Range Configuration
+    # =========================================================================
     asia_range_start = models.CharField(
         max_length=5,
         default='00:00',
@@ -166,7 +244,33 @@ class AssetBreakoutConfig(models.Model):
         help_text='Maximum range height in ticks for valid Asia range'
     )
     
+    # =========================================================================
+    # London Core Range Configuration (NEW)
+    # =========================================================================
+    london_range_start = models.CharField(
+        max_length=5,
+        default='08:00',
+        help_text='London Core range start time (UTC, HH:MM format)'
+    )
+    london_range_end = models.CharField(
+        max_length=5,
+        default='12:00',
+        help_text='London Core range end time (UTC, HH:MM format)'
+    )
+    london_min_range_ticks = models.PositiveIntegerField(
+        default=10,
+        validators=[MinValueValidator(1)],
+        help_text='Minimum range height in ticks for valid London Core range'
+    )
+    london_max_range_ticks = models.PositiveIntegerField(
+        default=200,
+        validators=[MinValueValidator(1)],
+        help_text='Maximum range height in ticks for valid London Core range'
+    )
+    
+    # =========================================================================
     # Pre-US / US Core Configuration
+    # =========================================================================
     pre_us_start = models.CharField(
         max_length=5,
         default='13:00',
@@ -188,7 +292,60 @@ class AssetBreakoutConfig(models.Model):
         help_text='Maximum range height in ticks for valid Pre-US range'
     )
     
+    # =========================================================================
+    # EIA Pre/Post Configuration (NEW)
+    # =========================================================================
+    eia_min_body_fraction = models.DecimalField(
+        max_digits=4,
+        decimal_places=2,
+        default=Decimal('0.60'),
+        validators=[MinValueValidator(Decimal('0.00')), MaxValueValidator(Decimal('1.00'))],
+        help_text='Minimum body size for EIA impulse candles (0.0-1.0)'
+    )
+    eia_min_impulse_atr = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text='Minimum ATR multiplier for EIA impulse moves'
+    )
+    eia_impulse_range_high = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text='Maximum price movement for impulse range high'
+    )
+    eia_impulse_range_low = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text='Minimum price movement for impulse range low'
+    )
+    eia_required_impulse_strength = models.DecimalField(
+        max_digits=4,
+        decimal_places=2,
+        default=Decimal('0.50'),
+        validators=[MinValueValidator(Decimal('0.00')), MaxValueValidator(Decimal('1.00'))],
+        help_text='Required impulse strength (0.0-1.0)'
+    )
+    eia_reversion_window_min_sec = models.PositiveIntegerField(
+        default=30,
+        help_text='Minimum seconds for reversion window'
+    )
+    eia_reversion_window_max_sec = models.PositiveIntegerField(
+        default=300,
+        help_text='Maximum seconds for reversion window (5 minutes default)'
+    )
+    eia_max_impulse_duration_min = models.PositiveIntegerField(
+        default=5,
+        help_text='Maximum impulse duration in minutes after event'
+    )
+    
+    # =========================================================================
     # Breakout Candle Requirements
+    # =========================================================================
     min_breakout_body_fraction = models.DecimalField(
         max_digits=4,
         decimal_places=2,
@@ -196,8 +353,87 @@ class AssetBreakoutConfig(models.Model):
         validators=[MinValueValidator(Decimal('0.00')), MaxValueValidator(Decimal('1.00'))],
         help_text='Minimum candle body size as fraction of range height (0.0-1.0)'
     )
+    max_breakout_body_fraction = models.DecimalField(
+        max_digits=4,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal('0.00')), MaxValueValidator(Decimal('1.00'))],
+        help_text='Maximum candle body size as fraction of range height (0.0-1.0)'
+    )
+    min_breakout_distance_ticks = models.PositiveIntegerField(
+        default=1,
+        help_text='Minimum distance from range in ticks for valid breakout'
+    )
     
-    # Optional ATR-based filters
+    # =========================================================================
+    # Candle Quality Filters (NEW)
+    # =========================================================================
+    min_wick_ratio = models.DecimalField(
+        max_digits=4,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal('0.00'))],
+        help_text='Minimum body-to-wick ratio for quality candles'
+    )
+    max_wick_ratio = models.DecimalField(
+        max_digits=4,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal('0.00'))],
+        help_text='Maximum body-to-wick ratio for quality candles'
+    )
+    min_candle_body_absolute = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text='Minimum absolute candle body size (e.g., 0.05 USD)'
+    )
+    max_spread_ticks = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text='Maximum allowed spread in ticks'
+    )
+    filter_doji_breakouts = models.BooleanField(
+        default=True,
+        help_text='Filter out doji candle breakouts (very small body)'
+    )
+    
+    # =========================================================================
+    # Trend and Structure Filters (NEW)
+    # =========================================================================
+    consecutive_candle_filter = models.PositiveIntegerField(
+        default=0,
+        help_text='Number of consecutive candles required in breakout direction (0=disabled)'
+    )
+    momentum_threshold = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text='Minimum momentum threshold for valid setups'
+    )
+    volatility_throttle_min_atr = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text='Only trade when ATR > this value (volatility throttle)'
+    )
+    session_volatility_cap = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text='Only trade breakouts when session range < this value'
+    )
+    
+    # =========================================================================
+    # ATR Configuration (Extended)
+    # =========================================================================
     require_atr_minimum = models.BooleanField(
         default=False,
         help_text='Whether to require minimum ATR for valid setups'
@@ -209,8 +445,28 @@ class AssetBreakoutConfig(models.Model):
         blank=True,
         help_text='Minimum ATR value if required'
     )
+    max_atr_value = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text='Maximum ATR value (for too volatile days)'
+    )
     
+    # =========================================================================
+    # Volume Configuration (NEW - for future use with stocks/CFDs)
+    # =========================================================================
+    min_volume_spike = models.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text='Minimum volume spike multiplier for breakouts (e.g., 1.5 = 150% of avg)'
+    )
+    
+    # =========================================================================
     # Timestamps
+    # =========================================================================
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
