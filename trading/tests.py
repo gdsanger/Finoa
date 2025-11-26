@@ -5,7 +5,7 @@ from decimal import Decimal
 from datetime import timedelta
 import uuid
 
-from .models import Signal, Trade, WorkerStatus
+from .models import Signal, Trade, WorkerStatus, TradingAsset, AssetBreakoutConfig, AssetEventConfig
 
 
 class SignalModelTest(TestCase):
@@ -841,3 +841,337 @@ class WorkerStatusDiagnosticsTest(TestCase):
         )
         
         self.assertEqual(status.diagnostic_criteria, [])
+
+
+# =============================================================================
+# Trading Asset Tests
+# =============================================================================
+
+class TradingAssetModelTest(TestCase):
+    """Tests for TradingAsset model."""
+    
+    def test_asset_creation(self):
+        """Test basic trading asset creation."""
+        asset = TradingAsset.objects.create(
+            name='US Crude Oil',
+            symbol='CL',
+            epic='CC.D.CL.UNC.IP',
+            category='commodity',
+            tick_size=Decimal('0.01'),
+            is_active=True,
+        )
+        
+        self.assertEqual(asset.name, 'US Crude Oil')
+        self.assertEqual(asset.symbol, 'CL')
+        self.assertEqual(asset.epic, 'CC.D.CL.UNC.IP')
+        self.assertTrue(asset.is_active)
+    
+    def test_asset_str_representation(self):
+        """Test asset string representation."""
+        asset = TradingAsset.objects.create(
+            name='Gold',
+            symbol='GOLD',
+            epic='CC.D.GOLD.UNC.IP',
+            is_active=True,
+        )
+        
+        self.assertIn('Gold', str(asset))
+        self.assertIn('GOLD', str(asset))
+        self.assertIn('✓', str(asset))
+    
+    def test_asset_inactive_str_representation(self):
+        """Test inactive asset string representation."""
+        asset = TradingAsset.objects.create(
+            name='Silver',
+            symbol='SILVER',
+            epic='CC.D.SILVER.UNC.IP',
+            is_active=False,
+        )
+        
+        self.assertIn('✗', str(asset))
+    
+    def test_asset_epic_unique(self):
+        """Test that EPIC must be unique."""
+        TradingAsset.objects.create(
+            name='WTI',
+            symbol='CL',
+            epic='CC.D.CL.UNC.IP',
+        )
+        
+        with self.assertRaises(Exception):
+            TradingAsset.objects.create(
+                name='WTI Duplicate',
+                symbol='CL2',
+                epic='CC.D.CL.UNC.IP',  # Same EPIC
+            )
+
+
+class AssetBreakoutConfigTest(TestCase):
+    """Tests for AssetBreakoutConfig model."""
+    
+    def test_breakout_config_creation(self):
+        """Test breakout config creation."""
+        asset = TradingAsset.objects.create(
+            name='WTI',
+            symbol='CL',
+            epic='CC.D.CL.UNC.IP',
+        )
+        
+        config = AssetBreakoutConfig.objects.create(
+            asset=asset,
+            asia_range_start='00:00',
+            asia_range_end='08:00',
+            asia_min_range_ticks=10,
+            asia_max_range_ticks=200,
+        )
+        
+        self.assertEqual(config.asset, asset)
+        self.assertEqual(config.asia_range_start, '00:00')
+        self.assertEqual(config.asia_min_range_ticks, 10)
+    
+    def test_breakout_config_one_to_one(self):
+        """Test that each asset can have only one breakout config."""
+        asset = TradingAsset.objects.create(
+            name='WTI',
+            symbol='CL',
+            epic='CC.D.CL.UNC.IP',
+        )
+        
+        AssetBreakoutConfig.objects.create(asset=asset)
+        
+        with self.assertRaises(Exception):
+            AssetBreakoutConfig.objects.create(asset=asset)
+
+
+class AssetEventConfigTest(TestCase):
+    """Tests for AssetEventConfig model."""
+    
+    def test_event_config_creation(self):
+        """Test event config creation."""
+        asset = TradingAsset.objects.create(
+            name='WTI',
+            symbol='CL',
+            epic='CC.D.CL.UNC.IP',
+        )
+        
+        config = AssetEventConfig.objects.create(
+            asset=asset,
+            phase='EIA_POST',
+            event_type='EIA',
+            is_required=True,
+        )
+        
+        self.assertEqual(config.asset, asset)
+        self.assertEqual(config.phase, 'EIA_POST')
+        self.assertEqual(config.event_type, 'EIA')
+        self.assertTrue(config.is_required)
+    
+    def test_event_config_unique_per_phase(self):
+        """Test that each asset can have only one config per phase."""
+        asset = TradingAsset.objects.create(
+            name='WTI',
+            symbol='CL',
+            epic='CC.D.CL.UNC.IP',
+        )
+        
+        AssetEventConfig.objects.create(
+            asset=asset,
+            phase='EIA_POST',
+            event_type='EIA',
+        )
+        
+        with self.assertRaises(Exception):
+            AssetEventConfig.objects.create(
+                asset=asset,
+                phase='EIA_POST',  # Same phase
+                event_type='NONE',
+            )
+    
+    def test_event_config_multiple_phases(self):
+        """Test that asset can have configs for different phases."""
+        asset = TradingAsset.objects.create(
+            name='WTI',
+            symbol='CL',
+            epic='CC.D.CL.UNC.IP',
+        )
+        
+        config1 = AssetEventConfig.objects.create(
+            asset=asset,
+            phase='LONDON_CORE',
+            event_type='NONE',
+        )
+        
+        config2 = AssetEventConfig.objects.create(
+            asset=asset,
+            phase='US_CORE',
+            event_type='US_OPEN',
+        )
+        
+        self.assertEqual(asset.event_configs.count(), 2)
+
+
+class AssetManagementViewTest(TestCase):
+    """Tests for Asset Management Views."""
+    
+    def setUp(self):
+        """Set up test user and client."""
+        self.user = User.objects.create_user(
+            username='testuser',
+            password='testpass123'
+        )
+        self.client.login(username='testuser', password='testpass123')
+    
+    def test_asset_list_accessible(self):
+        """Test that asset list is accessible."""
+        response = self.client.get('/fiona/assets/')
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'trading/asset_list.html')
+    
+    def test_asset_list_shows_assets(self):
+        """Test that asset list shows existing assets."""
+        asset = TradingAsset.objects.create(
+            name='WTI',
+            symbol='CL',
+            epic='CC.D.CL.UNC.IP',
+            is_active=True,
+        )
+        
+        response = self.client.get('/fiona/assets/')
+        self.assertContains(response, 'WTI')
+        self.assertContains(response, 'CL')
+    
+    def test_asset_create_get(self):
+        """Test that asset create form is accessible."""
+        response = self.client.get('/fiona/assets/create/')
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'trading/asset_form.html')
+    
+    def test_asset_create_post(self):
+        """Test creating a new asset."""
+        response = self.client.post('/fiona/assets/create/', {
+            'name': 'Gold',
+            'symbol': 'GOLD',
+            'epic': 'CC.D.GOLD.UNC.IP',
+            'category': 'commodity',
+            'tick_size': '0.01',
+            'is_active': 'on',
+        })
+        
+        # Should redirect to asset detail on success
+        self.assertEqual(response.status_code, 302)
+        
+        # Asset should be created
+        asset = TradingAsset.objects.get(epic='CC.D.GOLD.UNC.IP')
+        self.assertEqual(asset.name, 'Gold')
+        self.assertTrue(asset.is_active)
+        
+        # Breakout config should be created automatically
+        self.assertTrue(hasattr(asset, 'breakout_config'))
+    
+    def test_asset_detail_accessible(self):
+        """Test that asset detail is accessible."""
+        asset = TradingAsset.objects.create(
+            name='WTI',
+            symbol='CL',
+            epic='CC.D.CL.UNC.IP',
+        )
+        
+        response = self.client.get(f'/fiona/assets/{asset.id}/')
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'trading/asset_detail.html')
+        self.assertContains(response, 'WTI')
+    
+    def test_asset_toggle_active(self):
+        """Test toggling asset active status."""
+        asset = TradingAsset.objects.create(
+            name='WTI',
+            symbol='CL',
+            epic='CC.D.CL.UNC.IP',
+            is_active=True,
+        )
+        
+        response = self.client.post(f'/fiona/assets/{asset.id}/toggle-active/')
+        self.assertEqual(response.status_code, 200)
+        
+        asset.refresh_from_db()
+        self.assertFalse(asset.is_active)
+    
+    def test_api_active_assets(self):
+        """Test API endpoint for active assets."""
+        TradingAsset.objects.create(
+            name='WTI',
+            symbol='CL',
+            epic='CC.D.CL.UNC.IP',
+            is_active=True,
+        )
+        TradingAsset.objects.create(
+            name='Gold',
+            symbol='GOLD',
+            epic='CC.D.GOLD.UNC.IP',
+            is_active=False,
+        )
+        
+        response = self.client.get('/fiona/api/assets/')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['count'], 1)  # Only active assets
+        self.assertEqual(data['assets'][0]['epic'], 'CC.D.CL.UNC.IP')
+
+
+class SignalWithAssetTest(TestCase):
+    """Tests for Signal model with TradingAsset reference."""
+    
+    def test_signal_with_trading_asset(self):
+        """Test that signal can reference a trading asset."""
+        asset = TradingAsset.objects.create(
+            name='WTI',
+            symbol='CL',
+            epic='CC.D.CL.UNC.IP',
+        )
+        
+        signal = Signal.objects.create(
+            setup_type='BREAKOUT',
+            session_phase='LONDON_CORE',
+            instrument='CL',
+            direction='LONG',
+            trading_asset=asset,
+        )
+        
+        self.assertEqual(signal.trading_asset, asset)
+        self.assertEqual(signal.trading_asset.name, 'WTI')
+    
+    def test_signal_without_trading_asset(self):
+        """Test that signal can be created without trading asset (backwards compat)."""
+        signal = Signal.objects.create(
+            setup_type='BREAKOUT',
+            session_phase='LONDON_CORE',
+            instrument='CL',
+            direction='LONG',
+        )
+        
+        self.assertIsNone(signal.trading_asset)
+    
+    def test_asset_signals_related_name(self):
+        """Test that we can access signals from asset via related name."""
+        asset = TradingAsset.objects.create(
+            name='WTI',
+            symbol='CL',
+            epic='CC.D.CL.UNC.IP',
+        )
+        
+        Signal.objects.create(
+            setup_type='BREAKOUT',
+            session_phase='LONDON_CORE',
+            direction='LONG',
+            trading_asset=asset,
+        )
+        Signal.objects.create(
+            setup_type='BREAKOUT',
+            session_phase='US_CORE',
+            direction='SHORT',
+            trading_asset=asset,
+        )
+        
+        self.assertEqual(asset.signals.count(), 2)

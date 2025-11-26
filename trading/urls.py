@@ -12,10 +12,22 @@ urlpatterns = [
     path('signals/<str:signal_id>/shadow/', views.execute_shadow_trade, name='execute_shadow_trade'),
     path('signals/<str:signal_id>/reject/', views.reject_signal, name='reject_signal'),
     
+    # Asset Management
+    path('assets/', views.asset_list, name='asset_list'),
+    path('assets/create/', views.asset_create, name='asset_create'),
+    path('assets/<int:asset_id>/', views.asset_detail, name='asset_detail'),
+    path('assets/<int:asset_id>/edit/', views.asset_edit, name='asset_edit'),
+    path('assets/<int:asset_id>/toggle-active/', views.asset_toggle_active, name='asset_toggle_active'),
+    path('assets/<int:asset_id>/breakout-config/', views.breakout_config_edit, name='breakout_config_edit'),
+    path('assets/<int:asset_id>/event-config/', views.event_config_edit, name='event_config_create'),
+    path('assets/<int:asset_id>/event-config/<str:phase>/', views.event_config_edit, name='event_config_edit'),
+    path('assets/<int:asset_id>/event-config/<str:phase>/delete/', views.event_config_delete, name='event_config_delete'),
+    
     # API Endpoints
     path('api/signals/', views.api_signals, name='api_signals'),
     path('api/signals/since/<str:since>/', views.api_signals_since, name='api_signals_since'),
     path('api/trade/<str:signal_id>/', views.api_signal_detail, name='api_signal_detail'),
     path('api/account-state/', views.api_account_state, name='api_account_state'),
     path('api/worker/status/', views.api_worker_status, name='api_worker_status'),
+    path('api/assets/', views.api_active_assets, name='api_active_assets'),
 ]

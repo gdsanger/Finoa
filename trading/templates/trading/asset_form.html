@@ -1,0 +1,172 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Fiona - {% if asset %}{{ asset.name }} bearbeiten{% else %}Neues Asset{% endif %}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'signal_dashboard' %}">Fiona Trading</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'asset_list' %}">Assets</a></li>
+            <li class="breadcrumb-item active" aria-current="page">
+                {% if asset %}{{ asset.name }} bearbeiten{% else %}Neues Asset{% endif %}
+            </li>
+        </ol>
+    </nav>
+    
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3 mb-0">
+            {% if asset %}
+                <i class="bi bi-pencil"></i> {{ asset.name }} bearbeiten
+            {% else %}
+                <i class="bi bi-plus-lg"></i> Neues Trading Asset
+            {% endif %}
+        </h1>
+    </div>
+    
+    <!-- Form -->
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+                        
+                        <h5 class="mb-3">Grunddaten</h5>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="name" class="form-label">Name <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="name" name="name" 
+                                       value="{% if asset %}{{ asset.name }}{% endif %}"
+                                       placeholder="z.B. US Crude Oil" required>
+                                <small class="form-text text-muted">Anzeigename für das Asset</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="symbol" class="form-label">Symbol <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="symbol" name="symbol"
+                                       value="{% if asset %}{{ asset.symbol }}{% endif %}"
+                                       placeholder="z.B. CL" required>
+                                <small class="form-text text-muted">Kurzbezeichnung (z.B. CL, GOLD, NAS100)</small>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-8">
+                                <label for="epic" class="form-label">Broker EPIC <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control font-monospace" id="epic" name="epic"
+                                       value="{% if asset %}{{ asset.epic }}{% endif %}"
+                                       placeholder="z.B. CC.D.CL.UNC.IP" required>
+                                <small class="form-text text-muted">EPIC/Symbol für Broker-API (muss eindeutig sein)</small>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="category" class="form-label">Kategorie</label>
+                                <select class="form-select" id="category" name="category">
+                                    {% for value, label in categories %}
+                                        <option value="{{ value }}" {% if asset and asset.category == value %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <hr class="my-4">
+                        
+                        <h5 class="mb-3">Trading-Parameter</h5>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label for="tick_size" class="form-label">Tick Size</label>
+                                <input type="number" class="form-control" id="tick_size" name="tick_size"
+                                       value="{% if asset %}{{ asset.tick_size }}{% else %}0.01{% endif %}"
+                                       step="0.000001" min="0.000001">
+                                <small class="form-text text-muted">Minimale Preisbewegung</small>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="strategy_type" class="form-label">Strategie</label>
+                                <select class="form-select" id="strategy_type" name="strategy_type" disabled>
+                                    {% for value, label in strategy_types %}
+                                        <option value="{{ value }}" {% if asset and asset.strategy_type == value %}selected{% elif not asset and value == 'breakout_event' %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                                <small class="form-text text-muted">Derzeit nur Breakout+Event verfügbar</small>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label d-block">&nbsp;</label>
+                                <div class="form-check form-switch pt-2">
+                                    <input class="form-check-input" type="checkbox" id="is_active" name="is_active"
+                                           {% if asset.is_active or not asset %}checked{% endif %}>
+                                    <label class="form-check-label" for="is_active">
+                                        Asset ist aktiv
+                                    </label>
+                                </div>
+                                <small class="form-text text-muted">Aktive Assets werden vom Worker gehandelt</small>
+                            </div>
+                        </div>
+                        
+                        <hr class="my-4">
+                        
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-check-lg"></i> 
+                                {% if asset %}Speichern{% else %}Asset erstellen{% endif %}
+                            </button>
+                            <a href="{% if asset %}{% url 'asset_detail' asset.id %}{% else %}{% url 'asset_list' %}{% endif %}" class="btn btn-outline-secondary">
+                                Abbrechen
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Help Panel -->
+        <div class="col-lg-4">
+            <div class="card bg-light">
+                <div class="card-body">
+                    <h6><i class="bi bi-lightbulb"></i> Hinweise</h6>
+                    <ul class="small text-muted mb-0">
+                        <li class="mb-2">
+                            <strong>EPIC:</strong> Der Broker-spezifische Identifier für das Asset. 
+                            Für IG Markets z.B. <code>CC.D.CL.UNC.IP</code> für WTI Crude.
+                        </li>
+                        <li class="mb-2">
+                            <strong>Tick Size:</strong> Die minimale Preisbewegung. 
+                            Für WTI Crude typischerweise <code>0.01</code>.
+                        </li>
+                        <li class="mb-2">
+                            <strong>Kategorie:</strong> Dient zur Gruppierung in der Asset-Übersicht.
+                        </li>
+                        <li>
+                            <strong>Status:</strong> Nur aktive Assets werden vom Worker verarbeitet.
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            
+            {% if asset %}
+            <div class="card mt-3">
+                <div class="card-body">
+                    <h6><i class="bi bi-clock-history"></i> Metadaten</h6>
+                    <table class="table table-sm small mb-0">
+                        <tr>
+                            <td class="text-muted">Erstellt:</td>
+                            <td>{{ asset.created_at|date:"d.m.Y H:i" }}</td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">Geändert:</td>
+                            <td>{{ asset.updated_at|date:"d.m.Y H:i" }}</td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">ID:</td>
+                            <td><code>{{ asset.id }}</code></td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

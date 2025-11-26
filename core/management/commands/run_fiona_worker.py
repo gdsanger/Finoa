@@ -86,7 +86,12 @@ class Command(BaseCommand):
             '--epic',
             type=str,
             default='CC.D.CL.UNC.IP',
-            help='Market EPIC to trade (default: CC.D.CL.UNC.IP for WTI Crude)'
+            help='Market EPIC to trade (default: CC.D.CL.UNC.IP for WTI Crude). Ignored if --multi-asset is used.'
+        )
+        parser.add_argument(
+            '--multi-asset',
+            action='store_true',
+            help='Process all active assets from the database instead of a single EPIC'
         )
         parser.add_argument(
             '--verbose',
@@ -114,6 +119,7 @@ class Command(BaseCommand):
         interval = options['interval']
         shadow_only = options['shadow_only']
         epic = options['epic']
+        multi_asset = options['multi_asset']
         verbose = options['verbose']
         dry_run = options['dry_run']
         run_once = options['once']
@@ -125,9 +131,12 @@ class Command(BaseCommand):
             logging.getLogger(__name__).setLevel(logging.DEBUG)
         
         self.stdout.write(self.style.SUCCESS("=" * 60))
-        self.stdout.write(self.style.SUCCESS("Fiona Worker v1.0 - Starting"))
+        self.stdout.write(self.style.SUCCESS("Fiona Worker v1.1 - Multi-Asset Support"))
         self.stdout.write(self.style.SUCCESS("=" * 60))
-        self.stdout.write(f"Epic: {epic}")
+        if multi_asset:
+            self.stdout.write("Mode: Multi-Asset (from database)")
+        else:
+            self.stdout.write(f"Epic: {epic}")
         self.stdout.write(f"Interval: {interval}s")
         self.stdout.write(f"Shadow Only: {shadow_only}")
         self.stdout.write(f"Dry Run: {dry_run}")
@@ -150,7 +159,10 @@ class Command(BaseCommand):
                     break
                 
                 try:
-                    self._run_cycle(epic, shadow_only, dry_run, interval)
+                    if multi_asset:
+                        self._run_multi_asset_cycle(shadow_only, dry_run, interval)
+                    else:
+                        self._run_cycle(epic, shadow_only, dry_run, interval)
                 except BrokerError as e:
                     self.stdout.write(self.style.ERROR(f"Broker error: {e}"))
                     logger.exception("Broker error in main loop")
@@ -356,6 +368,163 @@ class Command(BaseCommand):
         for setup in setups:
             self._process_setup(setup, shadow_only, dry_run, now)
     
+    def _run_multi_asset_cycle(self, shadow_only: bool, dry_run: bool, worker_interval: int = 60) -> None:
+        """
+        Run one cycle processing all active assets from the database.
+        
+        This method iterates over all TradingAssets marked as active and
+        runs the strategy evaluation for each one using asset-specific configurations.
+        """
+        from trading.models import TradingAsset
+        
+        now = datetime.now(timezone.utc)
+        
+        # Load all active assets
+        active_assets = TradingAsset.objects.filter(is_active=True).prefetch_related(
+            'breakout_config', 'event_configs'
+        )
+        
+        asset_count = active_assets.count()
+        if asset_count == 0:
+            self.stdout.write(self.style.WARNING(
+                f"\n[{now.strftime('%H:%M:%S')} UTC] No active assets found in database"
+            ))
+            self._update_worker_status(
+                now=now,
+                phase=SessionPhase.OTHER,
+                epic='N/A',
+                setup_count=0,
+                bid_price=None,
+                ask_price=None,
+                spread=None,
+                diagnostic_message='No active assets configured in database',
+                diagnostic_criteria=[{
+                    'name': 'Active Assets',
+                    'passed': False,
+                    'detail': 'Please configure at least one active asset in the UI'
+                }],
+                worker_interval=worker_interval,
+            )
+            return
+        
+        self.stdout.write(f"\n[{now.strftime('%H:%M:%S')} UTC] Processing {asset_count} active asset(s)")
+        
+        total_setups = 0
+        processed_epics = []
+        
+        # Process each active asset
+        for asset in active_assets:
+            self.stdout.write(f"\n  📈 Asset: {asset.name} ({asset.symbol})")
+            self.stdout.write(f"     EPIC: {asset.epic}")
+            
+            try:
+                # Get asset-specific strategy config
+                strategy_config = asset.get_strategy_config()
+                
+                # Create a new strategy engine with this asset's config
+                asset_strategy_engine = StrategyEngine(
+                    market_state=self.market_state_provider,
+                    config=strategy_config,
+                )
+                
+                # Run cycle for this asset
+                setups_found = self._run_asset_cycle(
+                    asset=asset,
+                    strategy_engine=asset_strategy_engine,
+                    shadow_only=shadow_only,
+                    dry_run=dry_run,
+                    now=now,
+                )
+                
+                total_setups += setups_found
+                processed_epics.append(asset.epic)
+                
+            except Exception as e:
+                self.stdout.write(self.style.ERROR(f"     ✗ Error processing asset: {e}"))
+                logger.exception(f"Error processing asset {asset.epic}")
+        
+        # Update worker status with summary
+        phase = self.market_state_provider.get_phase(now)
+        self._update_worker_status(
+            now=now,
+            phase=phase,
+            epic=f"{asset_count} assets",  # Show count instead of single epic
+            setup_count=total_setups,
+            bid_price=None,
+            ask_price=None,
+            spread=None,
+            diagnostic_message=f"Processed {asset_count} assets: {', '.join(processed_epics)}",
+            diagnostic_criteria=[{
+                'name': f'Active Assets ({asset_count})',
+                'passed': True,
+                'detail': ', '.join(processed_epics)
+            }],
+            worker_interval=worker_interval,
+        )
+    
+    def _run_asset_cycle(
+        self,
+        asset,
+        strategy_engine: StrategyEngine,
+        shadow_only: bool,
+        dry_run: bool,
+        now: datetime
+    ) -> int:
+        """
+        Run strategy evaluation for a single asset.
+        
+        Args:
+            asset: TradingAsset instance
+            strategy_engine: Strategy engine configured for this asset
+            shadow_only: Whether to only create shadow trades
+            dry_run: Whether to skip trade execution
+            now: Current timestamp
+            
+        Returns:
+            Number of setups found
+        """
+        epic = asset.epic
+        
+        # 1. Determine session phase
+        phase = self.market_state_provider.get_phase(now)
+        self.stdout.write(f"     Phase: {phase.value}")
+        
+        # 2. Update candle cache with current price
+        try:
+            self.market_state_provider.update_candle_from_price(epic)
+        except Exception as e:
+            logger.warning(f"Failed to update candle for {epic}: {e}")
+        
+        # 3. Get current price for logging
+        try:
+            price = self.broker_service.get_symbol_price(epic)
+            self.stdout.write(f"     Price: {price.bid}/{price.ask}")
+        except Exception as e:
+            self.stdout.write(self.style.WARNING(f"     Could not get price: {e}"))
+        
+        # 4. Skip if not in tradeable phase
+        if phase in [SessionPhase.FRIDAY_LATE, SessionPhase.OTHER]:
+            self.stdout.write("     → Phase not tradeable, skipping")
+            return 0
+        
+        # 5. Run Strategy Engine
+        try:
+            setups = strategy_engine.evaluate(epic, now)
+            self.stdout.write(f"     Found {len(setups)} setup(s)")
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f"     Strategy error: {e}"))
+            logger.exception(f"Strategy evaluation failed for {epic}")
+            return 0
+        
+        if not setups:
+            return 0
+        
+        # 6. Process each setup
+        for setup in setups:
+            self._process_setup(setup, shadow_only, dry_run, now, trading_asset=asset)
+        
+        return len(setups)
+    
     def _update_worker_status(
         self,
         now: datetime,
@@ -387,8 +556,16 @@ class Command(BaseCommand):
         except Exception as e:
             logger.warning(f"Failed to update worker status: {e}")
 
-    def _process_setup(self, setup, shadow_only: bool, dry_run: bool, now: datetime) -> None:
-        """Process a single setup through risk and execution."""
+    def _process_setup(self, setup, shadow_only: bool, dry_run: bool, now: datetime, trading_asset=None) -> None:
+        """Process a single setup through risk and execution.
+        
+        Args:
+            setup: SetupCandidate from Strategy Engine
+            shadow_only: Whether to only create shadow trades
+            dry_run: Whether to skip trade execution
+            now: Current timestamp
+            trading_asset: Optional TradingAsset model instance for linking signals
+        """
         self.stdout.write(
             f"\n  Setup: {setup.setup_kind.value} {setup.direction} @ {setup.reference_price}"
         )
