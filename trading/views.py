@@ -1234,3 +1234,176 @@ def api_breakout_range_latest(request, asset_id):
             'success': False,
             'error': f'Fehler beim Abrufen der aktuellen Ranges: {str(e)}',
         }, status=500)
+
+
+# ============================================================================
+# Trading Diagnostics Views
+# ============================================================================
+
+@login_required
+def diagnostics_view(request):
+    """
+    Trading Diagnostics View - Sanity & Confidence Layer.
+    
+    Displays diagnostic information for all active trading assets including:
+    - Current phase and trading mode
+    - Last worker cycle timestamp
+    - Counters (candles, ranges, setups, orders)
+    - Top rejection reason codes
+    
+    This is a separate page from the main dashboard, designed for
+    mobile-friendly access to understand why (not) trading is happening.
+    """
+    from .models import TradingAsset, AssetDiagnostics
+    from datetime import timedelta
+    
+    # Get time window from request (default: 60 minutes)
+    window = request.GET.get('window', '60')
+    try:
+        window_minutes = int(window)
+    except ValueError:
+        window_minutes = 60
+    
+    # Limit window to reasonable values
+    if window_minutes < 1:
+        window_minutes = 15
+    elif window_minutes > 1440:  # Max 24 hours
+        window_minutes = 1440
+    
+    # Calculate time window
+    now = timezone.now()
+    window_start = now - timedelta(minutes=window_minutes)
+    
+    # Get all active assets
+    assets = TradingAsset.objects.filter(is_active=True).prefetch_related('diagnostics')
+    
+    # Build diagnostics data for each asset
+    asset_diagnostics = []
+    for asset in assets:
+        # Get aggregated diagnostics for the time window
+        diagnostics_data = AssetDiagnostics.get_aggregated_for_period(
+            asset, window_start, now
+        )
+        
+        # Add asset info
+        diagnostics_data['asset'] = asset
+        asset_diagnostics.append(diagnostics_data)
+    
+    context = {
+        'asset_diagnostics': asset_diagnostics,
+        'window_minutes': window_minutes,
+        'window_start': window_start,
+        'window_end': now,
+        'window_options': [
+            {'value': 15, 'label': 'Letzte 15 Min'},
+            {'value': 60, 'label': 'Letzte 60 Min'},
+            {'value': 240, 'label': 'Letzte 4 Std'},
+            {'value': 1440, 'label': 'Heute (24h)'},
+        ],
+    }
+    
+    return render(request, 'trading/diagnostics.html', context)
+
+
+@login_required
+def api_diagnostics(request):
+    """
+    GET /api/trading/diagnostics/ - Return diagnostics data for all active assets.
+    
+    Query parameters:
+        asset: Optional asset ID to filter for a specific asset
+        window: Time window in minutes (15, 60, 240, 1440) - default: 60
+    
+    Returns JSON with diagnostics data for each asset including:
+    - Current phase and trading mode
+    - Last cycle timestamp
+    - Counters (candles, ranges, setups, orders)
+    - Top rejection reason codes
+    """
+    from .models import TradingAsset, AssetDiagnostics
+    from datetime import timedelta
+    
+    try:
+        # Get query parameters
+        asset_id = request.GET.get('asset')
+        window = request.GET.get('window', '60')
+        
+        try:
+            window_minutes = int(window)
+        except ValueError:
+            window_minutes = 60
+        
+        # Limit window to reasonable values
+        if window_minutes < 1:
+            window_minutes = 15
+        elif window_minutes > 1440:  # Max 24 hours
+            window_minutes = 1440
+        
+        # Calculate time window
+        now = timezone.now()
+        window_start = now - timedelta(minutes=window_minutes)
+        
+        # Get assets
+        if asset_id:
+            try:
+                assets = TradingAsset.objects.filter(id=asset_id, is_active=True)
+            except ValueError:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Invalid asset ID',
+                }, status=400)
+        else:
+            assets = TradingAsset.objects.filter(is_active=True)
+        
+        # Build diagnostics data for each asset
+        diagnostics_list = []
+        for asset in assets:
+            diagnostics_data = AssetDiagnostics.get_aggregated_for_period(
+                asset, window_start, now
+            )
+            # Add additional asset info
+            diagnostics_data['asset_symbol'] = asset.symbol
+            diagnostics_data['asset_name'] = asset.name
+            diagnostics_data['asset_epic'] = asset.epic
+            diagnostics_list.append(diagnostics_data)
+        
+        return JsonResponse({
+            'success': True,
+            'window_start': window_start.isoformat(),
+            'window_end': now.isoformat(),
+            'window_minutes': window_minutes,
+            'count': len(diagnostics_list),
+            'diagnostics': diagnostics_list,
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching diagnostics: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': f'Fehler beim Abrufen der Diagnostics: {str(e)}',
+        }, status=500)
+
+
+@login_required
+@require_http_methods(['POST'])
+def asset_toggle_trading_mode(request, asset_id):
+    """
+    Toggle the trading mode of an asset between STRICT and DIAGNOSTIC via HTMX/AJAX.
+    """
+    from .models import TradingAsset
+    
+    asset = get_object_or_404(TradingAsset, id=asset_id)
+    
+    # Toggle trading mode
+    if asset.trading_mode == 'STRICT':
+        asset.trading_mode = 'DIAGNOSTIC'
+    else:
+        asset.trading_mode = 'STRICT'
+    asset.save()
+    
+    return JsonResponse({
+        'success': True,
+        'trading_mode': asset.trading_mode,
+        'is_diagnostic': asset.is_diagnostic_mode,
+        'message': f'Trading Mode für "{asset.name}" auf {asset.get_trading_mode_display()} gesetzt.',
+    })

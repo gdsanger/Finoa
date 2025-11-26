@@ -73,10 +73,24 @@
                             <i class="bi bi-clock-history"></i> Zeiterfassung
                         </a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'signal_dashboard' %}">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="tradingDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="bi bi-graph-up-arrow text-success"></i> Fiona Trading
                         </a>
+                        <ul class="dropdown-menu" aria-labelledby="tradingDropdown">
+                            <li><a class="dropdown-item" href="{% url 'signal_dashboard' %}">
+                                <i class="bi bi-speedometer2"></i> Signal Dashboard
+                            </a></li>
+                            <li><a class="dropdown-item" href="{% url 'trading_diagnostics' %}">
+                                <i class="bi bi-activity"></i> Diagnostics
+                            </a></li>
+                            <li><a class="dropdown-item" href="{% url 'asset_list' %}">
+                                <i class="bi bi-box-seam"></i> Assets
+                            </a></li>
+                            <li><a class="dropdown-item" href="{% url 'trade_history' %}">
+                                <i class="bi bi-clock-history"></i> Historie
+                            </a></li>
+                        </ul>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'document_list' %}">
