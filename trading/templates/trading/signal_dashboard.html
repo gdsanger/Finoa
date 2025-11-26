@@ -1257,7 +1257,7 @@
         }) + ' UTC';
     }
     
-    function updateWorkerInfo(data) {
+    function updateWorkerInfo(data, isOnline) {
         // Update last activity
         const lastActivityEl = document.getElementById('worker-last-activity');
         if (lastActivityEl && data.last_run_at) {
@@ -1311,8 +1311,8 @@
             diagnosticEl.textContent = data.diagnostic_message || 'Keine Diagnose verfügbar';
         }
         
-        // Update countdown
-        updateCountdown(data.seconds_until_next_run, data.worker_interval);
+        // Update countdown - pass the isOnline status
+        updateCountdown(data.seconds_until_next_run, data.worker_interval, isOnline);
         
         // Update diagnostic criteria
         updateDiagnosticCriteria(data.diagnostic_criteria || []);
@@ -1322,19 +1322,30 @@
     let countdownInterval = null;
     let currentCountdownValue = 0;
     let workerInterval = 60;
+    let workerIsOnline = false;
     
-    function updateCountdown(secondsUntilNextRun, interval) {
+    function updateCountdown(secondsUntilNextRun, interval, isOnline) {
+        // Store worker online status
+        workerIsOnline = isOnline;
+        
         // Store worker interval for countdown reset
         workerInterval = interval || 60;
         currentCountdownValue = secondsUntilNextRun || 0;
         
-        // Display the initial countdown value
-        displayCountdownValue(currentCountdownValue);
-        
-        // Clear existing interval and start a new one
+        // Clear existing interval
         if (countdownInterval) {
             clearInterval(countdownInterval);
+            countdownInterval = null;
         }
+        
+        // Only show countdown if worker is online
+        if (!workerIsOnline) {
+            displayCountdownValue(-1); // Show offline state
+            return;
+        }
+        
+        // Display the initial countdown value
+        displayCountdownValue(currentCountdownValue);
         
         // Start countdown timer (updates every second)
         countdownInterval = setInterval(function() {
@@ -1352,6 +1363,12 @@
     function displayCountdownValue(seconds) {
         const countdownEl = document.getElementById('worker-countdown-value');
         if (countdownEl) {
+            if (seconds < 0) {
+                // Offline or no data state
+                countdownEl.textContent = '--';
+                countdownEl.classList.remove('imminent');
+                return;
+            }
             countdownEl.textContent = seconds + 's';
             // Add visual emphasis when countdown is imminent
             if (seconds <= 5) {
@@ -1398,16 +1415,28 @@
         criteriaListEl.innerHTML = html;
     }
     
+    // HTML escape using a lookup table for better security
+    const HTML_ESCAPE_MAP = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;',
+    };
+    
     function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
+        if (!text || typeof text !== 'string') {
+            return '';
+        }
+        return text.replace(/[&<>"']/g, function(match) {
+            return HTML_ESCAPE_MAP[match];
+        });
     }
     
     function showWorkerError(errorMessage) {
         const contentEl = document.getElementById('worker-status-content');
         if (contentEl) {
-            contentEl.innerHTML = '<div class="worker-status-error"><i class="bi bi-exclamation-triangle"></i> ' + errorMessage + '</div>';
+            contentEl.innerHTML = '<div class="worker-status-error"><i class="bi bi-exclamation-triangle"></i> ' + escapeHtml(errorMessage) + '</div>';
         }
     }
     
@@ -1486,18 +1515,20 @@
                     updateWorkerStatusIndicator('no-data', 'Keine Daten');
                     resetWorkerStatusGrid();
                     document.getElementById('worker-diagnostic-message').textContent = data.status_message;
+                    updateCountdown(0, 60, false);  // Stop countdown
                 } else if (data.worker_status === 'ONLINE') {
                     updateWorkerStatusIndicator('online', 'ONLINE');
                     resetWorkerStatusGrid();
-                    updateWorkerInfo(data.data);
+                    updateWorkerInfo(data.data, true);  // Pass isOnline = true
                 } else {
                     updateWorkerStatusIndicator('offline', 'OFFLINE');
                     resetWorkerStatusGrid();
-                    updateWorkerInfo(data.data);
+                    updateWorkerInfo(data.data, false);  // Pass isOnline = false
                 }
             } else {
                 updateWorkerStatusIndicator('offline', 'Fehler');
                 showWorkerError(data.status_message || 'Unbekannter Fehler');
+                updateCountdown(0, 60, false);  // Stop countdown
             }
         })
         .catch(error => {
@@ -1505,6 +1536,7 @@
             setWorkerRefreshButtonLoading(false);
             updateWorkerStatusIndicator('offline', 'Fehler');
             showWorkerError('Verbindungsfehler');
+            updateCountdown(0, 60, false);  // Stop countdown
         });
     }
     

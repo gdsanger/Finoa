@@ -210,7 +210,8 @@ class StrategyEngine:
         range_valid = self._is_valid_range(range_height, self.config.breakout.asia_range)
         min_ticks = self.config.breakout.asia_range.min_range_ticks
         max_ticks = self.config.breakout.asia_range.max_range_ticks
-        actual_ticks = range_height / self.config.tick_size
+        # Prevent division by zero
+        actual_ticks = range_height / self.config.tick_size if self.config.tick_size > 0 else 0
         
         result.criteria.append(DiagnosticCriterion(
             name="Range size valid",
@@ -329,7 +330,8 @@ class StrategyEngine:
         range_valid = self._is_valid_range(range_height, self.config.breakout.us_core)
         min_ticks = self.config.breakout.us_core.min_range_ticks
         max_ticks = self.config.breakout.us_core.max_range_ticks
-        actual_ticks = range_height / self.config.tick_size
+        # Prevent division by zero
+        actual_ticks = range_height / self.config.tick_size if self.config.tick_size > 0 else 0
         
         result.criteria.append(DiagnosticCriterion(
             name="Range size valid",
