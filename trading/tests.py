@@ -347,3 +347,174 @@ class APIEndpointsTest(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertTrue(response.url.startswith('/login/'))
 
+
+class APISignalsSinceTest(TestCase):
+    """Tests for the /api/signals/since/ endpoint."""
+    
+    def setUp(self):
+        self.user = User.objects.create_user(username='testuser', password='testpass')
+        self.client.login(username='testuser', password='testpass')
+    
+    def test_api_signals_since_returns_json(self):
+        """Test that API returns JSON with correct structure."""
+        from django.utils import timezone
+        
+        # Use a timestamp from the past
+        since = '2020-01-01T00:00:00Z'
+        response = self.client.get(f'/fiona/api/signals/since/{since}/')
+        
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/json')
+        
+        data = response.json()
+        self.assertIn('now', data)
+        self.assertIn('count', data)
+        self.assertIn('signals', data)
+        self.assertIsInstance(data['signals'], list)
+    
+    def test_api_signals_since_filters_by_timestamp(self):
+        """Test that endpoint correctly filters signals by created_at > since."""
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        # Create an old signal (before our 'since' timestamp)
+        old_signal = Signal.objects.create(
+            setup_type='BREAKOUT',
+            session_phase='LONDON_CORE',
+            direction='LONG',
+            trigger_price=Decimal('78.50'),
+            status='ACTIVE',
+        )
+        # Manually set created_at to a past date
+        old_signal.created_at = timezone.now() - timedelta(days=10)
+        old_signal.save(update_fields=['created_at'])
+        
+        # Create a new signal (after our 'since' timestamp)
+        new_signal = Signal.objects.create(
+            setup_type='EIA_REVERSION',
+            session_phase='US_CORE',
+            direction='SHORT',
+            trigger_price=Decimal('80.00'),
+            status='ACTIVE',
+        )
+        
+        # Use timestamp between old and new signal
+        since = (timezone.now() - timedelta(days=5)).isoformat()
+        response = self.client.get(f'/fiona/api/signals/since/{since}/')
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        # Should only contain the new signal
+        self.assertEqual(data['count'], 1)
+        self.assertEqual(len(data['signals']), 1)
+        self.assertEqual(data['signals'][0]['id'], str(new_signal.id))
+    
+    def test_api_signals_since_excludes_inactive_signals(self):
+        """Test that endpoint excludes non-ACTIVE signals."""
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        # Create an executed signal
+        Signal.objects.create(
+            setup_type='BREAKOUT',
+            session_phase='LONDON_CORE',
+            direction='LONG',
+            status='EXECUTED',
+        )
+        
+        # Create an active signal
+        active_signal = Signal.objects.create(
+            setup_type='BREAKOUT',
+            session_phase='LONDON_CORE',
+            direction='SHORT',
+            status='ACTIVE',
+        )
+        
+        since = (timezone.now() - timedelta(days=1)).isoformat()
+        response = self.client.get(f'/fiona/api/signals/since/{since}/')
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        # Should only contain the active signal
+        self.assertEqual(data['count'], 1)
+        self.assertEqual(data['signals'][0]['id'], str(active_signal.id))
+    
+    def test_api_signals_since_invalid_timestamp(self):
+        """Test that endpoint returns error for invalid timestamp."""
+        response = self.client.get('/fiona/api/signals/since/invalid-timestamp/')
+        
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertIn('error', data)
+    
+    def test_api_signals_since_requires_login(self):
+        """Test that endpoint requires login."""
+        self.client.logout()
+        response = self.client.get('/fiona/api/signals/since/2020-01-01T00:00:00Z/')
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.url.startswith('/login/'))
+    
+    def test_api_signals_since_returns_signal_details(self):
+        """Test that endpoint returns complete signal details."""
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        signal = Signal.objects.create(
+            setup_type='BREAKOUT',
+            session_phase='LONDON_CORE',
+            instrument='CL',
+            direction='LONG',
+            trigger_price=Decimal('78.50'),
+            range_high=Decimal('78.60'),
+            range_low=Decimal('77.50'),
+            stop_loss=Decimal('77.80'),
+            take_profit=Decimal('79.50'),
+            position_size=Decimal('2.00'),
+            gpt_confidence=Decimal('85.00'),
+            risk_status='GREEN',
+            status='ACTIVE',
+        )
+        
+        since = (timezone.now() - timedelta(days=1)).isoformat()
+        response = self.client.get(f'/fiona/api/signals/since/{since}/')
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        self.assertEqual(data['count'], 1)
+        signal_data = data['signals'][0]
+        
+        # Verify all expected fields are present
+        self.assertEqual(signal_data['id'], str(signal.id))
+        self.assertEqual(signal_data['setup_type'], 'BREAKOUT')
+        self.assertEqual(signal_data['setup_type_display'], 'Breakout')
+        self.assertEqual(signal_data['session_phase'], 'LONDON_CORE')
+        self.assertEqual(signal_data['session_phase_display'], 'London Core')
+        self.assertEqual(signal_data['instrument'], 'CL')
+        self.assertEqual(signal_data['direction'], 'LONG')
+        self.assertIsNotNone(signal_data['trigger_price'])  # Just check it exists
+        self.assertEqual(signal_data['risk_status'], 'GREEN')
+        self.assertIn('created_at', signal_data)
+    
+    def test_api_signals_since_returns_now_timestamp(self):
+        """Test that endpoint returns current server time."""
+        from django.utils import timezone
+        from datetime import timedelta
+        from django.utils.dateparse import parse_datetime
+        
+        before_request = timezone.now()
+        since = (timezone.now() - timedelta(days=1)).isoformat()
+        response = self.client.get(f'/fiona/api/signals/since/{since}/')
+        after_request = timezone.now()
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        now_timestamp = parse_datetime(data['now'])
+        self.assertIsNotNone(now_timestamp)
+        # The 'now' timestamp should be between before and after request times
+        self.assertGreaterEqual(now_timestamp, before_request.replace(microsecond=0))
+        self.assertLessEqual(now_timestamp, after_request)
+

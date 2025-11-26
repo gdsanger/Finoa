@@ -187,6 +187,74 @@ def api_signals(request):
 
 
 @login_required
+def api_signals_since(request, since):
+    """
+    GET /api/signals/since/{timestamp} - Return new signals created after the given timestamp.
+    
+    Args:
+        since: ISO 8601 timestamp string (e.g., '2025-01-01T12:00:00Z')
+    
+    Response:
+        {
+            "now": "2025-01-01T12:05:00Z",  # Current server time
+            "count": 2,                      # Number of new signals
+            "signals": [...]                 # List of new signals
+        }
+    """
+    from django.utils.dateparse import parse_datetime
+    from datetime import datetime
+    
+    # Parse the since timestamp
+    since_dt = parse_datetime(since)
+    if since_dt is None:
+        return JsonResponse({
+            'error': 'Invalid timestamp format. Use ISO 8601 format (e.g., 2025-01-01T12:00:00Z).'
+        }, status=400)
+    
+    # Ensure the datetime is timezone-aware
+    if since_dt.tzinfo is None:
+        since_dt = timezone.make_aware(since_dt, timezone.utc)
+    
+    # Get current server time
+    now = timezone.now()
+    
+    # Query for signals created after the since timestamp
+    new_signals = Signal.objects.filter(
+        created_at__gt=since_dt,
+        status='ACTIVE'
+    ).order_by('-created_at')
+    
+    # Serialize signals
+    signals_data = []
+    for signal in new_signals:
+        signals_data.append({
+            'id': str(signal.id),
+            'setup_type': signal.setup_type,
+            'setup_type_display': signal.get_setup_type_display(),
+            'session_phase': signal.session_phase,
+            'session_phase_display': signal.get_session_phase_display(),
+            'instrument': signal.instrument,
+            'direction': signal.direction,
+            'trigger_price': str(signal.trigger_price) if signal.trigger_price else None,
+            'range_high': str(signal.range_high) if signal.range_high else None,
+            'range_low': str(signal.range_low) if signal.range_low else None,
+            'stop_loss': str(signal.stop_loss) if signal.stop_loss else None,
+            'take_profit': str(signal.take_profit) if signal.take_profit else None,
+            'position_size': str(signal.position_size) if signal.position_size else None,
+            'gpt_confidence': str(signal.gpt_confidence),
+            'risk_status': signal.risk_status,
+            'status': signal.status,
+            'created_at': signal.created_at.isoformat(),
+        })
+    
+    return JsonResponse({
+        'now': now.isoformat(),
+        'count': len(signals_data),
+        'signals': signals_data,
+    })
+
+
+@login_required
 def api_signal_detail(request, signal_id):
     """
     GET /api/trade/{id} - Return signal details as JSON.

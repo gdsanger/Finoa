@@ -451,6 +451,28 @@
         to { transform: rotate(360deg); }
     }
     
+    /* Badge pulse animation for new signals */
+    .badge-pulse {
+        animation: pulse 1s ease-in-out;
+    }
+    
+    @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.2); background-color: #ffc107; }
+        100% { transform: scale(1); }
+    }
+    
+    /* Notification toggle button styles */
+    #notification-toggle.btn-success {
+        background-color: var(--signal-long);
+        border-color: var(--signal-long);
+    }
+    
+    #notification-toggle.btn-success:hover {
+        background-color: #218838;
+        border-color: #1e7e34;
+    }
+    
     /* Responsive */
     @media (max-width: 768px) {
         .signal-card-header {
@@ -485,7 +507,11 @@
                 <small class="text-muted">Trading Signal Management v1.0</small>
             </div>
             <div class="d-flex gap-2 align-items-center">
-                <span class="badge bg-success">{{ active_count }} aktive Signale</span>
+                <span id="signal-count-badge" class="badge bg-success">{{ active_count }} aktive Signale</span>
+                <!-- Notification toggle button -->
+                <button id="notification-toggle" class="btn btn-sm btn-outline-light" onclick="toggleNotifications()" title="Benachrichtigungen">
+                    <i id="notification-icon" class="bi bi-bell"></i>
+                </button>
                 <a href="{% url 'trade_history' %}" class="btn btn-sm btn-outline-light">
                     <i class="bi bi-clock-history"></i> Historie
                 </a>
@@ -532,8 +558,10 @@
             </div>
         </div>
         
+        <!-- Signal List Container (refreshable via HTMX) -->
+        <div id="signal-list-container">
         {% if signals %}
-        <div class="row">
+        <div class="row" id="signals-row">
             {% for signal in signals %}
             <div class="col-lg-6 col-xl-4">
                 <div class="signal-card">
@@ -650,12 +678,13 @@
             {% endfor %}
         </div>
         {% else %}
-        <div class="empty-state">
+        <div class="empty-state" id="empty-state">
             <i class="bi bi-graph-up-arrow"></i>
             <h3>Keine aktiven Signale</h3>
             <p>Es sind derzeit keine aktiven Trading-Signale vorhanden.</p>
         </div>
         {% endif %}
+        </div>
     </div>
 </div>
 {% endblock %}
@@ -907,6 +936,240 @@
             stopAutoRefresh();
         } else {
             startAutoRefresh();
+        }
+    });
+    
+    // ============================================================================
+    // Signal Polling & Desktop Notifications
+    // ============================================================================
+    
+    const SIGNAL_POLLING_INTERVAL = 10000; // 10 seconds
+    let signalPollingInterval = null;
+    let lastSignalCheckTime = new Date().toISOString();
+    let notificationsEnabled = false;
+    
+    /**
+     * Request notification permission from the user.
+     */
+    function requestNotificationPermission() {
+        if (!('Notification' in window)) {
+            console.log('Browser does not support notifications');
+            return Promise.resolve('denied');
+        }
+        
+        if (Notification.permission === 'granted') {
+            return Promise.resolve('granted');
+        }
+        
+        if (Notification.permission !== 'denied') {
+            return Notification.requestPermission();
+        }
+        
+        return Promise.resolve(Notification.permission);
+    }
+    
+    /**
+     * Toggle notifications on/off.
+     */
+    function toggleNotifications() {
+        const icon = document.getElementById('notification-icon');
+        const btn = document.getElementById('notification-toggle');
+        
+        if (notificationsEnabled) {
+            // Disable notifications
+            notificationsEnabled = false;
+            icon.classList.remove('bi-bell-fill');
+            icon.classList.add('bi-bell');
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-outline-light');
+            btn.title = 'Benachrichtigungen aktivieren';
+        } else {
+            // Try to enable notifications
+            requestNotificationPermission().then(function(permission) {
+                if (permission === 'granted') {
+                    notificationsEnabled = true;
+                    icon.classList.remove('bi-bell');
+                    icon.classList.add('bi-bell-fill');
+                    btn.classList.remove('btn-outline-light');
+                    btn.classList.add('btn-success');
+                    btn.title = 'Benachrichtigungen deaktivieren';
+                } else {
+                    alert('Benachrichtigungen wurden vom Browser blockiert. Bitte erlauben Sie Benachrichtigungen in den Browser-Einstellungen.');
+                }
+            });
+        }
+    }
+    
+    /**
+     * Show a desktop notification for new signals.
+     */
+    function showSignalNotification(signals) {
+        if (!notificationsEnabled || !('Notification' in window) || Notification.permission !== 'granted') {
+            return;
+        }
+        
+        const count = signals.length;
+        const firstSignal = signals[0];
+        
+        let title = count === 1 
+            ? 'Neues Trading-Signal'
+            : `${count} neue Trading-Signale`;
+        
+        let body = '';
+        if (firstSignal) {
+            body = `${firstSignal.setup_type_display} - ${firstSignal.direction}`;
+            if (firstSignal.trigger_price) {
+                body += ` @ ${firstSignal.trigger_price}`;
+            }
+            if (count > 1) {
+                body += `\n+${count - 1} weitere`;
+            }
+        }
+        
+        const notification = new Notification(title, {
+            body: body,
+            icon: '/static/core/icons/icon-192x192.png',
+            tag: 'fiona-signal',
+            requireInteraction: false,
+        });
+        
+        // Focus window and navigate to signal detail on click
+        notification.onclick = function() {
+            window.focus();
+            if (firstSignal && firstSignal.id) {
+                window.location.href = `/fiona/signals/${firstSignal.id}/`;
+            }
+            notification.close();
+        };
+        
+        // Auto-close after 8 seconds
+        setTimeout(function() {
+            notification.close();
+        }, 8000);
+    }
+    
+    /**
+     * Update the UI with new signals.
+     */
+    function updateUIWithNewSignals(count) {
+        // Update badge count
+        const badge = document.getElementById('signal-count-badge');
+        if (badge) {
+            // Get current count from the badge text and add new count
+            const currentText = badge.textContent;
+            const match = currentText.match(/(\d+)/);
+            const currentCount = match ? parseInt(match[1], 10) : 0;
+            const newTotal = currentCount + count;
+            badge.textContent = `${newTotal} aktive Signale`;
+            
+            // Add visual pulse effect
+            badge.classList.add('badge-pulse');
+            setTimeout(function() {
+                badge.classList.remove('badge-pulse');
+            }, 1000);
+        }
+        
+        // Reload the signal list (full page reload for now, HTMX partial refresh could be added)
+        // This ensures we get the complete updated UI with proper Django template rendering
+        location.reload();
+    }
+    
+    /**
+     * Poll for new signals since the last check.
+     */
+    function pollForNewSignals() {
+        const url = `/fiona/api/signals/since/${encodeURIComponent(lastSignalCheckTime)}/`;
+        
+        fetch(url, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(data => {
+            // Update the last check time to the server's 'now' timestamp
+            lastSignalCheckTime = data.now;
+            
+            if (data.count > 0) {
+                console.log(`Found ${data.count} new signal(s)`);
+                
+                // Show desktop notification
+                showSignalNotification(data.signals);
+                
+                // Update the UI
+                updateUIWithNewSignals(data.count);
+            }
+        })
+        .catch(error => {
+            console.error('Error polling for signals:', error);
+        });
+    }
+    
+    /**
+     * Start polling for new signals.
+     */
+    function startSignalPolling() {
+        // Don't start if already running
+        if (signalPollingInterval) {
+            return;
+        }
+        
+        // Set the initial last check time to now
+        lastSignalCheckTime = new Date().toISOString();
+        
+        // Start polling
+        signalPollingInterval = setInterval(pollForNewSignals, SIGNAL_POLLING_INTERVAL);
+        console.log('Signal polling started');
+    }
+    
+    /**
+     * Stop polling for new signals.
+     */
+    function stopSignalPolling() {
+        if (signalPollingInterval) {
+            clearInterval(signalPollingInterval);
+            signalPollingInterval = null;
+            console.log('Signal polling stopped');
+        }
+    }
+    
+    /**
+     * Initialize notification state based on browser permission.
+     */
+    function initializeNotificationState() {
+        if ('Notification' in window && Notification.permission === 'granted') {
+            // Notifications were previously granted, enable them
+            notificationsEnabled = true;
+            const icon = document.getElementById('notification-icon');
+            const btn = document.getElementById('notification-toggle');
+            if (icon && btn) {
+                icon.classList.remove('bi-bell');
+                icon.classList.add('bi-bell-fill');
+                btn.classList.remove('btn-outline-light');
+                btn.classList.add('btn-success');
+                btn.title = 'Benachrichtigungen deaktivieren';
+            }
+        }
+    }
+    
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        initializeNotificationState();
+        startSignalPolling();
+    });
+    
+    // Handle visibility changes to conserve resources
+    document.addEventListener('visibilitychange', function() {
+        if (document.hidden) {
+            stopSignalPolling();
+        } else {
+            startSignalPolling();
         }
     });
 </script>
