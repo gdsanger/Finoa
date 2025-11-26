@@ -30,6 +30,14 @@ from .providers import (
 
 from .strategy_engine import StrategyEngine
 
+from .diagnostics import (
+    PricePosition,
+    BreakoutStatus,
+    RangeValidation,
+    BreakoutRangeDiagnostics,
+    BreakoutRangeDiagnosticService,
+)
+
 __all__ = [
     # Constants
     'SCHEMA_VERSION',
@@ -51,4 +59,10 @@ __all__ = [
     'BaseMarketStateProvider',
     # Engine
     'StrategyEngine',
+    # Diagnostics
+    'PricePosition',
+    'BreakoutStatus',
+    'RangeValidation',
+    'BreakoutRangeDiagnostics',
+    'BreakoutRangeDiagnosticService',
 ]

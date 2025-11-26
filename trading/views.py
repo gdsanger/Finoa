@@ -432,3 +432,114 @@ def api_worker_status(request):
             'status_message': f'Fehler: {str(e)}',
             'data': None,
         }, status=500)
+
+
+@login_required
+def api_breakout_range_diagnostics(request):
+    """
+    GET /api/debug/breakout-range/ - Return breakout range diagnostic data.
+    
+    Query parameters:
+        epic: Market identifier (optional, defaults to CC.D.CL.UNC.IP)
+        range_type: Type of range to diagnose (optional, defaults to 'asia')
+                    Values: 'asia' or 'pre_us'
+    
+    Returns JSON with:
+        - Range type and period
+        - Range high/low/height
+        - Current price position relative to range
+        - Breakout status
+        - Configuration parameters
+        - Diagnostic messages
+    """
+    from datetime import datetime
+    from core.services.strategy import (
+        BreakoutRangeDiagnosticService,
+        StrategyConfig,
+        BaseMarketStateProvider,
+        SessionPhase,
+        Candle,
+    )
+    
+    # Get query parameters
+    epic = request.GET.get('epic', 'CC.D.CL.UNC.IP')
+    range_type = request.GET.get('range_type', 'asia')
+    
+    try:
+        # Get current worker status for price and phase info
+        status = WorkerStatus.get_current()
+        
+        if status is None:
+            return JsonResponse({
+                'success': False,
+                'error': 'Keine Worker-Daten verfügbar',
+                'message': 'Der Worker ist noch nicht aktiv oder hat noch keine Daten gesammelt.',
+                'data': None,
+            })
+        
+        # Create a dummy market state provider using worker status data
+        # In production, this would use the real MarketStateProvider from the worker
+        class WorkerStatusMarketStateProvider(BaseMarketStateProvider):
+            """Minimal provider using WorkerStatus data."""
+            
+            def __init__(self, worker_status):
+                self._status = worker_status
+                self._phase = SessionPhase(worker_status.phase) if worker_status.phase else SessionPhase.OTHER
+            
+            def get_phase(self, ts):
+                return self._phase
+            
+            def get_recent_candles(self, epic, timeframe, limit):
+                # Return empty list - we don't have candle data in WorkerStatus
+                return []
+            
+            def get_asia_range(self, epic):
+                # Note: In production, this would come from the real MarketStateProvider
+                # For now, return None to indicate data is not available
+                return None
+            
+            def get_pre_us_range(self, epic):
+                # Note: In production, this would come from the real MarketStateProvider
+                return None
+            
+            def get_atr(self, epic, timeframe, period):
+                return None
+        
+        # Create diagnostic service
+        provider = WorkerStatusMarketStateProvider(status)
+        config = StrategyConfig()
+        service = BreakoutRangeDiagnosticService(provider, config)
+        
+        # Get current price from worker status
+        current_price = None
+        if status.bid_price and status.ask_price:
+            # Use mid price
+            current_price = float((status.bid_price + status.ask_price) / 2)
+        elif status.bid_price:
+            current_price = float(status.bid_price)
+        
+        # Get diagnostics based on range type
+        ts = timezone.now()
+        if range_type == 'pre_us':
+            diagnostics = service.get_pre_us_range_diagnostics(epic, ts, current_price)
+        else:
+            diagnostics = service.get_asia_range_diagnostics(epic, ts, current_price)
+        
+        return JsonResponse({
+            'success': True,
+            'epic': epic,
+            'range_type': range_type,
+            'data': diagnostics.to_dict(),
+            'worker_status': {
+                'phase': status.phase,
+                'last_run_at': status.last_run_at.isoformat() if status.last_run_at else None,
+            },
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching breakout range diagnostics: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': f'Fehler beim Abrufen der Range-Diagnose: {str(e)}',
+            'data': None,
+        }, status=500)
