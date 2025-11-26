@@ -211,7 +211,7 @@ class IGMarketStateProvider(BaseMarketStateProvider):
             session_times: New session time configuration.
         """
         self._session_times = session_times
-        logger.info(f"Session times updated: US Core {session_times.us_core_start}:{session_times.us_core_start_minute:02d} - {session_times.us_core_end}:{session_times.us_core_end_minute:02d}")
+        logger.info(f"Session times updated: US Core Trading {session_times.us_core_trading_start}:{session_times.us_core_trading_start_minute:02d} - {session_times.us_core_trading_end}:{session_times.us_core_trading_end_minute:02d}")
 
     def get_phase(self, ts: datetime) -> SessionPhase:
         """
