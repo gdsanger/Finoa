@@ -729,6 +729,9 @@ class SignalDashboardWorkerStatusTest(TestCase):
 
 class BreakoutRangeDiagnosticsAPITest(TestCase):
     """Tests for Breakout Range Diagnostics API endpoint."""
+
+class WorkerStatusDiagnosticsTest(TestCase):
+    """Tests for WorkerStatus diagnostic criteria and countdown."""
     
     def setUp(self):
         self.user = User.objects.create_user(username='testuser', password='testpass')
@@ -893,3 +896,109 @@ class BreakoutRangeDiagnosticsAPITest(TestCase):
         self.assertIn('message', diagnostics)
         self.assertIn('detailed_explanation', diagnostics)
 
+    def test_worker_status_stores_diagnostic_criteria(self):
+        """Test that WorkerStatus stores diagnostic criteria."""
+        now = timezone.now()
+        criteria = [
+            {"name": "Session Phase", "passed": True, "detail": "LONDON_CORE"},
+            {"name": "Asia Range available", "passed": True, "detail": "75.0 - 75.5"},
+            {"name": "Price breakout", "passed": False, "detail": "Price within range"},
+        ]
+        
+        status = WorkerStatus.update_status(
+            last_run_at=now,
+            phase='LONDON_CORE',
+            epic='CC.D.CL.UNC.IP',
+            setup_count=0,
+            diagnostic_message='No setups found',
+            diagnostic_criteria=criteria,
+            worker_interval=60,
+        )
+        
+        self.assertEqual(status.diagnostic_criteria, criteria)
+        
+        # Retrieve and verify
+        retrieved = WorkerStatus.get_current()
+        self.assertEqual(len(retrieved.diagnostic_criteria), 3)
+        self.assertEqual(retrieved.diagnostic_criteria[0]['name'], 'Session Phase')
+        self.assertTrue(retrieved.diagnostic_criteria[0]['passed'])
+    
+    def test_api_worker_status_includes_diagnostic_criteria(self):
+        """Test that worker status API returns diagnostic criteria."""
+        now = timezone.now()
+        criteria = [
+            {"name": "Session Phase", "passed": True, "detail": "LONDON_CORE"},
+            {"name": "Asia Range available", "passed": False, "detail": "No data"},
+        ]
+        
+        WorkerStatus.objects.create(
+            last_run_at=now,
+            phase='LONDON_CORE',
+            epic='CC.D.CL.UNC.IP',
+            setup_count=0,
+            diagnostic_message='No setups found',
+            diagnostic_criteria=criteria,
+            worker_interval=60,
+        )
+        
+        response = self.client.get('/fiona/api/worker/status/')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertIn('diagnostic_criteria', data['data'])
+        self.assertEqual(len(data['data']['diagnostic_criteria']), 2)
+        self.assertEqual(data['data']['diagnostic_criteria'][0]['name'], 'Session Phase')
+    
+    def test_api_worker_status_includes_countdown(self):
+        """Test that worker status API returns countdown to next run."""
+        now = timezone.now()
+        WorkerStatus.objects.create(
+            last_run_at=now - timedelta(seconds=30),  # 30 seconds ago
+            phase='LONDON_CORE',
+            epic='CC.D.CL.UNC.IP',
+            setup_count=0,
+            diagnostic_message='No setups found',
+            worker_interval=60,
+        )
+        
+        response = self.client.get('/fiona/api/worker/status/')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertIn('seconds_until_next_run', data['data'])
+        # Should be approximately 30 seconds (60 - 30)
+        self.assertGreater(data['data']['seconds_until_next_run'], 25)
+        self.assertLessEqual(data['data']['seconds_until_next_run'], 35)
+    
+    def test_api_worker_status_countdown_zero_when_overdue(self):
+        """Test that countdown is 0 when worker is overdue."""
+        now = timezone.now()
+        WorkerStatus.objects.create(
+            last_run_at=now - timedelta(seconds=120),  # 2 minutes ago
+            phase='LONDON_CORE',
+            epic='CC.D.CL.UNC.IP',
+            setup_count=0,
+            diagnostic_message='No setups found',
+            worker_interval=60,  # Should have run 1 minute ago
+        )
+        
+        response = self.client.get('/fiona/api/worker/status/')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertEqual(data['data']['seconds_until_next_run'], 0)
+    
+    def test_worker_status_empty_criteria_default(self):
+        """Test that diagnostic_criteria defaults to empty list."""
+        now = timezone.now()
+        status = WorkerStatus.update_status(
+            last_run_at=now,
+            phase='LONDON_CORE',
+            epic='CC.D.CL.UNC.IP',
+            setup_count=0,
+            diagnostic_message='No setups found',
+            # Not passing diagnostic_criteria
+            worker_interval=60,
+        )
+        
+        self.assertEqual(status.diagnostic_criteria, [])

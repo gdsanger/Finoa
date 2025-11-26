@@ -28,7 +28,11 @@ from .providers import (
     BaseMarketStateProvider,
 )
 
-from .strategy_engine import StrategyEngine
+from .strategy_engine import (
+    StrategyEngine,
+    DiagnosticCriterion,
+    EvaluationResult,
+)
 
 from .diagnostics import (
     PricePosition,
@@ -65,4 +69,6 @@ __all__ = [
     'RangeValidation',
     'BreakoutRangeDiagnostics',
     'BreakoutRangeDiagnosticService',
+    'DiagnosticCriterion',
+    'EvaluationResult',
 ]

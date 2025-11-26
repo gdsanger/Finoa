@@ -23,6 +23,8 @@ from core.services.strategy import (
     MarketStateProvider,
     BaseMarketStateProvider,
     StrategyEngine,
+    DiagnosticCriterion,
+    EvaluationResult,
 )
 
 
@@ -786,6 +788,40 @@ class BreakoutRangeDiagnosticServiceTest(TestCase):
         from core.services.strategy import (
             BreakoutRangeDiagnosticService,
             RangeValidation,
+class StrategyEngineDiagnosticsTest(TestCase):
+    """Tests for StrategyEngine evaluate_with_diagnostics method."""
+
+    def test_diagnostics_non_tradeable_phase(self):
+        """Test diagnostics when phase is not tradeable."""
+        provider = DummyMarketStateProvider(phase=SessionPhase.OTHER)
+        engine = StrategyEngine(provider)
+        
+        ts = datetime(2025, 1, 15, 10, 0, tzinfo=timezone.utc)
+        result = engine.evaluate_with_diagnostics("CC.D.CL.UNC.IP", ts)
+        
+        self.assertIsInstance(result, EvaluationResult)
+        self.assertEqual(len(result.setups), 0)
+        self.assertGreater(len(result.criteria), 0)
+        
+        # Should have phase info criterion
+        phase_criteria = [c for c in result.criteria if 'phase' in c.name.lower()]
+        self.assertGreater(len(phase_criteria), 0)
+        
+        # One should show that phase is not tradeable
+        not_tradeable = [c for c in result.criteria if not c.passed and 'tradeable' in c.name.lower()]
+        self.assertGreater(len(not_tradeable), 0)
+
+    def test_diagnostics_asia_breakout(self):
+        """Test diagnostics for Asia breakout evaluation."""
+        ts = datetime(2025, 1, 15, 9, 0, tzinfo=timezone.utc)
+        
+        # Create a bullish breakout candle
+        candle = Candle(
+            timestamp=ts,
+            open=75.15,
+            high=75.30,
+            low=75.10,
+            close=75.28,  # Above Asia high (75.20)
         )
         
         provider = DummyMarketStateProvider(
@@ -853,6 +889,52 @@ class BreakoutRangeDiagnosticServiceTest(TestCase):
         from core.services.strategy import (
             BreakoutRangeDiagnosticService,
             PricePosition,
+            candles=[candle],
+            asia_range=(75.20, 75.00),  # 0.20 range
+            atr=0.50,
+        )
+        engine = StrategyEngine(provider)
+        
+        result = engine.evaluate_with_diagnostics("CC.D.CL.UNC.IP", ts)
+        
+        self.assertIsInstance(result, EvaluationResult)
+        self.assertEqual(len(result.setups), 1)
+        self.assertEqual(result.setups[0].direction, "LONG")
+        
+        # Should have criteria about Asia Range
+        range_criteria = [c for c in result.criteria if 'asia' in c.name.lower() or 'range' in c.name.lower()]
+        self.assertGreater(len(range_criteria), 0)
+
+    def test_diagnostics_no_asia_range(self):
+        """Test diagnostics when Asia range is not available."""
+        ts = datetime(2025, 1, 15, 9, 0, tzinfo=timezone.utc)
+        
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.LONDON_CORE,
+            candles=[],
+            asia_range=None,  # No Asia range
+        )
+        engine = StrategyEngine(provider)
+        
+        result = engine.evaluate_with_diagnostics("CC.D.CL.UNC.IP", ts)
+        
+        self.assertEqual(len(result.setups), 0)
+        
+        # Should have a failed criterion about Asia Range availability
+        failed_criteria = [c for c in result.criteria if not c.passed]
+        self.assertGreater(len(failed_criteria), 0)
+
+    def test_diagnostics_price_within_range(self):
+        """Test diagnostics when price is within range (no breakout)."""
+        ts = datetime(2025, 1, 15, 9, 0, tzinfo=timezone.utc)
+        
+        # Create a candle within the range
+        candle = Candle(
+            timestamp=ts,
+            open=75.08,
+            high=75.12,
+            low=75.05,
+            close=75.10,  # Within Asia range (75.00 - 75.20)
         )
         
         provider = DummyMarketStateProvider(
@@ -928,3 +1010,56 @@ class BreakoutRangeDiagnosticServiceTest(TestCase):
         
         self.assertEqual(diagnostics.breakout_status, BreakoutStatus.VALID_BREAKOUT)
         self.assertEqual(diagnostics.potential_direction, "LONG")
+            candles=[candle],
+            asia_range=(75.20, 75.00),  # 0.20 range
+        )
+        engine = StrategyEngine(provider)
+        
+        result = engine.evaluate_with_diagnostics("CC.D.CL.UNC.IP", ts)
+        
+        self.assertEqual(len(result.setups), 0)
+        
+        # Should have a criterion about price not breaking range
+        breakout_criteria = [c for c in result.criteria if 'breakout' in c.name.lower() or 'broke' in c.name.lower()]
+        self.assertGreater(len(breakout_criteria), 0)
+        
+        # At least one should fail
+        failed_breakout = [c for c in breakout_criteria if not c.passed]
+        self.assertGreater(len(failed_breakout), 0)
+
+    def test_criteria_to_dict_conversion(self):
+        """Test that criteria can be converted to dict for JSON serialization."""
+        ts = datetime(2025, 1, 15, 10, 0, tzinfo=timezone.utc)
+        
+        provider = DummyMarketStateProvider(phase=SessionPhase.OTHER)
+        engine = StrategyEngine(provider)
+        
+        result = engine.evaluate_with_diagnostics("CC.D.CL.UNC.IP", ts)
+        criteria_list = result.to_criteria_list()
+        
+        self.assertIsInstance(criteria_list, list)
+        self.assertGreater(len(criteria_list), 0)
+        
+        for criterion_dict in criteria_list:
+            self.assertIsInstance(criterion_dict, dict)
+            self.assertIn('name', criterion_dict)
+            self.assertIn('passed', criterion_dict)
+            self.assertIn('detail', criterion_dict)
+            self.assertIsInstance(criterion_dict['passed'], bool)
+
+    def test_diagnostic_criterion_dataclass(self):
+        """Test DiagnosticCriterion dataclass."""
+        criterion = DiagnosticCriterion(
+            name="Test Criterion",
+            passed=True,
+            detail="Test detail",
+        )
+        
+        self.assertEqual(criterion.name, "Test Criterion")
+        self.assertTrue(criterion.passed)
+        self.assertEqual(criterion.detail, "Test detail")
+        
+        as_dict = criterion.to_dict()
+        self.assertEqual(as_dict['name'], "Test Criterion")
+        self.assertTrue(as_dict['passed'])
+        self.assertEqual(as_dict['detail'], "Test detail")

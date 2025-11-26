@@ -374,7 +374,9 @@ def api_worker_status(request):
     - price_info: Bid/Ask/Spread
     - setup_count: Number of setups found in last run
     - diagnostic_message: Human-readable status message
+    - diagnostic_criteria: List of criteria with pass/fail status
     - worker_interval: Expected worker loop interval
+    - seconds_until_next_run: Countdown to next worker run
     """
     try:
         # Get the current worker status
@@ -401,6 +403,9 @@ def api_worker_status(request):
             worker_status = 'OFFLINE'
             status_message = f'Worker ist seit {int(time_since_last_run)}s inaktiv'
         
+        # Calculate seconds until next run
+        seconds_until_next_run = max(0, status.worker_interval - int(time_since_last_run))
+        
         # Build response data
         data = {
             'last_run_at': status.last_run_at.isoformat(),
@@ -413,8 +418,10 @@ def api_worker_status(request):
             },
             'setup_count': status.setup_count,
             'diagnostic_message': status.diagnostic_message,
+            'diagnostic_criteria': status.diagnostic_criteria or [],
             'worker_interval': status.worker_interval,
             'seconds_since_last_run': int(time_since_last_run),
+            'seconds_until_next_run': seconds_until_next_run,
         }
         
         return JsonResponse({
