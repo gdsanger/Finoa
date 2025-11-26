@@ -3,13 +3,19 @@ Breakout Range Diagnostics for the Strategy Engine.
 
 Provides detailed diagnostic information about breakout ranges,
 useful for debugging and validating the Strategy Engine's decisions.
+
+Supports all four phases:
+- Asia Range (00:00-08:00 UTC)
+- London Core (08:00-12:00 UTC)
+- Pre-US Range (13:00-15:00 UTC)
+- US Core Trading (15:00-22:00 UTC)
 """
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Literal, Optional
 
-from .config import AsiaRangeConfig, StrategyConfig, UsCoreConfig
+from .config import AsiaRangeConfig, LondonCoreConfig, StrategyConfig, UsCoreConfig
 from .models import Candle, SessionPhase
 from .providers import MarketStateProvider
 
@@ -34,6 +40,15 @@ class RangeValidation(str, Enum):
     TOO_SMALL = "TOO_SMALL"
     TOO_LARGE = "TOO_LARGE"
     NOT_AVAILABLE = "NOT_AVAILABLE"
+    INCOMPLETE = "INCOMPLETE"
+
+
+class BreakoutEligibility(str, Enum):
+    """Breakout eligibility status."""
+    ELIGIBLE_LONG = "ELIGIBLE_LONG"
+    ELIGIBLE_SHORT = "ELIGIBLE_SHORT"
+    ELIGIBLE_BOTH = "ELIGIBLE_BOTH"
+    NOT_ELIGIBLE = "NOT_ELIGIBLE"
 
 
 @dataclass
@@ -45,7 +60,7 @@ class BreakoutRangeDiagnostics:
     and why a breakout setup may or may not be active.
     """
     # Range identification
-    range_type: str  # "Asia Range" or "Pre-US Range"
+    range_type: str  # "Asia Range", "London Core", "Pre-US Range", or "US Core Trading"
     range_period_start: str  # e.g., "00:00"
     range_period_end: str  # e.g., "08:00"
     
@@ -337,6 +352,213 @@ class BreakoutRangeDiagnosticService:
         
         return diagnostics
 
+    def get_london_core_range_diagnostics(
+        self,
+        epic: str,
+        ts: datetime,
+        current_price: Optional[float] = None
+    ) -> BreakoutRangeDiagnostics:
+        """
+        Get diagnostic information for London Core Range.
+        
+        Args:
+            epic: Market identifier.
+            ts: Current timestamp.
+            current_price: Current market price (if available).
+            
+        Returns:
+            BreakoutRangeDiagnostics with London Core Range analysis.
+        """
+        london_config = self.config.breakout.london_core
+        
+        # Create base diagnostics
+        diagnostics = BreakoutRangeDiagnostics(
+            range_type="London Core",
+            range_period_start=london_config.start,
+            range_period_end=london_config.end,
+            min_range_ticks=london_config.min_range_ticks,
+            max_range_ticks=london_config.max_range_ticks,
+            min_breakout_body_fraction=london_config.min_breakout_body_fraction,
+            require_volume_spike=london_config.require_volume_spike,
+            require_clean_range=london_config.require_clean_range,
+            tick_size=self.config.tick_size,
+        )
+        
+        # Get current phase
+        phase = self.market_state.get_phase(ts)
+        diagnostics.current_phase = phase
+        
+        # Get London Core range data
+        london_range = self.market_state.get_london_core_range(epic)
+        if london_range is None:
+            diagnostics.range_validation = RangeValidation.NOT_AVAILABLE
+            diagnostics.diagnostic_message = "No London Core Range data available"
+            diagnostics.detailed_explanation = (
+                "The London Core Range data is not available. This could be because:\n"
+                "- The worker has not been running long enough to capture the range\n"
+                "- No market data was available during the London Core session (08:00-12:00 UTC)\n"
+                "- The market was closed during the London Core session"
+            )
+            return diagnostics
+        
+        range_high, range_low = london_range
+        range_height = range_high - range_low
+        
+        # Calculate ticks, ensuring tick_size is valid to avoid division by zero
+        tick_size = self.config.tick_size if self.config.tick_size > 0 else 0.01
+        range_height_ticks = int(range_height / tick_size)
+        
+        diagnostics.range_high = range_high
+        diagnostics.range_low = range_low
+        diagnostics.range_height = range_height
+        diagnostics.range_height_ticks = range_height_ticks
+        
+        # Get candles for count
+        candles = self.market_state.get_recent_candles(epic, '1m', 500)
+        diagnostics.candle_count = len(candles) if candles else 0
+        
+        # Get ATR
+        atr = self.market_state.get_atr(epic, '1h', 14)
+        diagnostics.atr = atr
+        
+        # Validate range size
+        diagnostics = self._validate_range(diagnostics, range_height_ticks, london_config)
+        
+        # Analyze current price position
+        if current_price is not None:
+            diagnostics = self._analyze_price_position(
+                diagnostics, current_price, range_high, range_low
+            )
+            
+            # Analyze breakout status based on latest candle
+            if candles:
+                diagnostics = self._analyze_breakout_status(
+                    diagnostics, candles[-1], range_high, range_low, range_height, london_config
+                )
+        
+        # Generate diagnostic message
+        diagnostics = self._generate_diagnostic_message(diagnostics, phase)
+        
+        return diagnostics
+
+    def get_us_core_trading_diagnostics(
+        self,
+        epic: str,
+        ts: datetime,
+        current_price: Optional[float] = None
+    ) -> BreakoutRangeDiagnostics:
+        """
+        Get diagnostic information for US Core Trading session.
+        
+        US Core Trading uses the Pre-US Range for breakouts, so this method
+        returns diagnostics based on the Pre-US Range with additional context
+        about the trading session.
+        
+        Args:
+            epic: Market identifier.
+            ts: Current timestamp.
+            current_price: Current market price (if available).
+            
+        Returns:
+            BreakoutRangeDiagnostics with US Core Trading session analysis.
+        """
+        us_config = self.config.breakout.us_core
+        
+        # Create base diagnostics
+        diagnostics = BreakoutRangeDiagnostics(
+            range_type="US Core Trading",
+            range_period_start=us_config.us_core_trading_start,
+            range_period_end=us_config.us_core_trading_end,
+            min_range_ticks=us_config.min_range_ticks,
+            max_range_ticks=us_config.max_range_ticks,
+            min_breakout_body_fraction=us_config.min_breakout_body_fraction,
+            require_volume_spike=us_config.require_volume_spike,
+            require_clean_range=us_config.require_clean_range,
+            tick_size=self.config.tick_size,
+        )
+        
+        # Get current phase
+        phase = self.market_state.get_phase(ts)
+        diagnostics.current_phase = phase
+        
+        # US Core Trading uses Pre-US Range for breakouts
+        pre_us_range = self.market_state.get_pre_us_range(epic)
+        if pre_us_range is None:
+            diagnostics.range_validation = RangeValidation.NOT_AVAILABLE
+            diagnostics.diagnostic_message = "No Pre-US Range data available for US Core Trading"
+            diagnostics.detailed_explanation = (
+                "The US Core Trading session uses the Pre-US Range (13:00-15:00 UTC) for breakouts.\n"
+                "The Pre-US Range data is not available. This could be because:\n"
+                "- The worker has not been running long enough to capture the Pre-US Range\n"
+                "- No market data was available during the Pre-US session\n"
+                "- The market was closed during the Pre-US session"
+            )
+            return diagnostics
+        
+        range_high, range_low = pre_us_range
+        range_height = range_high - range_low
+        
+        # Calculate ticks, ensuring tick_size is valid to avoid division by zero
+        tick_size = self.config.tick_size if self.config.tick_size > 0 else 0.01
+        range_height_ticks = int(range_height / tick_size)
+        
+        diagnostics.range_high = range_high
+        diagnostics.range_low = range_low
+        diagnostics.range_height = range_height
+        diagnostics.range_height_ticks = range_height_ticks
+        
+        # Get candles for count
+        candles = self.market_state.get_recent_candles(epic, '1m', 500)
+        diagnostics.candle_count = len(candles) if candles else 0
+        
+        # Get ATR
+        atr = self.market_state.get_atr(epic, '1h', 14)
+        diagnostics.atr = atr
+        
+        # Validate range size
+        diagnostics = self._validate_range(diagnostics, range_height_ticks, us_config)
+        
+        # Analyze current price position
+        if current_price is not None:
+            diagnostics = self._analyze_price_position(
+                diagnostics, current_price, range_high, range_low
+            )
+            
+            # Analyze breakout status based on latest candle
+            if candles:
+                diagnostics = self._analyze_breakout_status(
+                    diagnostics, candles[-1], range_high, range_low, range_height, us_config
+                )
+        
+        # Generate diagnostic message with US Core Trading context
+        diagnostics = self._generate_diagnostic_message(diagnostics, phase)
+        
+        return diagnostics
+
+    def get_all_phase_diagnostics(
+        self,
+        epic: str,
+        ts: datetime,
+        current_price: Optional[float] = None
+    ) -> dict[str, BreakoutRangeDiagnostics]:
+        """
+        Get diagnostic information for all phases.
+        
+        Args:
+            epic: Market identifier.
+            ts: Current timestamp.
+            current_price: Current market price (if available).
+            
+        Returns:
+            Dictionary mapping phase names to BreakoutRangeDiagnostics.
+        """
+        return {
+            'ASIA_RANGE': self.get_asia_range_diagnostics(epic, ts, current_price),
+            'LONDON_CORE': self.get_london_core_range_diagnostics(epic, ts, current_price),
+            'PRE_US_RANGE': self.get_pre_us_range_diagnostics(epic, ts, current_price),
+            'US_CORE_TRADING': self.get_us_core_trading_diagnostics(epic, ts, current_price),
+        }
+
     def _validate_range(
         self,
         diagnostics: BreakoutRangeDiagnostics,
@@ -511,10 +733,24 @@ class BreakoutRangeDiagnosticService:
                 f"Asia Range breakouts are evaluated during LONDON_CORE phase, "
                 f"but current phase is {phase.value}."
             )
-        elif diagnostics.range_type == "Pre-US Range" and phase != SessionPhase.US_CORE:
+        elif diagnostics.range_type == "London Core" and phase != SessionPhase.PRE_US_RANGE:
+            # London Core range is used for reference but typically not for direct breakouts
+            messages.append(f"Current phase: {phase.value}")
+            explanations.append(
+                f"London Core Range data is available for reference. "
+                f"Current phase is {phase.value}."
+            )
+        elif diagnostics.range_type == "Pre-US Range" and phase not in (SessionPhase.US_CORE_TRADING, SessionPhase.US_CORE):
             messages.append(f"Current phase ({phase.value}) not suitable for Pre-US breakout")
             explanations.append(
-                f"Pre-US Range breakouts are evaluated during US_CORE phase, "
+                f"Pre-US Range breakouts are evaluated during US_CORE_TRADING phase, "
+                f"but current phase is {phase.value}."
+            )
+        elif diagnostics.range_type == "US Core Trading" and phase != SessionPhase.US_CORE_TRADING:
+            messages.append(f"Current phase ({phase.value}) not suitable for US Core Trading")
+            explanations.append(
+                f"US Core Trading uses Pre-US Range for breakouts. "
+                f"This is evaluated during US_CORE_TRADING phase (15:00-22:00 UTC), "
                 f"but current phase is {phase.value}."
             )
         

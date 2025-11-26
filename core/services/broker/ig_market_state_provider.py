@@ -195,6 +195,7 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         
         # Cache for session ranges
         self._asia_range_cache: dict[str, tuple[float, float]] = {}
+        self._london_core_range_cache: dict[str, tuple[float, float]] = {}
         self._pre_us_range_cache: dict[str, tuple[float, float]] = {}
         
         # Cache for candles (limited history)
@@ -455,6 +456,35 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         self._pre_us_range_cache[epic] = (high, low)
         logger.info(f"Pre-US range set for {epic}: high={high}, low={low}")
 
+    def get_london_core_range(self, epic: str) -> Optional[tuple[float, float]]:
+        """
+        Get the London Core session range (high, low).
+        
+        Note: This uses cached values that should be updated
+        after London Core session ends.
+        
+        Args:
+            epic: Market identifier.
+            
+        Returns:
+            Tuple of (high, low) or None if not available.
+        """
+        return self._london_core_range_cache.get(epic)
+
+    def set_london_core_range(self, epic: str, high: float, low: float) -> None:
+        """
+        Set the London Core session range for a market.
+        
+        Call this after London Core session ends to record the range.
+        
+        Args:
+            epic: Market identifier.
+            high: London Core session high.
+            low: London Core session low.
+        """
+        self._london_core_range_cache[epic] = (high, low)
+        logger.info(f"London Core range set for {epic}: high={high}, low={low}")
+
     def get_atr(
         self,
         epic: str,
@@ -527,5 +557,6 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         Call this at the start of a new trading day.
         """
         self._asia_range_cache.clear()
+        self._london_core_range_cache.clear()
         self._pre_us_range_cache.clear()
         logger.info("Session range caches cleared")

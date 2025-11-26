@@ -42,6 +42,7 @@ from .diagnostics import (
     PricePosition,
     BreakoutStatus,
     RangeValidation,
+    BreakoutEligibility,
     BreakoutRangeDiagnostics,
     BreakoutRangeDiagnosticService,
 )
@@ -75,6 +76,7 @@ __all__ = [
     'PricePosition',
     'BreakoutStatus',
     'RangeValidation',
+    'BreakoutEligibility',
     'BreakoutRangeDiagnostics',
     'BreakoutRangeDiagnosticService',
     'DiagnosticCriterion',

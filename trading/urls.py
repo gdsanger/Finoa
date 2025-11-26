@@ -23,6 +23,10 @@ urlpatterns = [
     path('assets/<int:asset_id>/event-config/<str:phase>/', views.event_config_edit, name='event_config_edit'),
     path('assets/<int:asset_id>/event-config/<str:phase>/delete/', views.event_config_delete, name='event_config_delete'),
     
+    # Breakout Range API
+    path('api/assets/<int:asset_id>/breakout-ranges/', views.api_breakout_range_history, name='api_breakout_range_history'),
+    path('api/assets/<int:asset_id>/breakout-ranges/latest/', views.api_breakout_range_latest, name='api_breakout_range_latest'),
+    
     # API Endpoints
     path('api/signals/', views.api_signals, name='api_signals'),
     path('api/signals/since/<str:since>/', views.api_signals_since, name='api_signals_since'),

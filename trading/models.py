@@ -893,3 +893,239 @@ class WorkerStatus(models.Model):
             diagnostic_criteria=diagnostic_criteria or [],
             worker_interval=worker_interval,
         )
+
+
+class BreakoutRange(models.Model):
+    """
+    Persistent storage for breakout range snapshots per asset and per phase.
+    
+    Allows diagnostics data to survive worker restarts and provides historical
+    range data for analysis.
+    
+    Each record captures a range snapshot at the end of a range-building phase
+    (Asia Range, London Core, Pre-US Range). US Core Trading references
+    previous ranges but doesn't build its own.
+    """
+    
+    # Phase types that can have range data
+    PHASE_CHOICES = [
+        ('ASIA_RANGE', 'Asia Range'),
+        ('LONDON_CORE', 'London Core'),
+        ('PRE_US_RANGE', 'Pre-US Range'),
+        ('US_CORE_TRADING', 'US Core Trading'),
+    ]
+    
+    # Relationship to asset
+    asset = models.ForeignKey(
+        TradingAsset,
+        on_delete=models.CASCADE,
+        related_name='breakout_ranges',
+        help_text='Asset this range belongs to'
+    )
+    
+    # Phase identification
+    phase = models.CharField(
+        max_length=20,
+        choices=PHASE_CHOICES,
+        help_text='Session phase when this range was recorded'
+    )
+    
+    # Time window
+    start_time = models.DateTimeField(
+        help_text='Start time of the range period'
+    )
+    end_time = models.DateTimeField(
+        help_text='End time of the range period'
+    )
+    
+    # Range data
+    high = models.DecimalField(
+        max_digits=12,
+        decimal_places=6,
+        help_text='Highest price during the range period'
+    )
+    low = models.DecimalField(
+        max_digits=12,
+        decimal_places=6,
+        help_text='Lowest price during the range period'
+    )
+    height_ticks = models.PositiveIntegerField(
+        default=0,
+        help_text='Range height in ticks'
+    )
+    height_points = models.DecimalField(
+        max_digits=12,
+        decimal_places=6,
+        default=0,
+        help_text='Range height in price points (high - low)'
+    )
+    
+    # Candle/Price data
+    candle_count = models.PositiveIntegerField(
+        default=0,
+        help_text='Number of candles captured during the range period'
+    )
+    
+    # ATR at time of range capture
+    atr = models.DecimalField(
+        max_digits=12,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        help_text='ATR value at the time of range capture'
+    )
+    
+    # Validity flags (stored as JSON for flexibility)
+    valid_flags = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='Range validity flags (e.g., incomplete_range, too_small, too_large, body_fraction_fail, atr_fail)'
+    )
+    
+    # Is this range considered valid for trading?
+    is_valid = models.BooleanField(
+        default=True,
+        help_text='Whether this range is valid for breakout trading'
+    )
+    
+    # Reference to the reference range used (for US Core Trading)
+    reference_range = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='dependent_ranges',
+        help_text='Reference range used for trading (for US Core Trading phase)'
+    )
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-end_time']
+        verbose_name = 'Breakout Range'
+        verbose_name_plural = 'Breakout Ranges'
+        indexes = [
+            models.Index(fields=['asset', 'phase', '-end_time']),
+            models.Index(fields=['-end_time']),
+        ]
+    
+    def __str__(self):
+        return f"{self.asset.symbol} - {self.phase} ({self.end_time.strftime('%Y-%m-%d %H:%M')})"
+    
+    @classmethod
+    def get_latest_for_asset_phase(cls, asset, phase):
+        """
+        Get the most recent range for an asset and phase.
+        
+        Args:
+            asset: TradingAsset instance or asset ID
+            phase: Phase string (e.g., 'ASIA_RANGE')
+            
+        Returns:
+            BreakoutRange instance or None
+        """
+        if isinstance(asset, int):
+            return cls.objects.filter(asset_id=asset, phase=phase).order_by('-end_time').first()
+        return cls.objects.filter(asset=asset, phase=phase).order_by('-end_time').first()
+    
+    @classmethod
+    def get_latest_for_asset(cls, asset):
+        """
+        Get the most recent ranges for an asset, one per phase.
+        
+        Args:
+            asset: TradingAsset instance or asset ID
+            
+        Returns:
+            Dict mapping phase to BreakoutRange instance
+        """
+        result = {}
+        for phase_code, _ in cls.PHASE_CHOICES:
+            if isinstance(asset, int):
+                latest = cls.objects.filter(asset_id=asset, phase=phase_code).order_by('-end_time').first()
+            else:
+                latest = cls.objects.filter(asset=asset, phase=phase_code).order_by('-end_time').first()
+            if latest:
+                result[phase_code] = latest
+        return result
+    
+    @classmethod
+    def save_range_snapshot(
+        cls,
+        asset,
+        phase,
+        start_time,
+        end_time,
+        high,
+        low,
+        tick_size=0.01,
+        candle_count=0,
+        atr=None,
+        valid_flags=None,
+        is_valid=True,
+        reference_range=None,
+    ):
+        """
+        Save a new range snapshot.
+        
+        Args:
+            asset: TradingAsset instance
+            phase: Phase string (e.g., 'ASIA_RANGE')
+            start_time: Range start time (datetime)
+            end_time: Range end time (datetime)
+            high: Range high price
+            low: Range low price
+            tick_size: Tick size for calculating ticks
+            candle_count: Number of candles in the range
+            atr: ATR value at time of capture
+            valid_flags: Dict of validity flags
+            is_valid: Whether the range is valid for trading
+            reference_range: Optional reference range (for US Core Trading)
+            
+        Returns:
+            BreakoutRange instance
+        """
+        from decimal import Decimal
+        
+        height_points = Decimal(str(high)) - Decimal(str(low))
+        tick_size_decimal = Decimal(str(tick_size)) if tick_size > 0 else Decimal('0.01')
+        height_ticks = int(height_points / tick_size_decimal)
+        
+        return cls.objects.create(
+            asset=asset,
+            phase=phase,
+            start_time=start_time,
+            end_time=end_time,
+            high=Decimal(str(high)),
+            low=Decimal(str(low)),
+            height_ticks=height_ticks,
+            height_points=height_points,
+            candle_count=candle_count,
+            atr=Decimal(str(atr)) if atr is not None else None,
+            valid_flags=valid_flags or {},
+            is_valid=is_valid,
+            reference_range=reference_range,
+        )
+    
+    def to_dict(self):
+        """Convert to dictionary for API responses."""
+        return {
+            'id': self.id,
+            'asset_id': self.asset_id,
+            'asset_symbol': self.asset.symbol if self.asset else None,
+            'phase': self.phase,
+            'start_time': self.start_time.isoformat() if self.start_time else None,
+            'end_time': self.end_time.isoformat() if self.end_time else None,
+            'high': str(self.high),
+            'low': str(self.low),
+            'height_ticks': self.height_ticks,
+            'height_points': str(self.height_points),
+            'candle_count': self.candle_count,
+            'atr': str(self.atr) if self.atr else None,
+            'valid_flags': self.valid_flags,
+            'is_valid': self.is_valid,
+            'reference_range_id': self.reference_range_id,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
