@@ -17,4 +17,5 @@ urlpatterns = [
     path('api/signals/since/<str:since>/', views.api_signals_since, name='api_signals_since'),
     path('api/trade/<str:signal_id>/', views.api_signal_detail, name='api_signal_detail'),
     path('api/account-state/', views.api_account_state, name='api_account_state'),
+    path('api/worker/status/', views.api_worker_status, name='api_worker_status'),
 ]

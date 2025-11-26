@@ -8,7 +8,7 @@ from django.core.paginator import Paginator
 from django.core.exceptions import ImproperlyConfigured
 from django.utils import timezone
 
-from .models import Signal, Trade
+from .models import Signal, Trade, WorkerStatus
 from core.services.broker import create_ig_broker_service, BrokerError, AuthenticationError
 
 logger = logging.getLogger(__name__)
@@ -358,4 +358,77 @@ def api_account_state(request):
             'success': False,
             'error': 'Ein unerwarteter Fehler ist aufgetreten.',
             'connected': False,
+        }, status=500)
+
+
+@login_required
+def api_worker_status(request):
+    """
+    GET /fiona/api/worker/status/ - Return current worker status.
+    
+    Returns JSON with worker status information including:
+    - worker_status: ONLINE or OFFLINE (based on last_run_at threshold)
+    - last_run_at: Timestamp of last worker loop
+    - phase: Current session phase
+    - epic: Current instrument being monitored
+    - price_info: Bid/Ask/Spread
+    - setup_count: Number of setups found in last run
+    - diagnostic_message: Human-readable status message
+    - worker_interval: Expected worker loop interval
+    """
+    try:
+        # Get the current worker status
+        status = WorkerStatus.get_current()
+        
+        if status is None:
+            return JsonResponse({
+                'success': True,
+                'worker_status': 'NO_DATA',
+                'status_message': 'Noch keine Worker-Statusdaten vorhanden',
+                'data': None,
+            })
+        
+        # Determine if worker is ONLINE or OFFLINE
+        # ONLINE if last heartbeat is within 2 * worker_interval
+        now = timezone.now()
+        threshold_seconds = status.worker_interval * 2
+        time_since_last_run = (now - status.last_run_at).total_seconds()
+        
+        if time_since_last_run <= threshold_seconds:
+            worker_status = 'ONLINE'
+            status_message = 'Worker ist aktiv'
+        else:
+            worker_status = 'OFFLINE'
+            status_message = f'Worker ist seit {int(time_since_last_run)}s inaktiv'
+        
+        # Build response data
+        data = {
+            'last_run_at': status.last_run_at.isoformat(),
+            'phase': status.phase,
+            'epic': status.epic,
+            'price_info': {
+                'bid': str(status.bid_price) if status.bid_price else None,
+                'ask': str(status.ask_price) if status.ask_price else None,
+                'spread': str(status.spread) if status.spread else None,
+            },
+            'setup_count': status.setup_count,
+            'diagnostic_message': status.diagnostic_message,
+            'worker_interval': status.worker_interval,
+            'seconds_since_last_run': int(time_since_last_run),
+        }
+        
+        return JsonResponse({
+            'success': True,
+            'worker_status': worker_status,
+            'status_message': status_message,
+            'data': data,
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching worker status: {e}")
+        return JsonResponse({
+            'success': False,
+            'worker_status': 'ERROR',
+            'status_message': f'Fehler: {str(e)}',
+            'data': None,
         }, status=500)

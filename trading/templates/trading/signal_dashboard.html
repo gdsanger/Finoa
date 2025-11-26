@@ -451,6 +451,117 @@
         to { transform: rotate(360deg); }
     }
     
+    /* Worker Status Card */
+    .worker-status-card {
+        background-color: var(--fiona-card-dark);
+        border: 1px solid var(--fiona-border);
+        border-radius: 12px;
+        padding: 1rem 1.25rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    .worker-status-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.75rem;
+    }
+    
+    .worker-status-header h5 {
+        margin: 0;
+        color: var(--fiona-text-light);
+        font-size: 0.875rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .worker-status-indicator {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+        padding: 0.25rem 0.75rem;
+        border-radius: 6px;
+    }
+    
+    .worker-status-indicator.online {
+        background-color: rgba(40, 167, 69, 0.2);
+        color: var(--signal-long);
+        border: 1px solid var(--signal-long);
+    }
+    
+    .worker-status-indicator.offline {
+        background-color: rgba(220, 53, 69, 0.2);
+        color: var(--signal-short);
+        border: 1px solid var(--signal-short);
+    }
+    
+    .worker-status-indicator.no-data {
+        background-color: rgba(108, 117, 125, 0.2);
+        color: var(--fiona-text-muted);
+        border: 1px solid var(--fiona-border);
+    }
+    
+    .worker-status-indicator.loading {
+        background-color: rgba(108, 117, 125, 0.2);
+        color: var(--fiona-text-muted);
+        border: 1px solid var(--fiona-border);
+    }
+    
+    .worker-status-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 0.75rem;
+    }
+    
+    .worker-status-item {
+        text-align: center;
+        padding: 0.5rem;
+        background-color: rgba(0, 0, 0, 0.2);
+        border-radius: 8px;
+    }
+    
+    .worker-status-value {
+        font-size: 1rem;
+        font-weight: 700;
+        font-family: 'Roboto Mono', monospace;
+        color: var(--fiona-text-light);
+    }
+    
+    .worker-status-label {
+        font-size: 0.7rem;
+        color: var(--fiona-text-muted);
+        text-transform: uppercase;
+        margin-top: 0.25rem;
+    }
+    
+    .worker-diagnostic {
+        margin-top: 0.75rem;
+        padding: 0.5rem 0.75rem;
+        background-color: rgba(0, 0, 0, 0.2);
+        border-radius: 8px;
+        font-size: 0.85rem;
+        color: var(--fiona-text-muted);
+    }
+    
+    .worker-diagnostic .label {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 0.25rem;
+        color: var(--fiona-text-muted);
+    }
+    
+    .worker-diagnostic .message {
+        color: var(--fiona-text-light);
+    }
+    
+    .worker-status-error {
+        color: var(--signal-short);
+        font-size: 0.875rem;
+        text-align: center;
+        padding: 1rem;
     /* Badge pulse animation for new signals */
     .badge-pulse {
         animation: pulse 1s ease-in-out;
@@ -490,6 +601,10 @@
         }
         
         .account-info-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+        
+        .worker-status-grid {
             grid-template-columns: repeat(2, 1fr);
         }
     }
@@ -554,6 +669,54 @@
                         <div class="account-info-value" id="account-pnl">--</div>
                         <div class="account-info-label">Unrealisiert P&amp;L</div>
                     </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Worker Status Card -->
+        <div class="worker-status-card" id="worker-status">
+            <div class="worker-status-header">
+                <h5><i class="bi bi-cpu"></i> Worker Status</h5>
+                <div class="d-flex align-items-center gap-2">
+                    <span id="worker-status-indicator" class="worker-status-indicator loading">
+                        <i class="bi bi-circle-fill"></i>
+                        <span>Lädt...</span>
+                    </span>
+                    <button class="refresh-btn" id="refresh-worker-btn" onclick="refreshWorkerStatus()" title="Aktualisieren">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
+            </div>
+            <div id="worker-status-content">
+                <div class="worker-status-grid">
+                    <div class="worker-status-item">
+                        <div class="worker-status-value" id="worker-last-activity">--</div>
+                        <div class="worker-status-label">Letzte Aktivität</div>
+                    </div>
+                    <div class="worker-status-item">
+                        <div class="worker-status-value" id="worker-phase">--</div>
+                        <div class="worker-status-label">Phase</div>
+                    </div>
+                    <div class="worker-status-item">
+                        <div class="worker-status-value" id="worker-epic">--</div>
+                        <div class="worker-status-label">Epic</div>
+                    </div>
+                    <div class="worker-status-item">
+                        <div class="worker-status-value" id="worker-price">--</div>
+                        <div class="worker-status-label">Preis (Bid/Ask)</div>
+                    </div>
+                    <div class="worker-status-item">
+                        <div class="worker-status-value" id="worker-setup-count">--</div>
+                        <div class="worker-status-label">Setups gefunden</div>
+                    </div>
+                    <div class="worker-status-item">
+                        <div class="worker-status-value" id="worker-interval">--</div>
+                        <div class="worker-status-label">Intervall</div>
+                    </div>
+                </div>
+                <div class="worker-diagnostic" id="worker-diagnostic">
+                    <div class="label">Diagnose</div>
+                    <div class="message" id="worker-diagnostic-message">--</div>
                 </div>
             </div>
         </div>
@@ -913,9 +1076,11 @@
     function startAutoRefresh() {
         // Initial load
         refreshAccountState();
+        refreshWorkerStatus();
         
         // Set up interval for auto-refresh
         accountRefreshInterval = setInterval(refreshAccountState, REFRESH_INTERVAL);
+        workerRefreshInterval = setInterval(refreshWorkerStatus, WORKER_REFRESH_INTERVAL);
     }
     
     function stopAutoRefresh() {
@@ -923,6 +1088,206 @@
             clearInterval(accountRefreshInterval);
             accountRefreshInterval = null;
         }
+        if (workerRefreshInterval) {
+            clearInterval(workerRefreshInterval);
+            workerRefreshInterval = null;
+        }
+    }
+    
+    // Worker Status refresh functionality
+    let workerRefreshInterval = null;
+    const WORKER_REFRESH_INTERVAL = 30000; // 30 seconds
+    
+    function updateWorkerStatusIndicator(status, text) {
+        const indicatorEl = document.getElementById('worker-status-indicator');
+        if (!indicatorEl) return;
+        
+        indicatorEl.className = 'worker-status-indicator ' + status;
+        indicatorEl.innerHTML = '<i class="bi bi-circle-fill"></i> <span>' + text + '</span>';
+    }
+    
+    function setWorkerRefreshButtonLoading(loading) {
+        const btn = document.getElementById('refresh-worker-btn');
+        if (!btn) return;
+        
+        if (loading) {
+            btn.classList.add('spinning');
+            btn.disabled = true;
+        } else {
+            btn.classList.remove('spinning');
+            btn.disabled = false;
+        }
+    }
+    
+    // Constants for display formatting
+    const EPIC_MAX_DISPLAY_LENGTH = 15;
+    const EPIC_TRUNCATED_LENGTH = 12;
+    
+    function formatTimeAgo(seconds) {
+        if (seconds < 60) {
+            return 'vor ' + seconds + 's';
+        } else if (seconds < 3600) {
+            const minutes = Math.floor(seconds / 60);
+            return 'vor ' + minutes + ' Min.';
+        } else {
+            const hours = Math.floor(seconds / 3600);
+            return 'vor ' + hours + ' Std.';
+        }
+    }
+    
+    function formatTime(isoString) {
+        // Note: UTC is used intentionally for trading time consistency
+        const date = new Date(isoString);
+        return date.toLocaleTimeString('de-DE', { 
+            hour: '2-digit', 
+            minute: '2-digit', 
+            second: '2-digit',
+            timeZone: 'UTC'
+        }) + ' UTC';
+    }
+    
+    function updateWorkerInfo(data) {
+        // Update last activity
+        const lastActivityEl = document.getElementById('worker-last-activity');
+        if (lastActivityEl && data.last_run_at) {
+            const timeStr = formatTime(data.last_run_at);
+            const agoStr = formatTimeAgo(data.seconds_since_last_run);
+            lastActivityEl.innerHTML = timeStr + '<br><small>' + agoStr + '</small>';
+        }
+        
+        // Update phase
+        const phaseEl = document.getElementById('worker-phase');
+        if (phaseEl) {
+            phaseEl.textContent = data.phase || '--';
+        }
+        
+        // Update epic
+        const epicEl = document.getElementById('worker-epic');
+        if (epicEl) {
+            // Shorten the epic for display if too long
+            const epic = data.epic || '--';
+            epicEl.textContent = epic.length > EPIC_MAX_DISPLAY_LENGTH 
+                ? epic.substring(0, EPIC_TRUNCATED_LENGTH) + '...' 
+                : epic;
+            epicEl.title = epic;
+        }
+        
+        // Update price
+        const priceEl = document.getElementById('worker-price');
+        if (priceEl && data.price_info) {
+            if (data.price_info.bid && data.price_info.ask) {
+                priceEl.textContent = data.price_info.bid + '/' + data.price_info.ask;
+            } else {
+                priceEl.textContent = '--';
+            }
+        }
+        
+        // Update setup count
+        const setupCountEl = document.getElementById('worker-setup-count');
+        if (setupCountEl) {
+            setupCountEl.textContent = data.setup_count !== undefined ? data.setup_count : '--';
+        }
+        
+        // Update interval
+        const intervalEl = document.getElementById('worker-interval');
+        if (intervalEl) {
+            intervalEl.textContent = data.worker_interval ? (data.worker_interval + 's') : '--';
+        }
+        
+        // Update diagnostic message
+        const diagnosticEl = document.getElementById('worker-diagnostic-message');
+        if (diagnosticEl) {
+            diagnosticEl.textContent = data.diagnostic_message || 'Keine Diagnose verfügbar';
+        }
+    }
+    
+    function showWorkerError(errorMessage) {
+        const contentEl = document.getElementById('worker-status-content');
+        if (contentEl) {
+            contentEl.innerHTML = '<div class="worker-status-error"><i class="bi bi-exclamation-triangle"></i> ' + errorMessage + '</div>';
+        }
+    }
+    
+    // Worker status grid template
+    const WORKER_STATUS_GRID_TEMPLATE = `
+        <div class="worker-status-grid">
+            <div class="worker-status-item">
+                <div class="worker-status-value" id="worker-last-activity">--</div>
+                <div class="worker-status-label">Letzte Aktivität</div>
+            </div>
+            <div class="worker-status-item">
+                <div class="worker-status-value" id="worker-phase">--</div>
+                <div class="worker-status-label">Phase</div>
+            </div>
+            <div class="worker-status-item">
+                <div class="worker-status-value" id="worker-epic">--</div>
+                <div class="worker-status-label">Epic</div>
+            </div>
+            <div class="worker-status-item">
+                <div class="worker-status-value" id="worker-price">--</div>
+                <div class="worker-status-label">Preis (Bid/Ask)</div>
+            </div>
+            <div class="worker-status-item">
+                <div class="worker-status-value" id="worker-setup-count">--</div>
+                <div class="worker-status-label">Setups gefunden</div>
+            </div>
+            <div class="worker-status-item">
+                <div class="worker-status-value" id="worker-interval">--</div>
+                <div class="worker-status-label">Intervall</div>
+            </div>
+        </div>
+        <div class="worker-diagnostic" id="worker-diagnostic">
+            <div class="label">Diagnose</div>
+            <div class="message" id="worker-diagnostic-message">--</div>
+        </div>
+    `;
+    
+    function resetWorkerStatusGrid() {
+        const contentEl = document.getElementById('worker-status-content');
+        if (contentEl) {
+            contentEl.innerHTML = WORKER_STATUS_GRID_TEMPLATE;
+        }
+    }
+    
+    function refreshWorkerStatus() {
+        updateWorkerStatusIndicator('loading', 'Lädt...');
+        setWorkerRefreshButtonLoading(true);
+        
+        fetch('/fiona/api/worker/status/', {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        })
+        .then(response => response.json())
+        .then(data => {
+            setWorkerRefreshButtonLoading(false);
+            
+            if (data.success) {
+                if (data.worker_status === 'NO_DATA') {
+                    updateWorkerStatusIndicator('no-data', 'Keine Daten');
+                    resetWorkerStatusGrid();
+                    document.getElementById('worker-diagnostic-message').textContent = data.status_message;
+                } else if (data.worker_status === 'ONLINE') {
+                    updateWorkerStatusIndicator('online', 'ONLINE');
+                    resetWorkerStatusGrid();
+                    updateWorkerInfo(data.data);
+                } else {
+                    updateWorkerStatusIndicator('offline', 'OFFLINE');
+                    resetWorkerStatusGrid();
+                    updateWorkerInfo(data.data);
+                }
+            } else {
+                updateWorkerStatusIndicator('offline', 'Fehler');
+                showWorkerError(data.status_message || 'Unbekannter Fehler');
+            }
+        })
+        .catch(error => {
+            console.error('Worker status error:', error);
+            setWorkerRefreshButtonLoading(false);
+            updateWorkerStatusIndicator('offline', 'Fehler');
+            showWorkerError('Verbindungsfehler');
+        });
     }
     
     // Start auto-refresh when page loads
