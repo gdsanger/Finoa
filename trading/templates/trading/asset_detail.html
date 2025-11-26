@@ -179,9 +179,9 @@
                             </tr>
                         </table>
                         
-                        <!-- US Core -->
+                        <!-- Pre-US Range -->
                         <h6 class="text-muted mb-2">
-                            <i class="bi bi-sun"></i> US Core
+                            <i class="bi bi-sun"></i> Pre-US Range
                         </h6>
                         <table class="table config-table mb-3">
                             <tr>
@@ -194,10 +194,31 @@
                             </tr>
                         </table>
                         
-                        <!-- EIA Pre/Post (NEW) -->
+                        <!-- US Core Trading (NEW) -->
+                        <h6 class="text-muted mb-2">
+                            <i class="bi bi-lightning-charge-fill"></i> US Core Trading
+                            <span class="badge bg-success badge-sm">NEU</span>
+                        </h6>
+                        <table class="table config-table mb-3">
+                            <tr>
+                                <th>Zeitfenster</th>
+                                <td><code>{{ breakout_config.us_core_trading_start }}</code> - <code>{{ breakout_config.us_core_trading_end }}</code> UTC</td>
+                            </tr>
+                            <tr>
+                                <th>Trading</th>
+                                <td>
+                                    {% if breakout_config.us_core_trading_enabled %}
+                                        <span class="text-success"><i class="bi bi-check"></i> Aktiv</span>
+                                    {% else %}
+                                        <span class="text-muted">Deaktiviert</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        </table>
+                        
+                        <!-- EIA Pre/Post -->
                         <h6 class="text-muted mb-2">
                             <i class="bi bi-lightning-charge"></i> EIA Pre/Post
-                            <span class="badge bg-success badge-sm">NEU</span>
                         </h6>
                         <table class="table config-table mb-3">
                             <tr>
@@ -304,11 +325,83 @@
             </div>
         </div>
         
-        <!-- Right Column: Event Configurations -->
+        <!-- Right Column: Sessions & Phases -->
         <div class="col-lg-6">
+            <!-- Sessions & Phases Card (NEW) -->
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-clock-history"></i> Sessions & Phases</span>
+                    <a href="{% url 'phase_config_list' asset.id %}" class="btn btn-sm btn-primary">
+                        <i class="bi bi-gear"></i> Konfigurieren
+                    </a>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">
+                        Vollständige Phasen-Konfiguration mit Zeitfenstern, Trading-Flags und Event-Bindungen.
+                    </p>
+                    
+                    {% load trading_tags %}
+                    {% get_phase_configs asset as phase_configs %}
+                    
+                    {% if phase_configs %}
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Phase</th>
+                                    <th>Zeit (UTC)</th>
+                                    <th>Typ</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for pc in phase_configs %}
+                                <tr class="{% if not pc.enabled %}text-muted{% endif %}">
+                                    <td>
+                                        <small>{{ pc.get_phase_display }}</small>
+                                    </td>
+                                    <td>
+                                        <code class="small">{{ pc.start_time_utc }}-{{ pc.end_time_utc }}</code>
+                                    </td>
+                                    <td>
+                                        {% if pc.is_range_build_phase %}
+                                            <span class="badge bg-primary" style="font-size: 0.65rem;">Range</span>
+                                        {% endif %}
+                                        {% if pc.is_trading_phase %}
+                                            <span class="badge bg-success" style="font-size: 0.65rem;">Trading</span>
+                                        {% endif %}
+                                        {% if pc.requires_event %}
+                                            <span class="badge bg-warning text-dark" style="font-size: 0.65rem;">{{ pc.event_type }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if pc.enabled %}
+                                            <i class="bi bi-check-circle-fill text-success"></i>
+                                        {% else %}
+                                            <i class="bi bi-pause-circle text-secondary"></i>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-3">
+                        <i class="bi bi-clock-history display-6 text-muted"></i>
+                        <p class="text-muted mt-2 mb-2">Keine Phasen konfiguriert</p>
+                        <a href="{% url 'phase_config_list' asset.id %}" class="btn btn-primary btn-sm">
+                            <i class="bi bi-magic"></i> Standard-Phasen erstellen
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Event Configurations (Legacy) -->
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <span><i class="bi bi-calendar-event"></i> Event-Konfigurationen</span>
+                    <span><i class="bi bi-calendar-event"></i> Event-Konfigurationen (Legacy)</span>
                     <a href="{% url 'event_config_create' asset.id %}" class="btn btn-sm btn-outline-primary">
                         <i class="bi bi-plus"></i> Hinzufügen
                     </a>
@@ -364,44 +457,13 @@
                             </tbody>
                         </table>
                     {% else %}
-                        <div class="text-center py-5">
-                            <i class="bi bi-calendar-x display-4 text-muted"></i>
-                            <p class="text-muted mt-2">Keine Event-Konfigurationen vorhanden</p>
-                            <a href="{% url 'event_config_create' asset.id %}" class="btn btn-primary btn-sm">
-                                <i class="bi bi-plus"></i> Event-Konfiguration erstellen
-                            </a>
+                        <div class="text-center py-4">
+                            <small class="text-muted">
+                                <i class="bi bi-info-circle"></i>
+                                Verwenden Sie "Sessions & Phases" für die neue einheitliche Konfiguration.
+                            </small>
                         </div>
                     {% endif %}
-                </div>
-            </div>
-            
-            <!-- Configured Phases Overview -->
-            <div class="card mt-4">
-                <div class="card-header">
-                    <i class="bi bi-clock-history"></i> Phasen-Übersicht
-                </div>
-                <div class="card-body">
-                    <div class="row g-2">
-                        {% for phase_code, phase_name in session_phases %}
-                        <div class="col-6">
-                            {% with configured=False %}
-                            {% for config in event_configs %}
-                                {% if config.phase == phase_code %}
-                                    <div class="d-flex align-items-center p-2 bg-success bg-opacity-10 rounded">
-                                        <i class="bi bi-check-circle-fill text-success me-2"></i>
-                                        <small>{{ phase_name }}</small>
-                                    </div>
-                                {% endif %}
-                            {% empty %}
-                                <div class="d-flex align-items-center p-2 bg-light rounded">
-                                    <i class="bi bi-circle text-muted me-2"></i>
-                                    <small class="text-muted">{{ phase_name }}</small>
-                                </div>
-                            {% endfor %}
-                            {% endwith %}
-                        </div>
-                        {% endfor %}
-                    </div>
                 </div>
             </div>
         </div>

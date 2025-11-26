@@ -27,12 +27,21 @@ urlpatterns = [
     path('assets/<int:asset_id>/event-config/<str:phase>/', views.event_config_edit, name='event_config_edit'),
     path('assets/<int:asset_id>/event-config/<str:phase>/delete/', views.event_config_delete, name='event_config_delete'),
     
+    # Session Phase Configuration
+    path('assets/<int:asset_id>/phases/', views.phase_config_list, name='phase_config_list'),
+    path('assets/<int:asset_id>/phases/create-defaults/', views.phase_config_create_defaults, name='phase_config_create_defaults'),
+    path('assets/<int:asset_id>/phases/<str:phase>/', views.phase_config_edit, name='phase_config_edit'),
+    path('assets/<int:asset_id>/phases/<str:phase>/delete/', views.phase_config_delete, name='phase_config_delete'),
+    path('assets/<int:asset_id>/phases/<str:phase>/toggle/', views.phase_config_toggle, name='phase_config_toggle'),
+    
     # Breakout Range API
     path('api/assets/<int:asset_id>/breakout-ranges/', views.api_breakout_range_history, name='api_breakout_range_history'),
     path('api/assets/<int:asset_id>/breakout-ranges/latest/', views.api_breakout_range_latest, name='api_breakout_range_latest'),
     
     # Trading Diagnostics API
     path('api/trading/diagnostics/', views.api_diagnostics, name='api_trading_diagnostics'),
+    # Session Phase API
+    path('api/assets/<int:asset_id>/phases/', views.api_phase_configs, name='api_phase_configs'),
     
     # API Endpoints
     path('api/signals/', views.api_signals, name='api_signals'),

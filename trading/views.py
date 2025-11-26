@@ -749,6 +749,13 @@ def breakout_config_edit(request, asset_id):
             breakout_config.us_max_range_ticks = int(request.POST.get('us_max_range_ticks', 200))
             
             # =========================================================
+            # US Core Trading settings (NEW)
+            # =========================================================
+            breakout_config.us_core_trading_start = request.POST.get('us_core_trading_start', '15:00')
+            breakout_config.us_core_trading_end = request.POST.get('us_core_trading_end', '22:00')
+            breakout_config.us_core_trading_enabled = request.POST.get('us_core_trading_enabled') == 'on'
+            
+            # =========================================================
             # EIA Pre/Post settings (NEW)
             # =========================================================
             breakout_config.eia_min_body_fraction = parse_decimal(
@@ -915,10 +922,10 @@ def api_active_assets(request):
     API endpoint returning all active assets with their configurations.
     Used by the worker to dynamically load assets.
     """
-    from .models import TradingAsset
+    from .models import TradingAsset, AssetSessionPhaseConfig
     
     assets = TradingAsset.objects.filter(is_active=True).prefetch_related(
-        'breakout_config', 'event_configs'
+        'breakout_config', 'event_configs', 'session_phase_configs'
     )
     
     result = []
@@ -933,6 +940,7 @@ def api_active_assets(request):
             'strategy_type': asset.strategy_type,
             'breakout_config': None,
             'event_configs': [],
+            'session_phase_configs': [],
         }
         
         # Add breakout config if exists
@@ -954,6 +962,10 @@ def api_active_assets(request):
                 'pre_us_end': bc.pre_us_end,
                 'us_min_range_ticks': bc.us_min_range_ticks,
                 'us_max_range_ticks': bc.us_max_range_ticks,
+                # US Core Trading
+                'us_core_trading_start': bc.us_core_trading_start,
+                'us_core_trading_end': bc.us_core_trading_end,
+                'us_core_trading_enabled': bc.us_core_trading_enabled,
                 # EIA Pre/Post (NEW)
                 'eia_min_body_fraction': str(bc.eia_min_body_fraction),
                 'eia_min_impulse_atr': str(bc.eia_min_impulse_atr) if bc.eia_min_impulse_atr else None,
@@ -988,7 +1000,7 @@ def api_active_assets(request):
         except Exception:
             pass
         
-        # Add event configs
+        # Add event configs (legacy)
         for ec in asset.event_configs.all():
             asset_data['event_configs'].append({
                 'phase': ec.phase,
@@ -997,6 +1009,10 @@ def api_active_assets(request):
                 'time_offset_minutes': ec.time_offset_minutes,
                 'filter_enabled': ec.filter_enabled,
             })
+        
+        # Add new session phase configs
+        for spc in asset.session_phase_configs.filter(enabled=True):
+            asset_data['session_phase_configs'].append(spc.to_dict())
         
         result.append(asset_data)
     
@@ -1411,3 +1427,263 @@ def asset_toggle_trading_mode(request, asset_id):
         'is_diagnostic': asset.is_diagnostic_mode,
         'message': f'Trading Mode für "{asset.name}" auf {asset.get_trading_mode_display()} gesetzt.',
     })
+# Session Phase Configuration Views
+# ============================================================================
+
+@login_required
+def phase_config_list(request, asset_id):
+    """
+    List all session phase configurations for an asset.
+    Displays "Sessions & Phases" overview with all phases.
+    """
+    from .models import TradingAsset, AssetSessionPhaseConfig
+    
+    asset = get_object_or_404(TradingAsset, id=asset_id)
+    phase_configs = AssetSessionPhaseConfig.get_phases_for_asset(asset)
+    
+    # Create a mapping of all possible phases with their current config (or None)
+    all_phases = dict(AssetSessionPhaseConfig.PHASE_CHOICES)
+    phase_map = {pc.phase: pc for pc in phase_configs}
+    
+    context = {
+        'asset': asset,
+        'phase_configs': phase_configs,
+        'all_phases': all_phases,
+        'phase_map': phase_map,
+        'phase_choices': AssetSessionPhaseConfig.PHASE_CHOICES,
+        'event_type_choices': AssetSessionPhaseConfig.EVENT_TYPE_CHOICES,
+    }
+    
+    return render(request, 'trading/phase_config_list.html', context)
+
+
+@login_required
+@require_http_methods(['POST'])
+def phase_config_create_defaults(request, asset_id):
+    """
+    Create default phase configurations for an asset.
+    """
+    from .models import TradingAsset, AssetSessionPhaseConfig
+    from django.contrib import messages
+    
+    asset = get_object_or_404(TradingAsset, id=asset_id)
+    
+    # Create default phases
+    created = AssetSessionPhaseConfig.create_default_phases_for_asset(asset)
+    
+    if created:
+        messages.success(request, f'{len(created)} Standard-Phasen wurden erstellt.')
+    else:
+        messages.info(request, 'Alle Standard-Phasen existieren bereits.')
+    
+    return redirect('phase_config_list', asset_id=asset.id)
+
+
+@login_required
+def phase_config_edit(request, asset_id, phase):
+    """
+    Create or edit a session phase configuration.
+    """
+    from .models import TradingAsset, AssetSessionPhaseConfig
+    from django.contrib import messages
+    
+    asset = get_object_or_404(TradingAsset, id=asset_id)
+    
+    # Get existing config or None
+    try:
+        config = AssetSessionPhaseConfig.objects.get(asset=asset, phase=phase)
+    except AssetSessionPhaseConfig.DoesNotExist:
+        config = None
+    
+    if request.method == 'POST':
+        # Parse form data
+        start_time_utc = request.POST.get('start_time_utc', '00:00')
+        end_time_utc = request.POST.get('end_time_utc', '00:00')
+        is_range_build_phase = request.POST.get('is_range_build_phase') == 'on'
+        is_trading_phase = request.POST.get('is_trading_phase') == 'on'
+        event_type = request.POST.get('event_type', 'NONE')
+        requires_event = request.POST.get('requires_event') == 'on'
+        try:
+            event_offset_minutes = int(request.POST.get('event_offset_minutes', 0))
+        except (ValueError, TypeError):
+            event_offset_minutes = 0
+        enabled = request.POST.get('enabled') == 'on'
+        notes = request.POST.get('notes', '')
+        
+        # Create or update
+        if config:
+            config.start_time_utc = start_time_utc
+            config.end_time_utc = end_time_utc
+            config.is_range_build_phase = is_range_build_phase
+            config.is_trading_phase = is_trading_phase
+            config.event_type = event_type
+            config.requires_event = requires_event
+            config.event_offset_minutes = event_offset_minutes
+            config.enabled = enabled
+            config.notes = notes
+            config.save()
+            messages.success(request, f'Phase "{config.get_phase_display()}" aktualisiert.')
+        else:
+            config = AssetSessionPhaseConfig.objects.create(
+                asset=asset,
+                phase=phase,
+                start_time_utc=start_time_utc,
+                end_time_utc=end_time_utc,
+                is_range_build_phase=is_range_build_phase,
+                is_trading_phase=is_trading_phase,
+                event_type=event_type,
+                requires_event=requires_event,
+                event_offset_minutes=event_offset_minutes,
+                enabled=enabled,
+                notes=notes,
+            )
+            messages.success(request, f'Phase "{config.get_phase_display()}" erstellt.')
+        
+        return redirect('phase_config_list', asset_id=asset.id)
+    
+    # GET request - show form
+    context = {
+        'asset': asset,
+        'config': config,
+        'phase': phase,
+        'phase_display': dict(AssetSessionPhaseConfig.PHASE_CHOICES).get(phase, phase),
+        'phase_choices': AssetSessionPhaseConfig.PHASE_CHOICES,
+        'event_type_choices': AssetSessionPhaseConfig.EVENT_TYPE_CHOICES,
+    }
+    
+    return render(request, 'trading/phase_config_form.html', context)
+
+
+@login_required
+@require_http_methods(['POST'])
+def phase_config_delete(request, asset_id, phase):
+    """
+    Delete a session phase configuration.
+    """
+    from .models import TradingAsset, AssetSessionPhaseConfig
+    from django.contrib import messages
+    
+    asset = get_object_or_404(TradingAsset, id=asset_id)
+    
+    try:
+        config = AssetSessionPhaseConfig.objects.get(asset=asset, phase=phase)
+        phase_display = config.get_phase_display()
+        config.delete()
+        messages.success(request, f'Phase "{phase_display}" gelöscht.')
+    except AssetSessionPhaseConfig.DoesNotExist:
+        messages.error(request, 'Phasen-Konfiguration nicht gefunden.')
+    
+    return redirect('phase_config_list', asset_id=asset.id)
+
+
+@login_required
+@require_http_methods(['POST'])
+def phase_config_toggle(request, asset_id, phase):
+    """
+    Toggle the enabled status of a session phase configuration via AJAX.
+    """
+    from .models import TradingAsset, AssetSessionPhaseConfig
+    
+    asset = get_object_or_404(TradingAsset, id=asset_id)
+    
+    try:
+        config = AssetSessionPhaseConfig.objects.get(asset=asset, phase=phase)
+        config.enabled = not config.enabled
+        config.save()
+        
+        return JsonResponse({
+            'success': True,
+            'enabled': config.enabled,
+            'message': f'Phase "{config.get_phase_display()}" ist jetzt {"aktiviert" if config.enabled else "deaktiviert"}.',
+        })
+    except AssetSessionPhaseConfig.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'error': 'Phasen-Konfiguration nicht gefunden.',
+        }, status=404)
+
+
+@login_required
+def api_phase_configs(request, asset_id):
+    """
+    API endpoint for phase configurations.
+    
+    GET: Returns all phase configurations for an asset.
+    POST: Create or update a phase configuration.
+    PUT: Update a phase configuration (expects JSON body).
+    """
+    from .models import TradingAsset, AssetSessionPhaseConfig
+    import json
+    
+    asset = get_object_or_404(TradingAsset, id=asset_id)
+    
+    if request.method == 'GET':
+        # Return all phase configurations
+        configs = AssetSessionPhaseConfig.get_phases_for_asset(asset)
+        return JsonResponse({
+            'success': True,
+            'asset_id': asset.id,
+            'asset_symbol': asset.symbol,
+            'count': configs.count(),
+            'phases': [c.to_dict() for c in configs],
+        })
+    
+    elif request.method == 'POST':
+        # Create or update phase configuration
+        try:
+            data = json.loads(request.body)
+            phase = data.get('phase')
+            
+            if not phase:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Phase is required.',
+                }, status=400)
+            
+            # Validate phase
+            valid_phases = [p[0] for p in AssetSessionPhaseConfig.PHASE_CHOICES]
+            if phase not in valid_phases:
+                return JsonResponse({
+                    'success': False,
+                    'error': f'Invalid phase. Must be one of: {", ".join(valid_phases)}',
+                }, status=400)
+            
+            # Create or update
+            config, created = AssetSessionPhaseConfig.objects.update_or_create(
+                asset=asset,
+                phase=phase,
+                defaults={
+                    'start_time_utc': data.get('start_time_utc', '00:00'),
+                    'end_time_utc': data.get('end_time_utc', '00:00'),
+                    'is_range_build_phase': data.get('is_range_build_phase', False),
+                    'is_trading_phase': data.get('is_trading_phase', False),
+                    'event_type': data.get('event_type', 'NONE'),
+                    'requires_event': data.get('requires_event', False),
+                    'event_offset_minutes': data.get('event_offset_minutes', 0),
+                    'enabled': data.get('enabled', True),
+                    'notes': data.get('notes', ''),
+                }
+            )
+            
+            return JsonResponse({
+                'success': True,
+                'created': created,
+                'phase': config.to_dict(),
+            })
+            
+        except json.JSONDecodeError:
+            return JsonResponse({
+                'success': False,
+                'error': 'Invalid JSON body.',
+            }, status=400)
+        except Exception as e:
+            logger.error(f"Error creating/updating phase config: {e}")
+            return JsonResponse({
+                'success': False,
+                'error': str(e),
+            }, status=500)
+    
+    return JsonResponse({
+        'success': False,
+        'error': 'Method not allowed.',
+    }, status=405)

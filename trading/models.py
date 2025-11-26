@@ -1270,6 +1270,30 @@ class AssetDiagnostics(models.Model):
     
     # Session Phase choices
     SESSION_PHASES = [
+class AssetSessionPhaseConfig(models.Model):
+    """
+    Complete phase configuration for a specific asset and session phase.
+    
+    Provides unified, configurable phase settings including:
+    - Time windows (start/end in UTC)
+    - Phase type flags (range build, trading allowed)
+    - Event requirements and mappings
+    - Per-asset, per-phase active status
+    
+    This replaces the fragmented configuration that was previously spread
+    across AssetBreakoutConfig (timing) and AssetEventConfig (events).
+    
+    Standard phases per asset:
+    - ASIA_RANGE: Range formation (typically 00:00-08:00 UTC)
+    - LONDON_CORE: Range formation (typically 08:00-12:00 UTC)  
+    - PRE_US_RANGE: Range formation (typically 13:00-15:00 UTC)
+    - US_CORE_TRADING: Trading session (typically 15:00-22:00 UTC)
+    - EIA_PRE: Event-bound pause phase (e.g., 15:25-15:30 UTC on EIA days)
+    - EIA_POST: Event-bound trading phase (e.g., 15:30-17:00 UTC on EIA days)
+    """
+    
+    # Phase identifier choices
+    PHASE_CHOICES = [
         ('ASIA_RANGE', 'Asia Range'),
         ('LONDON_CORE', 'London Core'),
         ('PRE_US_RANGE', 'Pre-US Range'),
@@ -1277,6 +1301,18 @@ class AssetDiagnostics(models.Model):
         ('EIA_PRE', 'EIA Pre'),
         ('EIA_POST', 'EIA Post'),
         ('OTHER', 'Other'),
+    ]
+    
+    # Event type choices
+    EVENT_TYPE_CHOICES = [
+        ('NONE', 'None'),
+        ('EIA', 'EIA Report'),
+        ('US_MARKET_OPEN', 'US Market Open'),
+        ('FOMC', 'FOMC Meeting'),
+        ('NFP', 'Non-Farm Payrolls'),
+        ('CPI', 'Consumer Price Index'),
+        ('GDP', 'GDP Report'),
+        ('CUSTOM', 'Custom Event'),
     ]
     
     # Relationship to asset
@@ -1406,6 +1442,73 @@ class AssetDiagnostics(models.Model):
         default=dict,
         blank=True,
         help_text='Aggregated counts of risk rejection reason codes (e.g., {"RISK_SPREAD_TOO_WIDE": 5})'
+        related_name='session_phase_configs',
+        help_text='Asset this phase configuration belongs to'
+    )
+    
+    # Phase identification
+    phase = models.CharField(
+        max_length=20,
+        choices=PHASE_CHOICES,
+        help_text='Session phase identifier'
+    )
+    
+    # ==========================================================================
+    # Time Configuration (UTC)
+    # ==========================================================================
+    start_time_utc = models.CharField(
+        max_length=5,
+        help_text='Phase start time in UTC (HH:MM format, e.g., "08:00")'
+    )
+    end_time_utc = models.CharField(
+        max_length=5,
+        help_text='Phase end time in UTC (HH:MM format, e.g., "12:00")'
+    )
+    
+    # ==========================================================================
+    # Phase Type Flags
+    # ==========================================================================
+    is_range_build_phase = models.BooleanField(
+        default=False,
+        help_text='Whether this phase is used for range formation (e.g., Asia, London, Pre-US)'
+    )
+    is_trading_phase = models.BooleanField(
+        default=False,
+        help_text='Whether trading signals are generated during this phase (e.g., US Core Trading, EIA Post)'
+    )
+    
+    # ==========================================================================
+    # Event Configuration
+    # ==========================================================================
+    event_type = models.CharField(
+        max_length=20,
+        choices=EVENT_TYPE_CHOICES,
+        default='NONE',
+        help_text='Type of event associated with this phase (NONE for regular phases)'
+    )
+    requires_event = models.BooleanField(
+        default=False,
+        help_text='Whether this phase is only valid when the associated event is present'
+    )
+    event_offset_minutes = models.IntegerField(
+        default=0,
+        help_text='Time offset in minutes from the event (e.g., -5 for 5 minutes before)'
+    )
+    
+    # ==========================================================================
+    # Active Status
+    # ==========================================================================
+    enabled = models.BooleanField(
+        default=True,
+        help_text='Whether this phase is active for this asset'
+    )
+    
+    # ==========================================================================
+    # Optional Notes
+    # ==========================================================================
+    notes = models.TextField(
+        blank=True,
+        help_text='Optional notes about this phase configuration'
     )
     
     # ==========================================================================
@@ -1583,6 +1686,187 @@ class AssetDiagnostics(models.Model):
     def get_current_for_asset(cls, asset):
         """
         Get the most recent diagnostics record for an asset.
+        ordering = ['asset', 'phase']
+        verbose_name = 'Asset Session Phase Config'
+        verbose_name_plural = 'Asset Session Phase Configs'
+        unique_together = ['asset', 'phase']
+        indexes = [
+            models.Index(fields=['asset', 'enabled']),
+        ]
+    
+    def __str__(self):
+        status = '✓' if self.enabled else '✗'
+        flags = []
+        if self.is_range_build_phase:
+            flags.append('Range')
+        if self.is_trading_phase:
+            flags.append('Trading')
+        if self.requires_event:
+            flags.append(f'Event:{self.event_type}')
+        flag_str = f" [{', '.join(flags)}]" if flags else ""
+        return f"{status} {self.asset.symbol} - {self.get_phase_display()}{flag_str}"
+    
+    def to_dict(self):
+        """Convert to dictionary for API responses."""
+        return {
+            'id': self.id,
+            'asset_id': self.asset_id,
+            'phase': self.phase,
+            'phase_display': self.get_phase_display(),
+            'start_time_utc': self.start_time_utc,
+            'end_time_utc': self.end_time_utc,
+            'is_range_build_phase': self.is_range_build_phase,
+            'is_trading_phase': self.is_trading_phase,
+            'event_type': self.event_type,
+            'event_type_display': self.get_event_type_display(),
+            'requires_event': self.requires_event,
+            'event_offset_minutes': self.event_offset_minutes,
+            'enabled': self.enabled,
+            'notes': self.notes,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+    
+    @classmethod
+    def get_default_phases_for_asset(cls, asset_symbol):
+        """
+        Return default phase configurations based on asset type.
+        
+        These defaults can be used when creating a new asset to pre-populate
+        sensible phase configurations.
+        
+        Args:
+            asset_symbol: Asset symbol (e.g., 'OIL', 'NAS100')
+            
+        Returns:
+            List of dicts with default phase configurations
+        """
+        # Common phases for all assets
+        base_phases = [
+            {
+                'phase': 'ASIA_RANGE',
+                'start_time_utc': '00:00',
+                'end_time_utc': '08:00',
+                'is_range_build_phase': True,
+                'is_trading_phase': False,
+                'event_type': 'NONE',
+                'requires_event': False,
+                'enabled': True,
+            },
+            {
+                'phase': 'LONDON_CORE',
+                'start_time_utc': '08:00',
+                'end_time_utc': '12:00',
+                'is_range_build_phase': True,
+                'is_trading_phase': False,
+                'event_type': 'NONE',
+                'requires_event': False,
+                'enabled': True,
+            },
+            {
+                'phase': 'PRE_US_RANGE',
+                'start_time_utc': '13:00',
+                'end_time_utc': '15:00',
+                'is_range_build_phase': True,
+                'is_trading_phase': False,
+                'event_type': 'NONE',
+                'requires_event': False,
+                'enabled': True,
+            },
+        ]
+        
+        # Asset-specific configurations
+        if asset_symbol in ('OIL', 'CL', 'WTI'):
+            # WTI Oil specific phases
+            return base_phases + [
+                {
+                    'phase': 'US_CORE_TRADING',
+                    'start_time_utc': '15:00',
+                    'end_time_utc': '22:00',
+                    'is_range_build_phase': False,
+                    'is_trading_phase': True,
+                    'event_type': 'NONE',
+                    'requires_event': False,
+                    'enabled': True,
+                },
+                {
+                    'phase': 'EIA_PRE',
+                    'start_time_utc': '15:25',
+                    'end_time_utc': '15:30',
+                    'is_range_build_phase': False,
+                    'is_trading_phase': False,
+                    'event_type': 'EIA',
+                    'requires_event': True,
+                    'enabled': True,
+                },
+                {
+                    'phase': 'EIA_POST',
+                    'start_time_utc': '15:30',
+                    'end_time_utc': '17:00',
+                    'is_range_build_phase': False,
+                    'is_trading_phase': True,
+                    'event_type': 'EIA',
+                    'requires_event': True,
+                    'enabled': True,
+                },
+            ]
+        elif asset_symbol in ('NAS100', 'NDX', 'NASDAQ'):
+            # NAS100 specific phases
+            return base_phases + [
+                {
+                    'phase': 'US_CORE_TRADING',
+                    'start_time_utc': '14:30',
+                    'end_time_utc': '21:00',
+                    'is_range_build_phase': False,
+                    'is_trading_phase': True,
+                    'event_type': 'US_MARKET_OPEN',
+                    'requires_event': False,  # Event optional but can be used
+                    'enabled': True,
+                },
+                # No EIA phases for NAS100
+            ]
+        else:
+            # Generic default for other assets
+            return base_phases + [
+                {
+                    'phase': 'US_CORE_TRADING',
+                    'start_time_utc': '15:00',
+                    'end_time_utc': '22:00',
+                    'is_range_build_phase': False,
+                    'is_trading_phase': True,
+                    'event_type': 'NONE',
+                    'requires_event': False,
+                    'enabled': True,
+                },
+            ]
+    
+    @classmethod
+    def create_default_phases_for_asset(cls, asset):
+        """
+        Create default phase configurations for an asset.
+        
+        Args:
+            asset: TradingAsset instance
+            
+        Returns:
+            List of created AssetSessionPhaseConfig instances
+        """
+        defaults = cls.get_default_phases_for_asset(asset.symbol)
+        created = []
+        for phase_data in defaults:
+            config, was_created = cls.objects.get_or_create(
+                asset=asset,
+                phase=phase_data['phase'],
+                defaults=phase_data,
+            )
+            if was_created:
+                created.append(config)
+        return created
+    
+    @classmethod
+    def get_phases_for_asset(cls, asset):
+        """
+        Get all phase configurations for an asset.
         
         Args:
             asset: TradingAsset instance or asset ID
@@ -1697,3 +1981,23 @@ class AssetDiagnostics(models.Model):
         aggregated['top_reasons'] = all_reasons[:10]
         
         return aggregated
+            QuerySet of AssetSessionPhaseConfig instances
+        """
+        if isinstance(asset, int):
+            return cls.objects.filter(asset_id=asset).order_by('phase')
+        return cls.objects.filter(asset=asset).order_by('phase')
+    
+    @classmethod
+    def get_enabled_phases_for_asset(cls, asset):
+        """
+        Get only enabled phase configurations for an asset.
+        
+        Args:
+            asset: TradingAsset instance or asset ID
+            
+        Returns:
+            QuerySet of enabled AssetSessionPhaseConfig instances
+        """
+        if isinstance(asset, int):
+            return cls.objects.filter(asset_id=asset, enabled=True).order_by('phase')
+        return cls.objects.filter(asset=asset, enabled=True).order_by('phase')

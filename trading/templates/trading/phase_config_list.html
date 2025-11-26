@@ -1,0 +1,389 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Fiona - Sessions & Phases für {{ asset.name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .phase-card {
+        transition: all 0.2s ease;
+        border-left: 4px solid transparent;
+    }
+    
+    .phase-card:hover {
+        box-shadow: 0 0.125rem 0.5rem rgba(0, 0, 0, 0.1);
+    }
+    
+    .phase-card.range-phase {
+        border-left-color: #0d6efd;
+    }
+    
+    .phase-card.trading-phase {
+        border-left-color: #198754;
+    }
+    
+    .phase-card.event-phase {
+        border-left-color: #ffc107;
+    }
+    
+    .phase-card.disabled {
+        opacity: 0.6;
+        border-left-color: #6c757d;
+    }
+    
+    .phase-time {
+        font-family: 'Roboto Mono', monospace;
+        font-size: 0.85rem;
+    }
+    
+    .phase-badge {
+        font-size: 0.7rem;
+    }
+    
+    .phase-flags .badge {
+        margin-right: 0.25rem;
+    }
+    
+    .timeline-visual {
+        height: 30px;
+        background: linear-gradient(90deg, 
+            #f8f9fa 0%, 
+            #f8f9fa 100%
+        );
+        border-radius: 4px;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .timeline-segment {
+        position: absolute;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.65rem;
+        color: white;
+        font-weight: 500;
+    }
+    
+    .timeline-segment.range {
+        background-color: rgba(13, 110, 253, 0.7);
+    }
+    
+    .timeline-segment.trading {
+        background-color: rgba(25, 135, 84, 0.7);
+    }
+    
+    .timeline-segment.event {
+        background-color: rgba(255, 193, 7, 0.7);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'signal_dashboard' %}">Fiona Trading</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'asset_list' %}">Assets</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'asset_detail' asset.id %}">{{ asset.name }}</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Sessions & Phases</li>
+        </ol>
+    </nav>
+    
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-start mb-4">
+        <div>
+            <h1 class="h3 mb-1">
+                <i class="bi bi-clock-history"></i> Sessions & Phases
+                <span class="badge bg-secondary">{{ asset.symbol }}</span>
+            </h1>
+            <p class="text-muted mb-0">
+                Vollständige Phasen-Konfiguration für {{ asset.name }}
+            </p>
+        </div>
+        <div class="d-flex gap-2">
+            {% if not phase_configs %}
+            <form method="post" action="{% url 'phase_config_create_defaults' asset.id %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-success">
+                    <i class="bi bi-magic"></i> Standard-Phasen erstellen
+                </button>
+            </form>
+            {% else %}
+            <form method="post" action="{% url 'phase_config_create_defaults' asset.id %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-success">
+                    <i class="bi bi-plus-circle"></i> Fehlende Phasen hinzufügen
+                </button>
+            </form>
+            {% endif %}
+            <a href="{% url 'asset_detail' asset.id %}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Zurück
+            </a>
+        </div>
+    </div>
+    
+    <!-- Legend -->
+    <div class="card mb-4">
+        <div class="card-body py-2">
+            <div class="d-flex flex-wrap gap-3 align-items-center">
+                <small class="text-muted me-2">Legende:</small>
+                <span class="badge bg-primary"><i class="bi bi-layers"></i> Range-Bildung</span>
+                <span class="badge bg-success"><i class="bi bi-lightning"></i> Trading-Phase</span>
+                <span class="badge bg-warning text-dark"><i class="bi bi-calendar-event"></i> Event-gebunden</span>
+                <span class="badge bg-secondary"><i class="bi bi-pause"></i> Deaktiviert</span>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row">
+        <!-- Phase Cards -->
+        <div class="col-lg-8">
+            {% if phase_configs %}
+                {% for config in phase_configs %}
+                <div class="card phase-card mb-3 {% if config.is_range_build_phase %}range-phase{% endif %}{% if config.is_trading_phase %}trading-phase{% endif %}{% if config.requires_event %}event-phase{% endif %}{% if not config.enabled %}disabled{% endif %}">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <h5 class="mb-1">
+                                    {% if config.enabled %}
+                                        <i class="bi bi-check-circle-fill text-success"></i>
+                                    {% else %}
+                                        <i class="bi bi-pause-circle text-secondary"></i>
+                                    {% endif %}
+                                    {{ config.get_phase_display }}
+                                </h5>
+                                <div class="phase-flags mb-2">
+                                    {% if config.is_range_build_phase %}
+                                        <span class="badge bg-primary phase-badge">
+                                            <i class="bi bi-layers"></i> Range-Bildung
+                                        </span>
+                                    {% endif %}
+                                    {% if config.is_trading_phase %}
+                                        <span class="badge bg-success phase-badge">
+                                            <i class="bi bi-lightning"></i> Trading erlaubt
+                                        </span>
+                                    {% endif %}
+                                    {% if config.requires_event %}
+                                        <span class="badge bg-warning text-dark phase-badge">
+                                            <i class="bi bi-calendar-event"></i> Event: {{ config.get_event_type_display }}
+                                        </span>
+                                    {% elif config.event_type != 'NONE' %}
+                                        <span class="badge bg-info phase-badge">
+                                            <i class="bi bi-calendar"></i> {{ config.get_event_type_display }} (optional)
+                                        </span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <button type="button" 
+                                        class="btn btn-sm {% if config.enabled %}btn-outline-warning{% else %}btn-outline-success{% endif %}"
+                                        onclick="togglePhase({{ asset.id }}, '{{ config.phase }}')">
+                                    {% if config.enabled %}
+                                        <i class="bi bi-pause"></i>
+                                    {% else %}
+                                        <i class="bi bi-play"></i>
+                                    {% endif %}
+                                </button>
+                                <a href="{% url 'phase_config_edit' asset.id config.phase %}" class="btn btn-sm btn-outline-primary">
+                                    <i class="bi bi-pencil"></i> Bearbeiten
+                                </a>
+                                <form method="post" action="{% url 'phase_config_delete' asset.id config.phase %}" style="display: inline;">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" 
+                                            onclick="return confirm('Phase wirklich löschen?')">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                        
+                        <div class="row mt-3">
+                            <div class="col-md-4">
+                                <small class="text-muted">Zeitfenster (UTC)</small>
+                                <div class="phase-time">
+                                    <i class="bi bi-clock"></i>
+                                    {{ config.start_time_utc }} - {{ config.end_time_utc }}
+                                </div>
+                            </div>
+                            {% if config.event_offset_minutes != 0 %}
+                            <div class="col-md-4">
+                                <small class="text-muted">Event-Offset</small>
+                                <div class="phase-time">
+                                    <i class="bi bi-arrow-left-right"></i>
+                                    {{ config.event_offset_minutes }} Minuten
+                                </div>
+                            </div>
+                            {% endif %}
+                            {% if config.notes %}
+                            <div class="col-12 mt-2">
+                                <small class="text-muted">
+                                    <i class="bi bi-chat-left-text"></i> {{ config.notes }}
+                                </small>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="card">
+                    <div class="card-body text-center py-5">
+                        <i class="bi bi-clock-history display-1 text-muted"></i>
+                        <h4 class="mt-3 text-muted">Keine Phasen konfiguriert</h4>
+                        <p class="text-muted">
+                            Erstellen Sie Standard-Phasen basierend auf dem Asset-Typ oder fügen Sie Phasen manuell hinzu.
+                        </p>
+                        <form method="post" action="{% url 'phase_config_create_defaults' asset.id %}">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                <i class="bi bi-magic"></i> Standard-Phasen für {{ asset.symbol }} erstellen
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            {% endif %}
+            
+            <!-- Add Missing Phases -->
+            {% if phase_configs %}
+            <div class="card mt-4">
+                <div class="card-header">
+                    <i class="bi bi-plus-circle"></i> Phase hinzufügen
+                </div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        {% for phase_code, phase_name in phase_choices %}
+                            {% if phase_code not in phase_map %}
+                            <div class="col-auto">
+                                <a href="{% url 'phase_config_edit' asset.id phase_code %}" class="btn btn-outline-primary btn-sm">
+                                    <i class="bi bi-plus"></i> {{ phase_name }}
+                                </a>
+                            </div>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        
+        <!-- Info Panel -->
+        <div class="col-lg-4">
+            <div class="card bg-light sticky-top" style="top: 1rem;">
+                <div class="card-body">
+                    <h6><i class="bi bi-lightbulb"></i> Phasen-Konfiguration</h6>
+                    <p class="small text-muted mb-3">
+                        Definieren Sie für jedes Asset die Session-Phasen mit ihren Zeitfenstern, 
+                        Flags und Event-Bindungen.
+                    </p>
+                    
+                    <h6 class="mt-3">Standard-Phasen:</h6>
+                    <ul class="small text-muted mb-3">
+                        <li class="mb-1"><strong>Asia Range:</strong> 00:00-08:00 UTC, Range-Bildung</li>
+                        <li class="mb-1"><strong>London Core:</strong> 08:00-12:00 UTC, Range-Bildung</li>
+                        <li class="mb-1"><strong>Pre-US Range:</strong> 13:00-15:00 UTC, Range-Bildung</li>
+                        <li class="mb-1"><strong>US Core Trading:</strong> 15:00-22:00 UTC, Trading</li>
+                        <li class="mb-1"><strong>EIA Pre:</strong> 15:25-15:30 UTC, Event-Pause</li>
+                        <li><strong>EIA Post:</strong> 15:30-17:00 UTC, Event-Trading</li>
+                    </ul>
+                    
+                    <hr>
+                    
+                    <h6>Phase-Typen:</h6>
+                    <ul class="small text-muted mb-0">
+                        <li class="mb-2">
+                            <span class="badge bg-primary">Range-Bildung</span>
+                            <br>Phase zur Ermittlung von High/Low für Breakout-Strategien
+                        </li>
+                        <li class="mb-2">
+                            <span class="badge bg-success">Trading-Phase</span>
+                            <br>Phase in der Signale generiert und Trades ausgeführt werden
+                        </li>
+                        <li>
+                            <span class="badge bg-warning text-dark">Event-gebunden</span>
+                            <br>Phase ist nur aktiv wenn das zugehörige Event vorhanden ist
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            
+            <!-- Asset Quick Info -->
+            <div class="card mt-3">
+                <div class="card-body">
+                    <h6><i class="bi bi-info-circle"></i> Asset-Info</h6>
+                    <table class="table table-sm small mb-0">
+                        <tr>
+                            <td class="text-muted">Name:</td>
+                            <td>{{ asset.name }}</td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">Symbol:</td>
+                            <td><code>{{ asset.symbol }}</code></td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">EPIC:</td>
+                            <td><code class="small">{{ asset.epic }}</code></td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">Status:</td>
+                            <td>
+                                {% if asset.is_active %}
+                                    <span class="badge bg-success">Aktiv</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Inaktiv</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">Phasen:</td>
+                            <td>{{ phase_configs.count }} konfiguriert</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+function togglePhase(assetId, phase) {
+    fetch(`/fiona/assets/${assetId}/phases/${phase}/toggle/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'Content-Type': 'application/json',
+        },
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Fehler: ' + (data.error || 'Unbekannter Fehler'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Ein Fehler ist aufgetreten.');
+    });
+}
+</script>
+{% endblock %}
