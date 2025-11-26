@@ -1861,3 +1861,365 @@ class BreakoutRangeAPITest(TestCase):
         self.assertTrue(data['success'])
         self.assertEqual(data['range_type'], 'us_core_trading')
         self.assertEqual(data['data']['range_type'], 'US Core Trading')
+
+
+# =============================================================================
+# Breakout Config Form Tests (Issue: Fields not saving/displaying correctly)
+# =============================================================================
+
+class BreakoutConfigFormTest(TestCase):
+    """Tests for Breakout Config Form submission and value display.
+    
+    Tests specifically address the issue where the following fields were not 
+    being saved/displayed correctly:
+    - EIA Pre/Post: Min Body für EIA, Required Impulse Strength, Min Impulse ATR, 
+                    Impulse Range High, Impulse Range Low
+    - Candle-Quality Filter: Min Wick Ratio, Max Wick Ratio, Min Body absolute
+    - Advanced Filter: Momentum Threshold, Volatility Throttle, Session Volatility Cap
+    - Breakout-Anforderungen: Min./Max. Körpergröße
+    - ATR Einstellungen: Min./Max. ATR-Wert
+    """
+    
+    def setUp(self):
+        """Set up test user and client."""
+        self.user = User.objects.create_user(
+            username='testuser',
+            password='testpass123'
+        )
+        self.client.login(username='testuser', password='testpass123')
+        
+        # Create asset with breakout config
+        self.asset = TradingAsset.objects.create(
+            name='WTI Test',
+            symbol='CL',
+            epic='CC.D.CL.UNC.TEST',
+        )
+        AssetBreakoutConfig.objects.create(asset=self.asset)
+    
+    def test_breakout_config_form_saves_eia_fields(self):
+        """Test that EIA Pre/Post fields are saved correctly when form is submitted."""
+        response = self.client.post(f'/fiona/assets/{self.asset.id}/breakout-config/', {
+            # Required fields
+            'asia_range_start': '00:00',
+            'asia_range_end': '08:00',
+            'asia_min_range_ticks': '10',
+            'asia_max_range_ticks': '200',
+            'london_range_start': '08:00',
+            'london_range_end': '12:00',
+            'london_min_range_ticks': '10',
+            'london_max_range_ticks': '200',
+            'pre_us_start': '13:00',
+            'pre_us_end': '15:00',
+            'us_min_range_ticks': '10',
+            'us_max_range_ticks': '200',
+            'min_breakout_body_fraction': '0.50',
+            'min_breakout_distance_ticks': '1',
+            'consecutive_candle_filter': '0',
+            'eia_reversion_window_min_sec': '30',
+            'eia_reversion_window_max_sec': '300',
+            'eia_max_impulse_duration_min': '5',
+            'filter_doji_breakouts': 'on',
+            # EIA fields being tested
+            'eia_min_body_fraction': '0.65',
+            'eia_required_impulse_strength': '0.55',
+            'eia_min_impulse_atr': '0.15',
+            'eia_impulse_range_high': '1.25',
+            'eia_impulse_range_low': '0.35',
+        })
+        
+        # Should redirect on success
+        self.assertEqual(response.status_code, 302)
+        
+        # Reload config and verify values
+        config = AssetBreakoutConfig.objects.get(asset=self.asset)
+        self.assertEqual(config.eia_min_body_fraction, Decimal('0.65'))
+        self.assertEqual(config.eia_required_impulse_strength, Decimal('0.55'))
+        self.assertEqual(config.eia_min_impulse_atr, Decimal('0.15'))
+        self.assertEqual(config.eia_impulse_range_high, Decimal('1.25'))
+        self.assertEqual(config.eia_impulse_range_low, Decimal('0.35'))
+    
+    def test_breakout_config_form_saves_candle_quality_fields(self):
+        """Test that Candle-Quality Filter fields are saved correctly."""
+        response = self.client.post(f'/fiona/assets/{self.asset.id}/breakout-config/', {
+            # Required fields
+            'asia_range_start': '00:00',
+            'asia_range_end': '08:00',
+            'asia_min_range_ticks': '10',
+            'asia_max_range_ticks': '200',
+            'london_range_start': '08:00',
+            'london_range_end': '12:00',
+            'london_min_range_ticks': '10',
+            'london_max_range_ticks': '200',
+            'pre_us_start': '13:00',
+            'pre_us_end': '15:00',
+            'us_min_range_ticks': '10',
+            'us_max_range_ticks': '200',
+            'min_breakout_body_fraction': '0.50',
+            'min_breakout_distance_ticks': '1',
+            'consecutive_candle_filter': '0',
+            'eia_min_body_fraction': '0.60',
+            'eia_required_impulse_strength': '0.50',
+            'eia_reversion_window_min_sec': '30',
+            'eia_reversion_window_max_sec': '300',
+            'eia_max_impulse_duration_min': '5',
+            'filter_doji_breakouts': 'on',
+            # Candle Quality fields being tested
+            'min_wick_ratio': '0.30',
+            'max_wick_ratio': '2.00',
+            'min_candle_body_absolute': '0.05',
+        })
+        
+        # Should redirect on success
+        self.assertEqual(response.status_code, 302)
+        
+        # Reload config and verify values
+        config = AssetBreakoutConfig.objects.get(asset=self.asset)
+        self.assertEqual(config.min_wick_ratio, Decimal('0.30'))
+        self.assertEqual(config.max_wick_ratio, Decimal('2.00'))
+        self.assertEqual(config.min_candle_body_absolute, Decimal('0.05'))
+    
+    def test_breakout_config_form_saves_advanced_filter_fields(self):
+        """Test that Advanced Filter fields are saved correctly."""
+        response = self.client.post(f'/fiona/assets/{self.asset.id}/breakout-config/', {
+            # Required fields
+            'asia_range_start': '00:00',
+            'asia_range_end': '08:00',
+            'asia_min_range_ticks': '10',
+            'asia_max_range_ticks': '200',
+            'london_range_start': '08:00',
+            'london_range_end': '12:00',
+            'london_min_range_ticks': '10',
+            'london_max_range_ticks': '200',
+            'pre_us_start': '13:00',
+            'pre_us_end': '15:00',
+            'us_min_range_ticks': '10',
+            'us_max_range_ticks': '200',
+            'min_breakout_body_fraction': '0.50',
+            'min_breakout_distance_ticks': '1',
+            'eia_min_body_fraction': '0.60',
+            'eia_required_impulse_strength': '0.50',
+            'eia_reversion_window_min_sec': '30',
+            'eia_reversion_window_max_sec': '300',
+            'eia_max_impulse_duration_min': '5',
+            'filter_doji_breakouts': 'on',
+            # Advanced Filter fields being tested
+            'consecutive_candle_filter': '3',
+            'momentum_threshold': '0.20',
+            'volatility_throttle_min_atr': '0.10',
+            'session_volatility_cap': '2.50',
+        })
+        
+        # Should redirect on success
+        self.assertEqual(response.status_code, 302)
+        
+        # Reload config and verify values
+        config = AssetBreakoutConfig.objects.get(asset=self.asset)
+        self.assertEqual(config.consecutive_candle_filter, 3)
+        self.assertEqual(config.momentum_threshold, Decimal('0.20'))
+        self.assertEqual(config.volatility_throttle_min_atr, Decimal('0.10'))
+        self.assertEqual(config.session_volatility_cap, Decimal('2.50'))
+    
+    def test_breakout_config_form_saves_breakout_requirements(self):
+        """Test that Breakout-Anforderungen fields are saved correctly."""
+        response = self.client.post(f'/fiona/assets/{self.asset.id}/breakout-config/', {
+            # Required fields
+            'asia_range_start': '00:00',
+            'asia_range_end': '08:00',
+            'asia_min_range_ticks': '10',
+            'asia_max_range_ticks': '200',
+            'london_range_start': '08:00',
+            'london_range_end': '12:00',
+            'london_min_range_ticks': '10',
+            'london_max_range_ticks': '200',
+            'pre_us_start': '13:00',
+            'pre_us_end': '15:00',
+            'us_min_range_ticks': '10',
+            'us_max_range_ticks': '200',
+            'eia_min_body_fraction': '0.60',
+            'eia_required_impulse_strength': '0.50',
+            'eia_reversion_window_min_sec': '30',
+            'eia_reversion_window_max_sec': '300',
+            'eia_max_impulse_duration_min': '5',
+            'consecutive_candle_filter': '0',
+            'filter_doji_breakouts': 'on',
+            'min_breakout_distance_ticks': '1',
+            # Breakout Requirements fields being tested
+            'min_breakout_body_fraction': '0.55',
+            'max_breakout_body_fraction': '0.90',
+        })
+        
+        # Should redirect on success
+        self.assertEqual(response.status_code, 302)
+        
+        # Reload config and verify values
+        config = AssetBreakoutConfig.objects.get(asset=self.asset)
+        self.assertEqual(config.min_breakout_body_fraction, Decimal('0.55'))
+        self.assertEqual(config.max_breakout_body_fraction, Decimal('0.90'))
+    
+    def test_breakout_config_form_saves_atr_fields(self):
+        """Test that ATR Einstellungen fields are saved correctly."""
+        response = self.client.post(f'/fiona/assets/{self.asset.id}/breakout-config/', {
+            # Required fields
+            'asia_range_start': '00:00',
+            'asia_range_end': '08:00',
+            'asia_min_range_ticks': '10',
+            'asia_max_range_ticks': '200',
+            'london_range_start': '08:00',
+            'london_range_end': '12:00',
+            'london_min_range_ticks': '10',
+            'london_max_range_ticks': '200',
+            'pre_us_start': '13:00',
+            'pre_us_end': '15:00',
+            'us_min_range_ticks': '10',
+            'us_max_range_ticks': '200',
+            'min_breakout_body_fraction': '0.50',
+            'min_breakout_distance_ticks': '1',
+            'eia_min_body_fraction': '0.60',
+            'eia_required_impulse_strength': '0.50',
+            'eia_reversion_window_min_sec': '30',
+            'eia_reversion_window_max_sec': '300',
+            'eia_max_impulse_duration_min': '5',
+            'consecutive_candle_filter': '0',
+            'filter_doji_breakouts': 'on',
+            # ATR fields being tested
+            'require_atr_minimum': 'on',
+            'min_atr_value': '0.15',
+            'max_atr_value': '0.50',
+        })
+        
+        # Should redirect on success
+        self.assertEqual(response.status_code, 302)
+        
+        # Reload config and verify values
+        config = AssetBreakoutConfig.objects.get(asset=self.asset)
+        self.assertTrue(config.require_atr_minimum)
+        self.assertEqual(config.min_atr_value, Decimal('0.15'))
+        self.assertEqual(config.max_atr_value, Decimal('0.50'))
+    
+    def test_breakout_config_form_displays_saved_values(self):
+        """Test that saved values are displayed correctly when editing the form."""
+        # First, set specific values on the config
+        config = AssetBreakoutConfig.objects.get(asset=self.asset)
+        config.eia_min_body_fraction = Decimal('0.65')
+        config.eia_required_impulse_strength = Decimal('0.55')
+        config.eia_min_impulse_atr = Decimal('0.15')
+        config.eia_impulse_range_high = Decimal('1.25')
+        config.eia_impulse_range_low = Decimal('0.35')
+        config.min_wick_ratio = Decimal('0.30')
+        config.max_wick_ratio = Decimal('2.00')
+        config.min_candle_body_absolute = Decimal('0.05')
+        config.momentum_threshold = Decimal('0.20')
+        config.volatility_throttle_min_atr = Decimal('0.10')
+        config.session_volatility_cap = Decimal('2.50')
+        config.min_breakout_body_fraction = Decimal('0.55')
+        config.max_breakout_body_fraction = Decimal('0.90')
+        config.min_atr_value = Decimal('0.15')
+        config.max_atr_value = Decimal('0.50')
+        config.save()
+        
+        # Reload to verify save worked
+        config.refresh_from_db()
+        
+        # Now load the form and check if values are displayed
+        response = self.client.get(f'/fiona/assets/{self.asset.id}/breakout-config/')
+        self.assertEqual(response.status_code, 200)
+        
+        content = response.content.decode('utf-8')
+        
+        # Check that saved values appear in the form correctly using regex
+        # to handle different decimal representations
+        import re
+        
+        # Helper function to check if a value is present in the response
+        def check_value(field_name, expected_value):
+            # The value might be rendered with trailing zeros, so we look for
+            # the pattern value="X.YZ" where the number starts with expected_value
+            pattern = f'name="{field_name}"[^>]*value="({expected_value}[0-9]*)"'
+            match = re.search(pattern, content)
+            self.assertIsNotNone(
+                match, 
+                f'Could not find {field_name} with value starting with {expected_value}'
+            )
+        
+        # EIA fields
+        check_value('eia_min_body_fraction', '0.65')
+        check_value('eia_required_impulse_strength', '0.55')
+        check_value('eia_min_impulse_atr', '0.15')
+        check_value('eia_impulse_range_high', '1.25')
+        check_value('eia_impulse_range_low', '0.35')
+        # Candle Quality fields
+        check_value('min_wick_ratio', '0.30')
+        check_value('max_wick_ratio', '2.00')
+        check_value('min_candle_body_absolute', '0.05')
+        # Advanced Filter fields
+        check_value('momentum_threshold', '0.20')
+        check_value('volatility_throttle_min_atr', '0.10')
+        check_value('session_volatility_cap', '2.50')
+        # Breakout Requirements
+        check_value('min_breakout_body_fraction', '0.55')
+        check_value('max_breakout_body_fraction', '0.90')
+        # ATR fields
+        check_value('min_atr_value', '0.15')
+        check_value('max_atr_value', '0.50')
+    
+    def test_breakout_config_form_handles_empty_optional_fields(self):
+        """Test that optional fields can be left empty and are saved as None."""
+        response = self.client.post(f'/fiona/assets/{self.asset.id}/breakout-config/', {
+            # Required fields
+            'asia_range_start': '00:00',
+            'asia_range_end': '08:00',
+            'asia_min_range_ticks': '10',
+            'asia_max_range_ticks': '200',
+            'london_range_start': '08:00',
+            'london_range_end': '12:00',
+            'london_min_range_ticks': '10',
+            'london_max_range_ticks': '200',
+            'pre_us_start': '13:00',
+            'pre_us_end': '15:00',
+            'us_min_range_ticks': '10',
+            'us_max_range_ticks': '200',
+            'min_breakout_body_fraction': '0.50',
+            'min_breakout_distance_ticks': '1',
+            'eia_min_body_fraction': '0.60',
+            'eia_required_impulse_strength': '0.50',
+            'eia_reversion_window_min_sec': '30',
+            'eia_reversion_window_max_sec': '300',
+            'eia_max_impulse_duration_min': '5',
+            'consecutive_candle_filter': '0',
+            'filter_doji_breakouts': 'on',
+            # Leave all optional fields empty
+            'eia_min_impulse_atr': '',
+            'eia_impulse_range_high': '',
+            'eia_impulse_range_low': '',
+            'min_wick_ratio': '',
+            'max_wick_ratio': '',
+            'min_candle_body_absolute': '',
+            'max_spread_ticks': '',
+            'momentum_threshold': '',
+            'volatility_throttle_min_atr': '',
+            'session_volatility_cap': '',
+            'max_breakout_body_fraction': '',
+            'min_atr_value': '',
+            'max_atr_value': '',
+            'min_volume_spike': '',
+        })
+        
+        # Should redirect on success
+        self.assertEqual(response.status_code, 302)
+        
+        # Reload config and verify optional fields are None
+        config = AssetBreakoutConfig.objects.get(asset=self.asset)
+        self.assertIsNone(config.eia_min_impulse_atr)
+        self.assertIsNone(config.eia_impulse_range_high)
+        self.assertIsNone(config.eia_impulse_range_low)
+        self.assertIsNone(config.min_wick_ratio)
+        self.assertIsNone(config.max_wick_ratio)
+        self.assertIsNone(config.min_candle_body_absolute)
+        self.assertIsNone(config.max_spread_ticks)
+        self.assertIsNone(config.momentum_threshold)
+        self.assertIsNone(config.volatility_throttle_min_atr)
+        self.assertIsNone(config.session_volatility_cap)
+        self.assertIsNone(config.max_breakout_body_fraction)
+        self.assertIsNone(config.min_atr_value)
+        self.assertIsNone(config.max_atr_value)
+        self.assertIsNone(config.min_volume_spike)

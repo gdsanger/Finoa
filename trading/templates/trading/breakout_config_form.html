@@ -1,4 +1,5 @@
 {% extends 'core/base.html' %}
+{% load l10n %}
 
 {% block title %}Fiona - Breakout-Konfiguration für {{ asset.name }}{% endblock %}
 
@@ -164,13 +165,13 @@
                             <div class="col-md-6">
                                 <label for="eia_min_body_fraction" class="form-label">Min Body für EIA (%)</label>
                                 <input type="number" class="form-control" id="eia_min_body_fraction" name="eia_min_body_fraction"
-                                       value="{{ config.eia_min_body_fraction }}" step="0.01" min="0" max="1">
+                                       value="{{ config.eia_min_body_fraction|unlocalize }}" step="0.01" min="0" max="1">
                                 <small class="form-text text-muted">Mindest-Körpergröße für EIA-Impulse (0.60 = 60%)</small>
                             </div>
                             <div class="col-md-6">
                                 <label for="eia_required_impulse_strength" class="form-label">Required Impulse Strength</label>
                                 <input type="number" class="form-control" id="eia_required_impulse_strength" name="eia_required_impulse_strength"
-                                       value="{{ config.eia_required_impulse_strength }}" step="0.01" min="0" max="1">
+                                       value="{{ config.eia_required_impulse_strength|unlocalize }}" step="0.01" min="0" max="1">
                                 <small class="form-text text-muted">Erforderliche Impulsstärke (0.0-1.0)</small>
                             </div>
                         </div>
@@ -179,7 +180,7 @@
                             <div class="col-md-6">
                                 <label for="eia_min_impulse_atr" class="form-label">Min Impulse ATR</label>
                                 <input type="number" class="form-control" id="eia_min_impulse_atr" name="eia_min_impulse_atr"
-                                       value="{{ config.eia_min_impulse_atr|default:'' }}" step="0.0001" min="0">
+                                       value="{{ config.eia_min_impulse_atr|default_if_none:''|unlocalize }}" step="0.0001" min="0">
                                 <small class="form-text text-muted">ATR-Multiplikator für Impulse (optional)</small>
                             </div>
                             <div class="col-md-6">
@@ -194,13 +195,13 @@
                             <div class="col-md-6">
                                 <label for="eia_impulse_range_high" class="form-label">Impulse Range High</label>
                                 <input type="number" class="form-control" id="eia_impulse_range_high" name="eia_impulse_range_high"
-                                       value="{{ config.eia_impulse_range_high|default:'' }}" step="0.0001">
+                                       value="{{ config.eia_impulse_range_high|default_if_none:''|unlocalize }}" step="0.0001">
                                 <small class="form-text text-muted">Maximale Preisbewegung für Impulse Range High</small>
                             </div>
                             <div class="col-md-6">
                                 <label for="eia_impulse_range_low" class="form-label">Impulse Range Low</label>
                                 <input type="number" class="form-control" id="eia_impulse_range_low" name="eia_impulse_range_low"
-                                       value="{{ config.eia_impulse_range_low|default:'' }}" step="0.0001">
+                                       value="{{ config.eia_impulse_range_low|default_if_none:''|unlocalize }}" step="0.0001">
                                 <small class="form-text text-muted">Minimale Preisbewegung für Impulse Range Low</small>
                             </div>
                         </div>
@@ -235,13 +236,13 @@
                             <div class="col-md-6">
                                 <label for="min_wick_ratio" class="form-label">Min Wick Ratio (Body/Wick)</label>
                                 <input type="number" class="form-control" id="min_wick_ratio" name="min_wick_ratio"
-                                       value="{{ config.min_wick_ratio|default:'' }}" step="0.01" min="0">
+                                       value="{{ config.min_wick_ratio|default_if_none:''|unlocalize }}" step="0.01" min="0">
                                 <small class="form-text text-muted">Minimales Verhältnis Body zu Wick</small>
                             </div>
                             <div class="col-md-6">
                                 <label for="max_wick_ratio" class="form-label">Max Wick Ratio (Body/Wick)</label>
                                 <input type="number" class="form-control" id="max_wick_ratio" name="max_wick_ratio"
-                                       value="{{ config.max_wick_ratio|default:'' }}" step="0.01" min="0">
+                                       value="{{ config.max_wick_ratio|default_if_none:''|unlocalize }}" step="0.01" min="0">
                                 <small class="form-text text-muted">Maximales Verhältnis Body zu Wick</small>
                             </div>
                         </div>
@@ -250,7 +251,7 @@
                             <div class="col-md-6">
                                 <label for="min_candle_body_absolute" class="form-label">Min Body absolute</label>
                                 <input type="number" class="form-control" id="min_candle_body_absolute" name="min_candle_body_absolute"
-                                       value="{{ config.min_candle_body_absolute|default:'' }}" step="0.0001" min="0">
+                                       value="{{ config.min_candle_body_absolute|default_if_none:''|unlocalize }}" step="0.0001" min="0">
                                 <small class="form-text text-muted">Minimale absolute Körpergröße (z.B. 0.05 USD)</small>
                             </div>
                             <div class="col-md-6">
@@ -295,7 +296,7 @@
                             <div class="col-md-6">
                                 <label for="momentum_threshold" class="form-label">Momentum Threshold</label>
                                 <input type="number" class="form-control" id="momentum_threshold" name="momentum_threshold"
-                                       value="{{ config.momentum_threshold|default:'' }}" step="0.0001" min="0">
+                                       value="{{ config.momentum_threshold|default_if_none:''|unlocalize }}" step="0.0001" min="0">
                                 <small class="form-text text-muted">Mindest-Momentum für valide Setups</small>
                             </div>
                         </div>
@@ -304,13 +305,13 @@
                             <div class="col-md-6">
                                 <label for="volatility_throttle_min_atr" class="form-label">Volatility Throttle (Min ATR)</label>
                                 <input type="number" class="form-control" id="volatility_throttle_min_atr" name="volatility_throttle_min_atr"
-                                       value="{{ config.volatility_throttle_min_atr|default:'' }}" step="0.0001" min="0">
+                                       value="{{ config.volatility_throttle_min_atr|default_if_none:''|unlocalize }}" step="0.0001" min="0">
                                 <small class="form-text text-muted">Nur handeln wenn ATR > X</small>
                             </div>
                             <div class="col-md-6">
                                 <label for="session_volatility_cap" class="form-label">Session Volatility Cap</label>
                                 <input type="number" class="form-control" id="session_volatility_cap" name="session_volatility_cap"
-                                       value="{{ config.session_volatility_cap|default:'' }}" step="0.0001" min="0">
+                                       value="{{ config.session_volatility_cap|default_if_none:''|unlocalize }}" step="0.0001" min="0">
                                 <small class="form-text text-muted">Nur Breakouts wenn Session Range < X</small>
                             </div>
                         </div>
@@ -330,7 +331,7 @@
                                 <label for="min_breakout_body_fraction" class="form-label">Min. Körpergröße (%)</label>
                                 <div class="input-group">
                                     <input type="number" class="form-control" id="min_breakout_body_fraction" name="min_breakout_body_fraction"
-                                           value="{{ config.min_breakout_body_fraction }}" step="0.01" min="0" max="1">
+                                           value="{{ config.min_breakout_body_fraction|unlocalize }}" step="0.01" min="0" max="1">
                                     <span class="input-group-text">der Range</span>
                                 </div>
                                 <small class="form-text text-muted">0.50 = 50% der Range-Höhe</small>
@@ -339,7 +340,7 @@
                                 <label for="max_breakout_body_fraction" class="form-label">Max. Körpergröße (%)</label>
                                 <div class="input-group">
                                     <input type="number" class="form-control" id="max_breakout_body_fraction" name="max_breakout_body_fraction"
-                                           value="{{ config.max_breakout_body_fraction|default:'' }}" step="0.01" min="0" max="1">
+                                           value="{{ config.max_breakout_body_fraction|default_if_none:''|unlocalize }}" step="0.01" min="0" max="1">
                                     <span class="input-group-text">der Range</span>
                                 </div>
                                 <small class="form-text text-muted">Optional: Maximale Körpergröße</small>
@@ -356,7 +357,7 @@
                             <div class="col-md-6">
                                 <label for="min_volume_spike" class="form-label">Min Volume Spike</label>
                                 <input type="number" class="form-control" id="min_volume_spike" name="min_volume_spike"
-                                       value="{{ config.min_volume_spike|default:'' }}" step="0.01" min="0">
+                                       value="{{ config.min_volume_spike|default_if_none:''|unlocalize }}" step="0.01" min="0">
                                 <small class="form-text text-muted">Volume-Spike Multiplikator (1.5 = 150% vom Durchschnitt)</small>
                             </div>
                         </div>
@@ -384,13 +385,13 @@
                             <div class="col-md-4">
                                 <label for="min_atr_value" class="form-label">Min. ATR-Wert</label>
                                 <input type="number" class="form-control" id="min_atr_value" name="min_atr_value"
-                                       value="{{ config.min_atr_value|default:'' }}" step="0.0001" min="0">
+                                       value="{{ config.min_atr_value|default_if_none:''|unlocalize }}" step="0.0001" min="0">
                                 <small class="form-text text-muted">Mindest-ATR</small>
                             </div>
                             <div class="col-md-4">
                                 <label for="max_atr_value" class="form-label">Max. ATR-Wert</label>
                                 <input type="number" class="form-control" id="max_atr_value" name="max_atr_value"
-                                       value="{{ config.max_atr_value|default:'' }}" step="0.0001" min="0">
+                                       value="{{ config.max_atr_value|default_if_none:''|unlocalize }}" step="0.0001" min="0">
                                 <small class="form-text text-muted">Für zu volatile Tage</small>
                             </div>
                         </div>
