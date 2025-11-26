@@ -217,6 +217,74 @@ class IGMarketStateProviderTest(TestCase):
         self.assertIsNone(provider.get_asia_range("CC.D.CL.UNC.IP"))
         self.assertIsNone(provider.get_pre_us_range("CC.D.CL.UNC.IP"))
 
+    def test_configurable_us_core_session_times(self):
+        """Test that US Core session times can be configured."""
+        from core.services.broker import SessionTimesConfig
+        
+        provider = IGMarketStateProvider(broker_service=self.mock_broker)
+        
+        # Configure US Core to 13:00 - 15:00 UTC (as in the issue)
+        session_times = SessionTimesConfig.from_time_strings(
+            us_core_start="13:00",
+            us_core_end="15:00",
+        )
+        provider.set_session_times(session_times)
+        
+        # 13:39 UTC on a Tuesday should be US_CORE with the new config
+        ts = datetime(2024, 1, 9, 13, 39, 0, tzinfo=timezone.utc)
+        phase = provider.get_phase(ts)
+        
+        self.assertEqual(phase, SessionPhase.US_CORE)
+    
+    def test_default_session_times_us_core(self):
+        """Test that default US Core is 14:00 - 17:00 UTC."""
+        provider = IGMarketStateProvider(broker_service=self.mock_broker)
+        
+        # 13:39 UTC should be OTHER with default config
+        ts = datetime(2024, 1, 9, 13, 39, 0, tzinfo=timezone.utc)
+        phase = provider.get_phase(ts)
+        
+        self.assertEqual(phase, SessionPhase.OTHER)
+        
+        # 14:00 UTC should be US_CORE with default config
+        ts = datetime(2024, 1, 9, 14, 0, 0, tzinfo=timezone.utc)
+        phase = provider.get_phase(ts)
+        
+        self.assertEqual(phase, SessionPhase.US_CORE)
+    
+    def test_session_times_with_minutes(self):
+        """Test session times with minute-level precision."""
+        from core.services.broker import SessionTimesConfig
+        
+        provider = IGMarketStateProvider(broker_service=self.mock_broker)
+        
+        # Configure US Core to 14:30 - 17:30 UTC
+        session_times = SessionTimesConfig.from_time_strings(
+            us_core_start="14:30",
+            us_core_end="17:30",
+        )
+        provider.set_session_times(session_times)
+        
+        # 14:29 UTC should be OTHER
+        ts = datetime(2024, 1, 9, 14, 29, 0, tzinfo=timezone.utc)
+        phase = provider.get_phase(ts)
+        self.assertEqual(phase, SessionPhase.OTHER)
+        
+        # 14:30 UTC should be US_CORE
+        ts = datetime(2024, 1, 9, 14, 30, 0, tzinfo=timezone.utc)
+        phase = provider.get_phase(ts)
+        self.assertEqual(phase, SessionPhase.US_CORE)
+        
+        # 17:29 UTC should be US_CORE
+        ts = datetime(2024, 1, 9, 17, 29, 0, tzinfo=timezone.utc)
+        phase = provider.get_phase(ts)
+        self.assertEqual(phase, SessionPhase.US_CORE)
+        
+        # 17:30 UTC should be OTHER
+        ts = datetime(2024, 1, 9, 17, 30, 0, tzinfo=timezone.utc)
+        phase = provider.get_phase(ts)
+        self.assertEqual(phase, SessionPhase.OTHER)
+
 
 class FionaWorkerCommandTest(TestCase):
     """Tests for the run_fiona_worker management command."""
@@ -273,7 +341,7 @@ class FionaWorkerCommandTest(TestCase):
         output = out.getvalue()
         
         # Verify command ran
-        self.assertIn("Fiona Worker v1.0", output)
+        self.assertIn("Fiona Worker v1.1", output)
         self.assertIn("Single run completed", output)
         
         # Verify broker was connected

@@ -26,7 +26,7 @@ from .ig_broker_service import IgBrokerService
 
 from .config import get_active_ig_broker_config, create_ig_broker_service
 
-from .ig_market_state_provider import IGMarketStateProvider
+from .ig_market_state_provider import IGMarketStateProvider, SessionTimesConfig
 
 __all__ = [
     # Data models
@@ -53,4 +53,5 @@ __all__ = [
     'create_ig_broker_service',
     # Market State Provider
     'IGMarketStateProvider',
+    'SessionTimesConfig',
 ]

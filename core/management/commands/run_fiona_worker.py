@@ -27,6 +27,7 @@ from core.services.broker import (
     BrokerError,
     AuthenticationError,
     create_ig_broker_service,
+    SessionTimesConfig,
 )
 from trading.models import WorkerStatus
 from core.services.strategy import (
@@ -485,29 +486,44 @@ class Command(BaseCommand):
         """
         epic = asset.epic
         
-        # 1. Determine session phase
+        # 1. Configure session times from asset's breakout configuration
+        try:
+            breakout_cfg = asset.breakout_config
+            session_times = SessionTimesConfig.from_time_strings(
+                asia_start=breakout_cfg.asia_range_start,
+                asia_end=breakout_cfg.asia_range_end,
+                us_core_start=breakout_cfg.pre_us_start,
+                us_core_end=breakout_cfg.pre_us_end,
+            )
+            self.market_state_provider.set_session_times(session_times)
+        except Exception as e:
+            logger.debug(f"Using default session times for {epic}: {e}")
+            # Use default session times if no breakout config exists
+            self.market_state_provider.set_session_times(SessionTimesConfig())
+        
+        # 2. Determine session phase (now using asset-specific times)
         phase = self.market_state_provider.get_phase(now)
         self.stdout.write(f"     Phase: {phase.value}")
         
-        # 2. Update candle cache with current price
+        # 3. Update candle cache with current price
         try:
             self.market_state_provider.update_candle_from_price(epic)
         except Exception as e:
             logger.warning(f"Failed to update candle for {epic}: {e}")
         
-        # 3. Get current price for logging
+        # 4. Get current price for logging
         try:
             price = self.broker_service.get_symbol_price(epic)
             self.stdout.write(f"     Price: {price.bid}/{price.ask}")
         except Exception as e:
             self.stdout.write(self.style.WARNING(f"     Could not get price: {e}"))
         
-        # 4. Skip if not in tradeable phase
+        # 5. Skip if not in tradeable phase
         if phase in [SessionPhase.FRIDAY_LATE, SessionPhase.OTHER]:
             self.stdout.write("     → Phase not tradeable, skipping")
             return 0
         
-        # 5. Run Strategy Engine
+        # 6. Run Strategy Engine
         try:
             setups = strategy_engine.evaluate(epic, now)
             self.stdout.write(f"     Found {len(setups)} setup(s)")
@@ -519,7 +535,7 @@ class Command(BaseCommand):
         if not setups:
             return 0
         
-        # 6. Process each setup
+        # 7. Process each setup
         for setup in setups:
             self._process_setup(setup, shadow_only, dry_run, now, trading_asset=asset)
         

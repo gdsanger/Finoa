@@ -5,6 +5,7 @@ Implements the MarketStateProvider protocol using the IG Broker Service
 to fetch real market data.
 """
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
@@ -16,12 +17,12 @@ from .ig_broker_service import IgBrokerService
 logger = logging.getLogger(__name__)
 
 
-# Session phase time boundaries (UTC)
+# Default session phase time boundaries (UTC)
 # Asia session: 00:00 - 08:00 UTC
 # London session: 08:00 - 15:00 UTC (core: 08:00 - 11:00)
 # US session: 13:00 - 21:00 UTC (core: 14:30 - 17:30)
 # EIA release: typically Wednesday 15:30 UTC
-SESSION_TIMES = {
+DEFAULT_SESSION_TIMES = {
     'asia_start': 0,   # 00:00 UTC
     'asia_end': 8,     # 08:00 UTC
     'london_core_start': 8,   # 08:00 UTC
@@ -30,6 +31,90 @@ SESSION_TIMES = {
     'us_core_end': 17,        # 17:00 UTC (17:30 more precisely)
     'friday_late': 21,        # 21:00 UTC
 }
+
+# Keep alias for backwards compatibility
+SESSION_TIMES = DEFAULT_SESSION_TIMES
+
+
+@dataclass
+class SessionTimesConfig:
+    """
+    Configurable session time boundaries.
+    
+    Times are in hours (0-23) for start/end, or (hour, minute) tuples
+    for more precise control.
+    """
+    asia_start: int = 0         # 00:00 UTC
+    asia_end: int = 8           # 08:00 UTC
+    london_core_start: int = 8  # 08:00 UTC
+    london_core_end: int = 11   # 11:00 UTC
+    us_core_start: int = 14     # 14:00 UTC
+    us_core_end: int = 17       # 17:00 UTC
+    friday_late: int = 21       # 21:00 UTC
+    
+    # Optional minute-level precision (0-59)
+    asia_start_minute: int = 0
+    asia_end_minute: int = 0
+    london_core_start_minute: int = 0
+    london_core_end_minute: int = 0
+    us_core_start_minute: int = 0
+    us_core_end_minute: int = 0
+    
+    @classmethod
+    def from_time_strings(
+        cls,
+        asia_start: str = "00:00",
+        asia_end: str = "08:00",
+        london_core_start: str = "08:00",
+        london_core_end: str = "11:00",
+        us_core_start: str = "13:00",
+        us_core_end: str = "15:00",
+        friday_late: int = 21,
+    ) -> 'SessionTimesConfig':
+        """
+        Create SessionTimesConfig from HH:MM time strings.
+        
+        Args:
+            asia_start: Asia range start (HH:MM format, e.g., "00:00")
+            asia_end: Asia range end (HH:MM format, e.g., "08:00")
+            london_core_start: London core start (HH:MM format)
+            london_core_end: London core end (HH:MM format)
+            us_core_start: US core start (HH:MM format)
+            us_core_end: US core end (HH:MM format)
+            friday_late: Friday late cutoff hour
+            
+        Returns:
+            SessionTimesConfig instance with parsed time values.
+        """
+        def parse_time(time_str: str) -> tuple[int, int]:
+            """Parse HH:MM string to (hour, minute) tuple."""
+            if ':' in time_str:
+                parts = time_str.split(':')
+                return int(parts[0]), int(parts[1])
+            return int(time_str), 0
+        
+        asia_start_h, asia_start_m = parse_time(asia_start)
+        asia_end_h, asia_end_m = parse_time(asia_end)
+        london_start_h, london_start_m = parse_time(london_core_start)
+        london_end_h, london_end_m = parse_time(london_core_end)
+        us_start_h, us_start_m = parse_time(us_core_start)
+        us_end_h, us_end_m = parse_time(us_core_end)
+        
+        return cls(
+            asia_start=asia_start_h,
+            asia_end=asia_end_h,
+            london_core_start=london_start_h,
+            london_core_end=london_end_h,
+            us_core_start=us_start_h,
+            us_core_end=us_end_h,
+            friday_late=friday_late,
+            asia_start_minute=asia_start_m,
+            asia_end_minute=asia_end_m,
+            london_core_start_minute=london_start_m,
+            london_core_end_minute=london_end_m,
+            us_core_start_minute=us_start_m,
+            us_core_end_minute=us_end_m,
+        )
 
 
 class IGMarketStateProvider(BaseMarketStateProvider):
@@ -45,6 +130,7 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         self,
         broker_service: IgBrokerService,
         eia_timestamp: Optional[datetime] = None,
+        session_times: Optional[SessionTimesConfig] = None,
     ):
         """
         Initialize the IG Market State Provider.
@@ -52,9 +138,12 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         Args:
             broker_service: Connected IgBrokerService instance.
             eia_timestamp: Optional EIA release timestamp for current week.
+            session_times: Optional custom session time configuration.
+                          If not provided, uses default session times.
         """
         self._broker = broker_service
         self._eia_timestamp = eia_timestamp
+        self._session_times = session_times or SessionTimesConfig()
         
         # Cache for session ranges
         self._asia_range_cache: dict[str, tuple[float, float]] = {}
@@ -64,10 +153,22 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         self._candle_cache: dict[str, list[Candle]] = {}
         
         logger.info("IGMarketStateProvider initialized")
+    
+    def set_session_times(self, session_times: SessionTimesConfig) -> None:
+        """
+        Update the session time configuration.
+        
+        Args:
+            session_times: New session time configuration.
+        """
+        self._session_times = session_times
+        logger.info(f"Session times updated: US Core {session_times.us_core_start}:{session_times.us_core_start_minute:02d} - {session_times.us_core_end}:{session_times.us_core_end_minute:02d}")
 
     def get_phase(self, ts: datetime) -> SessionPhase:
         """
         Get the current market session phase for a given timestamp.
+        
+        Uses configurable session times from self._session_times.
         
         Args:
             ts: Timestamp to evaluate (should be UTC).
@@ -80,7 +181,15 @@ class IGMarketStateProvider(BaseMarketStateProvider):
             ts = ts.replace(tzinfo=timezone.utc)
         
         hour = ts.hour
+        minute = ts.minute
         weekday = ts.weekday()
+        
+        # Helper to convert hour:minute to total minutes for comparison
+        def to_minutes(h: int, m: int) -> int:
+            return h * 60 + m
+        
+        current_time = to_minutes(hour, minute)
+        cfg = self._session_times
         
         # Check EIA window first (takes priority)
         if self._eia_timestamp:
@@ -93,23 +202,29 @@ class IGMarketStateProvider(BaseMarketStateProvider):
                 return SessionPhase.EIA_POST
         
         # Friday late restriction
-        if weekday == 4 and hour >= SESSION_TIMES['friday_late']:
+        if weekday == 4 and hour >= cfg.friday_late:
             return SessionPhase.FRIDAY_LATE
         
         # Weekend
         if weekday >= 5:  # Saturday or Sunday
             return SessionPhase.OTHER
         
-        # Asia Range (00:00 - 08:00 UTC)
-        if SESSION_TIMES['asia_start'] <= hour < SESSION_TIMES['asia_end']:
+        # Asia Range (default: 00:00 - 08:00 UTC)
+        asia_start = to_minutes(cfg.asia_start, cfg.asia_start_minute)
+        asia_end = to_minutes(cfg.asia_end, cfg.asia_end_minute)
+        if asia_start <= current_time < asia_end:
             return SessionPhase.ASIA_RANGE
         
-        # London Core (08:00 - 11:00 UTC) - overlaps with end of Asia
-        if SESSION_TIMES['london_core_start'] <= hour < SESSION_TIMES['london_core_end']:
+        # London Core (default: 08:00 - 11:00 UTC)
+        london_start = to_minutes(cfg.london_core_start, cfg.london_core_start_minute)
+        london_end = to_minutes(cfg.london_core_end, cfg.london_core_end_minute)
+        if london_start <= current_time < london_end:
             return SessionPhase.LONDON_CORE
         
-        # US Core (14:00 - 17:00 UTC)
-        if SESSION_TIMES['us_core_start'] <= hour < SESSION_TIMES['us_core_end']:
+        # US Core (default: 14:00 - 17:00 UTC, but configurable)
+        us_start = to_minutes(cfg.us_core_start, cfg.us_core_start_minute)
+        us_end = to_minutes(cfg.us_core_end, cfg.us_core_end_minute)
+        if us_start <= current_time < us_end:
             return SessionPhase.US_CORE
         
         return SessionPhase.OTHER
