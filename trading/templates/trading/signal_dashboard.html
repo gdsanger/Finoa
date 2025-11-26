@@ -497,7 +497,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="fiona-dashboard">
+<div class="fiona-dashboard" data-signals-api-base="{% url 'api_signals_since' 'TIMESTAMP' %}">
     <div class="container-fluid">
         <div class="fiona-header">
             <div>
@@ -1028,7 +1028,7 @@
         
         const notification = new Notification(title, {
             body: body,
-            icon: '/static/core/icons/icon-192x192.png',
+            icon: '/media/Finoa_192.png',
             tag: 'fiona-signal',
             requireInteraction: false,
         });
@@ -1037,7 +1037,8 @@
         notification.onclick = function() {
             window.focus();
             if (firstSignal && firstSignal.id) {
-                window.location.href = `/fiona/signals/${firstSignal.id}/`;
+                // Build the URL dynamically using the signal ID
+                window.location.href = window.location.origin + '/fiona/signals/' + firstSignal.id + '/';
             }
             notification.close();
         };
@@ -1078,7 +1079,10 @@
      * Poll for new signals since the last check.
      */
     function pollForNewSignals() {
-        const url = `/fiona/api/signals/since/${encodeURIComponent(lastSignalCheckTime)}/`;
+        // Get the API URL from the data attribute and replace the placeholder with actual timestamp
+        const dashboard = document.querySelector('.fiona-dashboard');
+        const apiBase = dashboard ? dashboard.dataset.signalsApiBase : '/fiona/api/signals/since/TIMESTAMP/';
+        const url = apiBase.replace('TIMESTAMP', encodeURIComponent(lastSignalCheckTime));
         
         fetch(url, {
             method: 'GET',

@@ -202,7 +202,6 @@ def api_signals_since(request, since):
         }
     """
     from django.utils.dateparse import parse_datetime
-    from datetime import datetime
     
     # Parse the since timestamp
     since_dt = parse_datetime(since)
