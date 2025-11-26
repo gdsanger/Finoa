@@ -2223,3 +2223,336 @@ class BreakoutConfigFormTest(TestCase):
         self.assertIsNone(config.min_atr_value)
         self.assertIsNone(config.max_atr_value)
         self.assertIsNone(config.min_volume_spike)
+
+
+# =============================================================================
+# AssetDiagnostics Model Tests
+# =============================================================================
+
+class AssetDiagnosticsModelTest(TestCase):
+    """Tests for AssetDiagnostics model."""
+    
+    def setUp(self):
+        self.asset = TradingAsset.objects.create(
+            name='Test Oil',
+            symbol='OIL',
+            epic='CC.D.TEST.OIL',
+            tick_size=Decimal('0.01'),
+            is_active=True,
+        )
+        self.now = timezone.now()
+    
+    def test_diagnostics_creation(self):
+        """Test basic diagnostics record creation."""
+        from .models import AssetDiagnostics
+        
+        diagnostics = AssetDiagnostics.objects.create(
+            asset=self.asset,
+            window_start=self.now - timedelta(hours=1),
+            window_end=self.now,
+            current_phase='LONDON_CORE',
+            trading_mode='STRICT',
+        )
+        
+        self.assertEqual(diagnostics.asset, self.asset)
+        self.assertEqual(diagnostics.current_phase, 'LONDON_CORE')
+        self.assertEqual(diagnostics.trading_mode, 'STRICT')
+        self.assertEqual(diagnostics.candles_evaluated, 0)
+        self.assertEqual(diagnostics.setups_generated_total, 0)
+    
+    def test_increment_strategy_reason(self):
+        """Test incrementing strategy reason codes."""
+        from .models import AssetDiagnostics, ReasonCode
+        
+        diagnostics = AssetDiagnostics.objects.create(
+            asset=self.asset,
+            window_start=self.now - timedelta(hours=1),
+            window_end=self.now,
+        )
+        
+        diagnostics.increment_strategy_reason(ReasonCode.STRAT_BODY_TOO_SMALL, 5)
+        diagnostics.increment_strategy_reason(ReasonCode.STRAT_NO_RANGE, 3)
+        diagnostics.increment_strategy_reason(ReasonCode.STRAT_BODY_TOO_SMALL, 2)  # Add more
+        
+        self.assertEqual(diagnostics.reason_counts_strategy[ReasonCode.STRAT_BODY_TOO_SMALL], 7)
+        self.assertEqual(diagnostics.reason_counts_strategy[ReasonCode.STRAT_NO_RANGE], 3)
+    
+    def test_increment_risk_reason(self):
+        """Test incrementing risk reason codes."""
+        from .models import AssetDiagnostics, ReasonCode
+        
+        diagnostics = AssetDiagnostics.objects.create(
+            asset=self.asset,
+            window_start=self.now - timedelta(hours=1),
+            window_end=self.now,
+        )
+        
+        diagnostics.increment_risk_reason(ReasonCode.RISK_SPREAD_TOO_WIDE, 4)
+        diagnostics.increment_risk_reason(ReasonCode.RISK_MAX_DAILY_LOSS_REACHED, 1)
+        
+        self.assertEqual(diagnostics.reason_counts_risk[ReasonCode.RISK_SPREAD_TOO_WIDE], 4)
+        self.assertEqual(diagnostics.reason_counts_risk[ReasonCode.RISK_MAX_DAILY_LOSS_REACHED], 1)
+    
+    def test_get_top_strategy_reasons(self):
+        """Test getting top strategy rejection reasons."""
+        from .models import AssetDiagnostics, ReasonCode
+        
+        diagnostics = AssetDiagnostics.objects.create(
+            asset=self.asset,
+            window_start=self.now - timedelta(hours=1),
+            window_end=self.now,
+        )
+        
+        diagnostics.reason_counts_strategy = {
+            ReasonCode.STRAT_BODY_TOO_SMALL: 10,
+            ReasonCode.STRAT_NO_RANGE: 5,
+            ReasonCode.STRAT_ATR_TOO_LOW: 3,
+        }
+        
+        top_reasons = diagnostics.get_top_strategy_reasons(2)
+        
+        self.assertEqual(len(top_reasons), 2)
+        self.assertEqual(top_reasons[0][0], ReasonCode.STRAT_BODY_TOO_SMALL)
+        self.assertEqual(top_reasons[0][1], 10)
+        self.assertEqual(top_reasons[1][0], ReasonCode.STRAT_NO_RANGE)
+    
+    def test_get_all_top_reasons(self):
+        """Test getting all top reasons from both engines."""
+        from .models import AssetDiagnostics, ReasonCode
+        
+        diagnostics = AssetDiagnostics.objects.create(
+            asset=self.asset,
+            window_start=self.now - timedelta(hours=1),
+            window_end=self.now,
+        )
+        
+        diagnostics.reason_counts_strategy = {
+            ReasonCode.STRAT_BODY_TOO_SMALL: 10,
+        }
+        diagnostics.reason_counts_risk = {
+            ReasonCode.RISK_SPREAD_TOO_WIDE: 8,
+        }
+        
+        top_reasons = diagnostics.get_all_top_reasons(5)
+        
+        self.assertEqual(len(top_reasons), 2)
+        # Should be sorted by count
+        self.assertEqual(top_reasons[0][0], ReasonCode.STRAT_BODY_TOO_SMALL)
+        self.assertEqual(top_reasons[0][3], 'strategy')
+        self.assertEqual(top_reasons[1][0], ReasonCode.RISK_SPREAD_TOO_WIDE)
+        self.assertEqual(top_reasons[1][3], 'risk')
+    
+    def test_to_dict(self):
+        """Test conversion to dictionary."""
+        from .models import AssetDiagnostics
+        
+        diagnostics = AssetDiagnostics.objects.create(
+            asset=self.asset,
+            window_start=self.now - timedelta(hours=1),
+            window_end=self.now,
+            current_phase='US_CORE_TRADING',
+            trading_mode='DIAGNOSTIC',
+            candles_evaluated=100,
+            setups_generated_total=5,
+            setups_approved_by_risk=2,
+        )
+        
+        data = diagnostics.to_dict()
+        
+        self.assertEqual(data['asset_symbol'], 'OIL')
+        self.assertEqual(data['current_phase'], 'US_CORE_TRADING')
+        self.assertEqual(data['trading_mode'], 'DIAGNOSTIC')
+        self.assertEqual(data['counters']['candles_evaluated'], 100)
+        self.assertEqual(data['counters']['setups']['generated_total'], 5)
+        self.assertEqual(data['counters']['risk']['approved'], 2)
+    
+    def test_get_aggregated_for_period(self):
+        """Test aggregating diagnostics over a time period."""
+        from .models import AssetDiagnostics, ReasonCode
+        
+        # Create multiple diagnostics records
+        for i in range(3):
+            d = AssetDiagnostics.objects.create(
+                asset=self.asset,
+                window_start=self.now - timedelta(hours=3-i),
+                window_end=self.now - timedelta(hours=2-i),
+                current_phase='LONDON_CORE',
+                candles_evaluated=50,
+                setups_generated_total=2,
+                setups_rejected_by_risk=1,
+            )
+            d.increment_strategy_reason(ReasonCode.STRAT_BODY_TOO_SMALL, 3)
+            d.save()
+        
+        # Aggregate over last 4 hours
+        aggregated = AssetDiagnostics.get_aggregated_for_period(
+            self.asset,
+            self.now - timedelta(hours=4),
+            self.now
+        )
+        
+        self.assertEqual(aggregated['record_count'], 3)
+        self.assertEqual(aggregated['counters']['candles_evaluated'], 150)
+        self.assertEqual(aggregated['counters']['setups']['generated_total'], 6)
+        self.assertEqual(aggregated['counters']['risk']['rejected'], 3)
+        self.assertEqual(aggregated['reason_counts_strategy'][ReasonCode.STRAT_BODY_TOO_SMALL], 9)
+
+
+class ReasonCodeTest(TestCase):
+    """Tests for ReasonCode constants and utilities."""
+    
+    def test_is_strategy_reason(self):
+        """Test identifying strategy reasons."""
+        from .models import ReasonCode
+        
+        self.assertTrue(ReasonCode.is_strategy_reason(ReasonCode.STRAT_BODY_TOO_SMALL))
+        self.assertTrue(ReasonCode.is_strategy_reason(ReasonCode.STRAT_NO_RANGE))
+        self.assertFalse(ReasonCode.is_strategy_reason(ReasonCode.RISK_SPREAD_TOO_WIDE))
+    
+    def test_is_risk_reason(self):
+        """Test identifying risk reasons."""
+        from .models import ReasonCode
+        
+        self.assertTrue(ReasonCode.is_risk_reason(ReasonCode.RISK_SPREAD_TOO_WIDE))
+        self.assertTrue(ReasonCode.is_risk_reason(ReasonCode.RISK_MAX_DAILY_LOSS_REACHED))
+        self.assertFalse(ReasonCode.is_risk_reason(ReasonCode.STRAT_BODY_TOO_SMALL))
+    
+    def test_get_description(self):
+        """Test getting human-readable descriptions."""
+        from .models import ReasonCode
+        
+        desc = ReasonCode.get_description(ReasonCode.STRAT_BODY_TOO_SMALL)
+        self.assertEqual(desc, 'Candle body too small')
+        
+        desc = ReasonCode.get_description(ReasonCode.RISK_SPREAD_TOO_WIDE)
+        self.assertEqual(desc, 'Spread too wide')
+        
+        # Unknown code should return the code itself
+        desc = ReasonCode.get_description('UNKNOWN_CODE')
+        self.assertEqual(desc, 'UNKNOWN_CODE')
+
+
+class TradingModeTest(TestCase):
+    """Tests for trading mode functionality."""
+    
+    def test_default_trading_mode(self):
+        """Test that default trading mode is STRICT."""
+        asset = TradingAsset.objects.create(
+            name='Test Asset',
+            symbol='TEST',
+            epic='CC.D.TEST.IP',
+        )
+        
+        self.assertEqual(asset.trading_mode, 'STRICT')
+        self.assertFalse(asset.is_diagnostic_mode)
+    
+    def test_diagnostic_mode(self):
+        """Test setting diagnostic mode."""
+        asset = TradingAsset.objects.create(
+            name='Test Asset',
+            symbol='TEST',
+            epic='CC.D.TEST.IP',
+            trading_mode='DIAGNOSTIC',
+        )
+        
+        self.assertEqual(asset.trading_mode, 'DIAGNOSTIC')
+        self.assertTrue(asset.is_diagnostic_mode)
+    
+    def test_trading_mode_display(self):
+        """Test trading mode is shown in string representation."""
+        asset = TradingAsset.objects.create(
+            name='Test Asset',
+            symbol='TEST',
+            epic='CC.D.TEST.IP',
+            trading_mode='DIAGNOSTIC',
+        )
+        
+        self.assertIn('[DIAG]', str(asset))
+
+
+class DiagnosticsViewTest(TestCase):
+    """Tests for diagnostics views."""
+    
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='testuser',
+            password='testpass123',
+        )
+        self.client.login(username='testuser', password='testpass123')
+        
+        self.asset = TradingAsset.objects.create(
+            name='Test Oil',
+            symbol='OIL',
+            epic='CC.D.TEST.OIL',
+            is_active=True,
+        )
+    
+    def test_diagnostics_view_requires_login(self):
+        """Test that diagnostics view requires authentication."""
+        self.client.logout()
+        response = self.client.get('/fiona/diagnostics/')
+        
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login/', response.url)
+    
+    def test_diagnostics_view_loads(self):
+        """Test that diagnostics view loads successfully."""
+        response = self.client.get('/fiona/diagnostics/')
+        
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Trading Diagnostics')
+        self.assertContains(response, 'Test Oil')
+    
+    def test_diagnostics_view_window_parameter(self):
+        """Test window parameter handling."""
+        response = self.client.get('/fiona/diagnostics/?window=15')
+        
+        self.assertEqual(response.status_code, 200)
+        # Check that 15 min option is active
+        self.assertContains(response, 'window=15')
+    
+    def test_diagnostics_api_endpoint(self):
+        """Test diagnostics API endpoint."""
+        response = self.client.get('/fiona/api/trading/diagnostics/')
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        self.assertTrue(data['success'])
+        self.assertEqual(data['count'], 1)  # One active asset
+        self.assertEqual(len(data['diagnostics']), 1)
+        self.assertEqual(data['diagnostics'][0]['asset_symbol'], 'OIL')
+    
+    def test_diagnostics_api_with_asset_filter(self):
+        """Test diagnostics API with asset filter."""
+        response = self.client.get(f'/fiona/api/trading/diagnostics/?asset={self.asset.id}')
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        self.assertTrue(data['success'])
+        self.assertEqual(data['count'], 1)
+    
+    def test_toggle_trading_mode(self):
+        """Test toggling trading mode via API."""
+        self.assertEqual(self.asset.trading_mode, 'STRICT')
+        
+        response = self.client.post(f'/fiona/assets/{self.asset.id}/toggle-trading-mode/')
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        self.assertTrue(data['success'])
+        self.assertEqual(data['trading_mode'], 'DIAGNOSTIC')
+        self.assertTrue(data['is_diagnostic'])
+        
+        # Refresh from database
+        self.asset.refresh_from_db()
+        self.assertEqual(self.asset.trading_mode, 'DIAGNOSTIC')
+        
+        # Toggle back to STRICT
+        response = self.client.post(f'/fiona/assets/{self.asset.id}/toggle-trading-mode/')
+        data = response.json()
+        
+        self.assertEqual(data['trading_mode'], 'STRICT')
+        self.assertFalse(data['is_diagnostic'])
