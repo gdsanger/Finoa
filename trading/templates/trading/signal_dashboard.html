@@ -564,20 +564,55 @@
         padding: 1rem;
     }
     
-    /* Diagnostic Criteria List */
+    /* Diagnostic Criteria List - Accordion Style */
     .diagnostic-criteria {
         margin-top: 0.75rem;
-        padding: 0.5rem 0.75rem;
         background-color: rgba(0, 0, 0, 0.2);
         border-radius: 8px;
+        overflow: hidden;
+    }
+    
+    .diagnostic-criteria-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.5rem 0.75rem;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+    
+    .diagnostic-criteria-header:hover {
+        background-color: rgba(255, 255, 255, 0.05);
     }
     
     .diagnostic-criteria .label {
         font-size: 0.7rem;
         text-transform: uppercase;
         letter-spacing: 0.5px;
-        margin-bottom: 0.5rem;
         color: var(--fiona-text-muted);
+        margin: 0;
+    }
+    
+    .diagnostic-criteria-toggle {
+        color: var(--fiona-text-muted);
+        font-size: 0.8rem;
+        transition: transform 0.2s;
+    }
+    
+    .diagnostic-criteria-toggle.expanded {
+        transform: rotate(180deg);
+    }
+    
+    .diagnostic-criteria-content {
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease-out;
+        padding: 0 0.75rem;
+    }
+    
+    .diagnostic-criteria-content.expanded {
+        max-height: 500px;
+        padding: 0 0.75rem 0.5rem 0.75rem;
     }
     
     .criteria-list {
@@ -817,17 +852,22 @@
                     <div class="label">Diagnose</div>
                     <div class="message" id="worker-diagnostic-message">--</div>
                 </div>
-                <!-- Diagnostic Criteria List -->
+                <!-- Diagnostic Criteria List - Accordion -->
                 <div class="diagnostic-criteria" id="diagnostic-criteria">
-                    <div class="label">Kriterien-Prüfung</div>
-                    <ul class="criteria-list" id="criteria-list">
-                        <li class="criteria-item">
-                            <span class="criteria-icon"><i class="bi bi-dash"></i></span>
+                    <div class="diagnostic-criteria-header" onclick="toggleCriteriaAccordion()">
+                        <div class="label">Kriterien-Prüfung</div>
+                        <span class="diagnostic-criteria-toggle" id="criteria-toggle"><i class="bi bi-chevron-down"></i></span>
+                    </div>
+                    <div class="diagnostic-criteria-content" id="criteria-content">
+                        <ul class="criteria-list" id="criteria-list">
+                            <li class="criteria-item">
+                                <span class="criteria-icon"><i class="bi bi-dash"></i></span>
                             <span class="criteria-content">
                                 <span class="criteria-name">Keine Daten</span>
                             </span>
                         </li>
                     </ul>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1433,6 +1473,17 @@
         });
     }
     
+    // Accordion toggle for Criteria
+    function toggleCriteriaAccordion() {
+        const content = document.getElementById('criteria-content');
+        const toggle = document.getElementById('criteria-toggle');
+        
+        if (content && toggle) {
+            content.classList.toggle('expanded');
+            toggle.classList.toggle('expanded');
+        }
+    }
+    
     function showWorkerError(errorMessage) {
         const contentEl = document.getElementById('worker-status-content');
         if (contentEl) {
@@ -1477,15 +1528,20 @@
             <div class="message" id="worker-diagnostic-message">--</div>
         </div>
         <div class="diagnostic-criteria" id="diagnostic-criteria">
-            <div class="label">Kriterien-Prüfung</div>
-            <ul class="criteria-list" id="criteria-list">
-                <li class="criteria-item">
-                    <span class="criteria-icon"><i class="bi bi-dash"></i></span>
-                    <span class="criteria-content">
-                        <span class="criteria-name">Keine Daten</span>
-                    </span>
-                </li>
-            </ul>
+            <div class="diagnostic-criteria-header" onclick="toggleCriteriaAccordion()">
+                <div class="label">Kriterien-Prüfung</div>
+                <span class="diagnostic-criteria-toggle" id="criteria-toggle"><i class="bi bi-chevron-down"></i></span>
+            </div>
+            <div class="diagnostic-criteria-content" id="criteria-content">
+                <ul class="criteria-list" id="criteria-list">
+                    <li class="criteria-item">
+                        <span class="criteria-icon"><i class="bi bi-dash"></i></span>
+                        <span class="criteria-content">
+                            <span class="criteria-name">Keine Daten</span>
+                        </span>
+                    </li>
+                </ul>
+            </div>
         </div>
     `;
     
