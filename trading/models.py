@@ -1674,6 +1674,11 @@ class AssetDiagnostics(models.Model):
                 aggregated['reason_counts_strategy'][code] = aggregated['reason_counts_strategy'].get(code, 0) + count
             for code, count in (record.reason_counts_risk or {}).items():
                 aggregated['reason_counts_risk'][code] = aggregated['reason_counts_risk'].get(code, 0) + count
+            
+            # Track the most recent last_cycle_at
+            if record.last_cycle_at:
+                if aggregated['last_cycle_at'] is None or record.last_cycle_at > aggregated['last_cycle_at']:
+                    aggregated['last_cycle_at'] = record.last_cycle_at
         
         # Format last_cycle_at
         if aggregated['last_cycle_at']:
