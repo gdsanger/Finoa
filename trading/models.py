@@ -1,7 +1,112 @@
 from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
+from django.utils import timezone
 from decimal import Decimal
 import uuid
+
+
+# =============================================================================
+# Reason Codes for Diagnostics
+# =============================================================================
+
+class ReasonCode:
+    """
+    Structured reason codes for setup rejection tracking.
+    
+    These codes are used by the Strategy and Risk engines to report
+    why setups were rejected, enabling diagnostics and debugging.
+    """
+    
+    # Strategy-level rejection reasons
+    STRAT_NO_RANGE = 'STRAT_NO_RANGE'
+    STRAT_RANGE_INCOMPLETE = 'STRAT_RANGE_INCOMPLETE'
+    STRAT_RANGE_TOO_SMALL = 'STRAT_RANGE_TOO_SMALL'
+    STRAT_RANGE_TOO_LARGE = 'STRAT_RANGE_TOO_LARGE'
+    STRAT_BODY_TOO_SMALL = 'STRAT_BODY_TOO_SMALL'
+    STRAT_ATR_TOO_LOW = 'STRAT_ATR_TOO_LOW'
+    STRAT_ATR_TOO_HIGH = 'STRAT_ATR_TOO_HIGH'
+    STRAT_NO_BREAKOUT = 'STRAT_NO_BREAKOUT'
+    STRAT_WRONG_DIRECTION = 'STRAT_WRONG_DIRECTION'
+    STRAT_DOJI_FILTERED = 'STRAT_DOJI_FILTERED'
+    STRAT_WICK_RATIO_INVALID = 'STRAT_WICK_RATIO_INVALID'
+    STRAT_CONSECUTIVE_CANDLE_FAIL = 'STRAT_CONSECUTIVE_CANDLE_FAIL'
+    STRAT_MOMENTUM_TOO_LOW = 'STRAT_MOMENTUM_TOO_LOW'
+    STRAT_VOLATILITY_CAP_EXCEEDED = 'STRAT_VOLATILITY_CAP_EXCEEDED'
+    STRAT_EVENT_MISSING = 'STRAT_EVENT_MISSING'
+    STRAT_NO_CANDLE_DATA = 'STRAT_NO_CANDLE_DATA'
+    STRAT_PHASE_NOT_TRADEABLE = 'STRAT_PHASE_NOT_TRADEABLE'
+    STRAT_EIA_NO_IMPULSE = 'STRAT_EIA_NO_IMPULSE'
+    STRAT_EIA_NO_REVERSION = 'STRAT_EIA_NO_REVERSION'
+    STRAT_EIA_NO_TRENDDAY = 'STRAT_EIA_NO_TRENDDAY'
+    
+    # Risk-level rejection reasons
+    RISK_SPREAD_TOO_WIDE = 'RISK_SPREAD_TOO_WIDE'
+    RISK_ATR_OUT_OF_BOUNDS = 'RISK_ATR_OUT_OF_BOUNDS'
+    RISK_MAX_DAILY_LOSS_REACHED = 'RISK_MAX_DAILY_LOSS_REACHED'
+    RISK_MAX_WEEKLY_LOSS_REACHED = 'RISK_MAX_WEEKLY_LOSS_REACHED'
+    RISK_MAX_ASSET_LOSS_REACHED = 'RISK_MAX_ASSET_LOSS_REACHED'
+    RISK_SESSION_NOT_TRADEABLE = 'RISK_SESSION_NOT_TRADEABLE'
+    RISK_EIA_WINDOW_BLOCKED = 'RISK_EIA_WINDOW_BLOCKED'
+    RISK_FRIDAY_LATE = 'RISK_FRIDAY_LATE'
+    RISK_WEEKEND = 'RISK_WEEKEND'
+    RISK_MAX_POSITIONS_REACHED = 'RISK_MAX_POSITIONS_REACHED'
+    RISK_COUNTERTREND = 'RISK_COUNTERTREND'
+    RISK_SL_MISSING = 'RISK_SL_MISSING'
+    RISK_SL_TOO_TIGHT = 'RISK_SL_TOO_TIGHT'
+    RISK_POSITION_TOO_LARGE = 'RISK_POSITION_TOO_LARGE'
+    
+    # Human-readable descriptions
+    DESCRIPTIONS = {
+        STRAT_NO_RANGE: 'No range data available',
+        STRAT_RANGE_INCOMPLETE: 'Range formation incomplete',
+        STRAT_RANGE_TOO_SMALL: 'Range too small (below min ticks)',
+        STRAT_RANGE_TOO_LARGE: 'Range too large (above max ticks)',
+        STRAT_BODY_TOO_SMALL: 'Candle body too small',
+        STRAT_ATR_TOO_LOW: 'ATR below minimum threshold',
+        STRAT_ATR_TOO_HIGH: 'ATR above maximum threshold',
+        STRAT_NO_BREAKOUT: 'Price within range (no breakout)',
+        STRAT_WRONG_DIRECTION: 'Candle direction mismatch',
+        STRAT_DOJI_FILTERED: 'Doji candle filtered out',
+        STRAT_WICK_RATIO_INVALID: 'Wick ratio outside valid range',
+        STRAT_CONSECUTIVE_CANDLE_FAIL: 'Consecutive candle filter failed',
+        STRAT_MOMENTUM_TOO_LOW: 'Momentum below threshold',
+        STRAT_VOLATILITY_CAP_EXCEEDED: 'Session volatility cap exceeded',
+        STRAT_EVENT_MISSING: 'Required event context missing',
+        STRAT_NO_CANDLE_DATA: 'No candle data available',
+        STRAT_PHASE_NOT_TRADEABLE: 'Current phase not tradeable',
+        STRAT_EIA_NO_IMPULSE: 'No clear EIA impulse detected',
+        STRAT_EIA_NO_REVERSION: 'No EIA reversion pattern',
+        STRAT_EIA_NO_TRENDDAY: 'No EIA trend day pattern',
+        RISK_SPREAD_TOO_WIDE: 'Spread too wide',
+        RISK_ATR_OUT_OF_BOUNDS: 'ATR outside allowed range',
+        RISK_MAX_DAILY_LOSS_REACHED: 'Daily loss limit reached',
+        RISK_MAX_WEEKLY_LOSS_REACHED: 'Weekly loss limit reached',
+        RISK_MAX_ASSET_LOSS_REACHED: 'Asset loss limit reached',
+        RISK_SESSION_NOT_TRADEABLE: 'Session not tradeable',
+        RISK_EIA_WINDOW_BLOCKED: 'Within EIA blackout window',
+        RISK_FRIDAY_LATE: 'Friday evening trading blocked',
+        RISK_WEEKEND: 'Weekend trading not allowed',
+        RISK_MAX_POSITIONS_REACHED: 'Maximum positions reached',
+        RISK_COUNTERTREND: 'Counter-trend trade blocked',
+        RISK_SL_MISSING: 'Stop loss missing',
+        RISK_SL_TOO_TIGHT: 'Stop loss too tight',
+        RISK_POSITION_TOO_LARGE: 'Position size too large',
+    }
+    
+    @classmethod
+    def get_description(cls, code: str) -> str:
+        """Get human-readable description for a reason code."""
+        return cls.DESCRIPTIONS.get(code, code)
+    
+    @classmethod
+    def is_strategy_reason(cls, code: str) -> bool:
+        """Check if a reason code is from the strategy engine."""
+        return code.startswith('STRAT_')
+    
+    @classmethod
+    def is_risk_reason(cls, code: str) -> bool:
+        """Check if a reason code is from the risk engine."""
+        return code.startswith('RISK_')
 
 
 class TradingAsset(models.Model):
@@ -23,6 +128,12 @@ class TradingAsset(models.Model):
         ('crypto', 'Crypto'),
         ('stock', 'Stocks'),
         ('other', 'Other'),
+    ]
+    
+    # Trading Mode choices
+    TRADING_MODES = [
+        ('STRICT', 'Strict (Normal Trading)'),
+        ('DIAGNOSTIC', 'Diagnostic (Shadow Only, Relaxed Filters)'),
     ]
     
     # Basic identification
@@ -56,6 +167,14 @@ class TradingAsset(models.Model):
         help_text='Strategy to use for this asset'
     )
     
+    # Trading Mode
+    trading_mode = models.CharField(
+        max_length=20,
+        choices=TRADING_MODES,
+        default='STRICT',
+        help_text='Trading mode: STRICT for normal trading, DIAGNOSTIC for shadow-only with relaxed filters'
+    )
+    
     # Asset-specific trading parameters
     tick_size = models.DecimalField(
         max_digits=10,
@@ -82,7 +201,13 @@ class TradingAsset(models.Model):
     
     def __str__(self):
         status = '✓' if self.is_active else '✗'
-        return f"{status} {self.name} ({self.symbol})"
+        mode_indicator = ' [DIAG]' if self.trading_mode == 'DIAGNOSTIC' else ''
+        return f"{status} {self.name} ({self.symbol}){mode_indicator}"
+    
+    @property
+    def is_diagnostic_mode(self):
+        """Check if asset is in diagnostic mode."""
+        return self.trading_mode == 'DIAGNOSTIC'
     
     def get_strategy_config(self):
         """
@@ -1132,6 +1257,19 @@ class BreakoutRange(models.Model):
         }
 
 
+class AssetDiagnostics(models.Model):
+    """
+    Stores diagnostic statistics for a trading asset.
+    
+    Tracks counters and reason codes for the Strategy Engine, Risk Engine,
+    and Execution Layer. Data is aggregated over configurable time windows.
+    
+    This model provides the "Sanity & Confidence Layer" that helps understand
+    why (not) trading is happening.
+    """
+    
+    # Session Phase choices
+    SESSION_PHASES = [
 class AssetSessionPhaseConfig(models.Model):
     """
     Complete phase configuration for a specific asset and session phase.
@@ -1162,6 +1300,7 @@ class AssetSessionPhaseConfig(models.Model):
         ('US_CORE_TRADING', 'US Core Trading'),
         ('EIA_PRE', 'EIA Pre'),
         ('EIA_POST', 'EIA Post'),
+        ('OTHER', 'Other'),
     ]
     
     # Event type choices
@@ -1180,6 +1319,129 @@ class AssetSessionPhaseConfig(models.Model):
     asset = models.ForeignKey(
         TradingAsset,
         on_delete=models.CASCADE,
+        related_name='diagnostics',
+        help_text='Asset these diagnostics belong to'
+    )
+    
+    # Time window identification
+    window_start = models.DateTimeField(
+        help_text='Start of the diagnostic time window'
+    )
+    window_end = models.DateTimeField(
+        help_text='End of the diagnostic time window'
+    )
+    
+    # Current session info
+    current_phase = models.CharField(
+        max_length=20,
+        choices=SESSION_PHASES,
+        default='OTHER',
+        help_text='Current/last session phase'
+    )
+    trading_mode = models.CharField(
+        max_length=20,
+        choices=TradingAsset.TRADING_MODES,
+        default='STRICT',
+        help_text='Trading mode during this window'
+    )
+    last_cycle_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='Timestamp of the last worker cycle'
+    )
+    
+    # ==========================================================================
+    # Strategy Engine Counters
+    # ==========================================================================
+    candles_evaluated = models.PositiveIntegerField(
+        default=0,
+        help_text='Number of candles evaluated by strategy engine'
+    )
+    ranges_built_asia = models.PositiveIntegerField(
+        default=0,
+        help_text='Number of Asia ranges built'
+    )
+    ranges_built_london = models.PositiveIntegerField(
+        default=0,
+        help_text='Number of London Core ranges built'
+    )
+    ranges_built_pre_us = models.PositiveIntegerField(
+        default=0,
+        help_text='Number of Pre-US ranges built'
+    )
+    ranges_built_us_core = models.PositiveIntegerField(
+        default=0,
+        help_text='Number of US Core Trading ranges built'
+    )
+    setups_generated_total = models.PositiveIntegerField(
+        default=0,
+        help_text='Total number of setups generated by strategy engine'
+    )
+    setups_generated_breakout = models.PositiveIntegerField(
+        default=0,
+        help_text='Number of breakout setups generated'
+    )
+    setups_generated_eia_reversion = models.PositiveIntegerField(
+        default=0,
+        help_text='Number of EIA reversion setups generated'
+    )
+    setups_generated_eia_trendday = models.PositiveIntegerField(
+        default=0,
+        help_text='Number of EIA trend day setups generated'
+    )
+    setups_discarded_strategy = models.PositiveIntegerField(
+        default=0,
+        help_text='Number of setups discarded by strategy filters'
+    )
+    
+    # ==========================================================================
+    # Risk Engine Counters
+    # ==========================================================================
+    setups_evaluated_by_risk = models.PositiveIntegerField(
+        default=0,
+        help_text='Number of setups evaluated by risk engine'
+    )
+    setups_rejected_by_risk = models.PositiveIntegerField(
+        default=0,
+        help_text='Number of setups rejected by risk engine'
+    )
+    setups_approved_by_risk = models.PositiveIntegerField(
+        default=0,
+        help_text='Number of setups approved by risk engine'
+    )
+    
+    # ==========================================================================
+    # Execution Layer Counters
+    # ==========================================================================
+    orders_built = models.PositiveIntegerField(
+        default=0,
+        help_text='Number of orders built for execution'
+    )
+    orders_sent_shadow = models.PositiveIntegerField(
+        default=0,
+        help_text='Number of shadow orders executed'
+    )
+    orders_sent_live = models.PositiveIntegerField(
+        default=0,
+        help_text='Number of live orders sent to broker'
+    )
+    orders_failed = models.PositiveIntegerField(
+        default=0,
+        help_text='Number of orders that failed'
+    )
+    
+    # ==========================================================================
+    # Reason Codes (aggregated counts)
+    # ==========================================================================
+    reason_counts_strategy = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='Aggregated counts of strategy rejection reason codes (e.g., {"STRAT_BODY_TOO_SMALL": 12})'
+    )
+    reason_counts_risk = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='Aggregated counts of risk rejection reason codes (e.g., {"RISK_SPREAD_TOO_WIDE": 5})'
         related_name='session_phase_configs',
         help_text='Asset this phase configuration belongs to'
     )
@@ -1256,6 +1518,174 @@ class AssetSessionPhaseConfig(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
+        ordering = ['-window_end']
+        verbose_name = 'Asset Diagnostics'
+        verbose_name_plural = 'Asset Diagnostics'
+        indexes = [
+            models.Index(fields=['asset', '-window_end']),
+            models.Index(fields=['-window_end']),
+        ]
+    
+    def __str__(self):
+        return f"{self.asset.symbol} Diagnostics ({self.window_start.strftime('%Y-%m-%d %H:%M')} - {self.window_end.strftime('%H:%M')})"
+    
+    def increment_strategy_reason(self, reason_code: str, count: int = 1) -> None:
+        """
+        Increment the count for a strategy rejection reason code.
+        
+        Args:
+            reason_code: The reason code (e.g., 'STRAT_BODY_TOO_SMALL')
+            count: Number to add (default: 1)
+        """
+        if not self.reason_counts_strategy:
+            self.reason_counts_strategy = {}
+        current = self.reason_counts_strategy.get(reason_code, 0)
+        self.reason_counts_strategy[reason_code] = current + count
+    
+    def increment_risk_reason(self, reason_code: str, count: int = 1) -> None:
+        """
+        Increment the count for a risk rejection reason code.
+        
+        Args:
+            reason_code: The reason code (e.g., 'RISK_SPREAD_TOO_WIDE')
+            count: Number to add (default: 1)
+        """
+        if not self.reason_counts_risk:
+            self.reason_counts_risk = {}
+        current = self.reason_counts_risk.get(reason_code, 0)
+        self.reason_counts_risk[reason_code] = current + count
+    
+    def get_top_strategy_reasons(self, n: int = 10) -> list:
+        """
+        Get the top N strategy rejection reasons sorted by count.
+        
+        Returns:
+            List of tuples: [(reason_code, count, description), ...]
+        """
+        if not self.reason_counts_strategy:
+            return []
+        sorted_reasons = sorted(
+            self.reason_counts_strategy.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )[:n]
+        return [
+            (code, count, ReasonCode.get_description(code))
+            for code, count in sorted_reasons
+        ]
+    
+    def get_top_risk_reasons(self, n: int = 10) -> list:
+        """
+        Get the top N risk rejection reasons sorted by count.
+        
+        Returns:
+            List of tuples: [(reason_code, count, description), ...]
+        """
+        if not self.reason_counts_risk:
+            return []
+        sorted_reasons = sorted(
+            self.reason_counts_risk.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )[:n]
+        return [
+            (code, count, ReasonCode.get_description(code))
+            for code, count in sorted_reasons
+        ]
+    
+    def get_all_top_reasons(self, n: int = 10) -> list:
+        """
+        Get the top N reasons from both strategy and risk engines combined.
+        
+        Returns:
+            List of tuples: [(reason_code, count, description, source), ...]
+            where source is 'strategy' or 'risk'
+        """
+        all_reasons = []
+        
+        for code, count in (self.reason_counts_strategy or {}).items():
+            all_reasons.append((code, count, ReasonCode.get_description(code), 'strategy'))
+        
+        for code, count in (self.reason_counts_risk or {}).items():
+            all_reasons.append((code, count, ReasonCode.get_description(code), 'risk'))
+        
+        # Sort by count descending
+        all_reasons.sort(key=lambda x: x[1], reverse=True)
+        return all_reasons[:n]
+    
+    def to_dict(self) -> dict:
+        """Convert to dictionary for API responses."""
+        return {
+            'id': self.id,
+            'asset_id': self.asset_id,
+            'asset_symbol': self.asset.symbol if self.asset else None,
+            'asset_name': self.asset.name if self.asset else None,
+            'window_start': self.window_start.isoformat() if self.window_start else None,
+            'window_end': self.window_end.isoformat() if self.window_end else None,
+            'current_phase': self.current_phase,
+            'trading_mode': self.trading_mode,
+            'last_cycle_at': self.last_cycle_at.isoformat() if self.last_cycle_at else None,
+            'counters': {
+                'candles_evaluated': self.candles_evaluated,
+                'ranges_built': {
+                    'asia': self.ranges_built_asia,
+                    'london': self.ranges_built_london,
+                    'pre_us': self.ranges_built_pre_us,
+                    'us_core': self.ranges_built_us_core,
+                },
+                'setups': {
+                    'generated_total': self.setups_generated_total,
+                    'generated_breakout': self.setups_generated_breakout,
+                    'generated_eia_reversion': self.setups_generated_eia_reversion,
+                    'generated_eia_trendday': self.setups_generated_eia_trendday,
+                    'discarded_strategy': self.setups_discarded_strategy,
+                },
+                'risk': {
+                    'evaluated': self.setups_evaluated_by_risk,
+                    'rejected': self.setups_rejected_by_risk,
+                    'approved': self.setups_approved_by_risk,
+                },
+                'orders': {
+                    'built': self.orders_built,
+                    'sent_shadow': self.orders_sent_shadow,
+                    'sent_live': self.orders_sent_live,
+                    'failed': self.orders_failed,
+                },
+            },
+            'reason_counts_strategy': self.reason_counts_strategy or {},
+            'reason_counts_risk': self.reason_counts_risk or {},
+            'top_reasons': self.get_all_top_reasons(10),
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+    
+    @classmethod
+    def get_or_create_for_window(cls, asset, window_start, window_end):
+        """
+        Get or create diagnostics record for a specific time window.
+        
+        Args:
+            asset: TradingAsset instance
+            window_start: Start of the time window
+            window_end: End of the time window
+            
+        Returns:
+            AssetDiagnostics instance
+        """
+        diagnostics, created = cls.objects.get_or_create(
+            asset=asset,
+            window_start=window_start,
+            window_end=window_end,
+            defaults={
+                'trading_mode': asset.trading_mode,
+            }
+        )
+        return diagnostics
+    
+    @classmethod
+    def get_current_for_asset(cls, asset):
+        """
+        Get the most recent diagnostics record for an asset.
         ordering = ['asset', 'phase']
         verbose_name = 'Asset Session Phase Config'
         verbose_name_plural = 'Asset Session Phase Configs'
@@ -1442,6 +1872,115 @@ class AssetSessionPhaseConfig(models.Model):
             asset: TradingAsset instance or asset ID
             
         Returns:
+            AssetDiagnostics instance or None
+        """
+        if isinstance(asset, int):
+            return cls.objects.filter(asset_id=asset).order_by('-window_end').first()
+        return cls.objects.filter(asset=asset).order_by('-window_end').first()
+    
+    @classmethod
+    def get_aggregated_for_period(cls, asset, start_time, end_time=None):
+        """
+        Get aggregated diagnostics for an asset over a time period.
+        
+        Aggregates all diagnostics records within the specified time range.
+        
+        Args:
+            asset: TradingAsset instance or asset ID
+            start_time: Start of the time period
+            end_time: End of the time period (defaults to now)
+            
+        Returns:
+            Dict with aggregated counters and reason codes
+        """
+        if end_time is None:
+            end_time = timezone.now()
+        
+        if isinstance(asset, int):
+            records = cls.objects.filter(
+                asset_id=asset,
+                window_end__gte=start_time,
+                window_start__lte=end_time
+            )
+        else:
+            records = cls.objects.filter(
+                asset=asset,
+                window_end__gte=start_time,
+                window_start__lte=end_time
+            )
+        
+        # Aggregate counters
+        aggregated = {
+            'asset_id': asset if isinstance(asset, int) else asset.id,
+            'period_start': start_time.isoformat(),
+            'period_end': end_time.isoformat(),
+            'record_count': records.count(),
+            'counters': {
+                'candles_evaluated': 0,
+                'ranges_built': {'asia': 0, 'london': 0, 'pre_us': 0, 'us_core': 0},
+                'setups': {
+                    'generated_total': 0,
+                    'generated_breakout': 0,
+                    'generated_eia_reversion': 0,
+                    'generated_eia_trendday': 0,
+                    'discarded_strategy': 0,
+                },
+                'risk': {'evaluated': 0, 'rejected': 0, 'approved': 0},
+                'orders': {'built': 0, 'sent_shadow': 0, 'sent_live': 0, 'failed': 0},
+            },
+            'reason_counts_strategy': {},
+            'reason_counts_risk': {},
+            'current_phase': None,
+            'trading_mode': None,
+            'last_cycle_at': None,
+        }
+        
+        for record in records:
+            # Update current info from most recent record
+            if aggregated['last_cycle_at'] is None or (record.last_cycle_at and record.last_cycle_at > aggregated['last_cycle_at']):
+                aggregated['current_phase'] = record.current_phase
+                aggregated['trading_mode'] = record.trading_mode
+                aggregated['last_cycle_at'] = record.last_cycle_at
+            
+            # Aggregate counters
+            aggregated['counters']['candles_evaluated'] += record.candles_evaluated
+            aggregated['counters']['ranges_built']['asia'] += record.ranges_built_asia
+            aggregated['counters']['ranges_built']['london'] += record.ranges_built_london
+            aggregated['counters']['ranges_built']['pre_us'] += record.ranges_built_pre_us
+            aggregated['counters']['ranges_built']['us_core'] += record.ranges_built_us_core
+            aggregated['counters']['setups']['generated_total'] += record.setups_generated_total
+            aggregated['counters']['setups']['generated_breakout'] += record.setups_generated_breakout
+            aggregated['counters']['setups']['generated_eia_reversion'] += record.setups_generated_eia_reversion
+            aggregated['counters']['setups']['generated_eia_trendday'] += record.setups_generated_eia_trendday
+            aggregated['counters']['setups']['discarded_strategy'] += record.setups_discarded_strategy
+            aggregated['counters']['risk']['evaluated'] += record.setups_evaluated_by_risk
+            aggregated['counters']['risk']['rejected'] += record.setups_rejected_by_risk
+            aggregated['counters']['risk']['approved'] += record.setups_approved_by_risk
+            aggregated['counters']['orders']['built'] += record.orders_built
+            aggregated['counters']['orders']['sent_shadow'] += record.orders_sent_shadow
+            aggregated['counters']['orders']['sent_live'] += record.orders_sent_live
+            aggregated['counters']['orders']['failed'] += record.orders_failed
+            
+            # Aggregate reason codes
+            for code, count in (record.reason_counts_strategy or {}).items():
+                aggregated['reason_counts_strategy'][code] = aggregated['reason_counts_strategy'].get(code, 0) + count
+            for code, count in (record.reason_counts_risk or {}).items():
+                aggregated['reason_counts_risk'][code] = aggregated['reason_counts_risk'].get(code, 0) + count
+        
+        # Format last_cycle_at
+        if aggregated['last_cycle_at']:
+            aggregated['last_cycle_at'] = aggregated['last_cycle_at'].isoformat()
+        
+        # Compute top reasons
+        all_reasons = []
+        for code, count in aggregated['reason_counts_strategy'].items():
+            all_reasons.append((code, count, ReasonCode.get_description(code), 'strategy'))
+        for code, count in aggregated['reason_counts_risk'].items():
+            all_reasons.append((code, count, ReasonCode.get_description(code), 'risk'))
+        all_reasons.sort(key=lambda x: x[1], reverse=True)
+        aggregated['top_reasons'] = all_reasons[:10]
+        
+        return aggregated
             QuerySet of AssetSessionPhaseConfig instances
         """
         if isinstance(asset, int):

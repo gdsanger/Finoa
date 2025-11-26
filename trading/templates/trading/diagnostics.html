@@ -1,0 +1,615 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Trading Diagnostics - Fiona{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Trading Diagnostics - Dark Mode Styles */
+    :root {
+        --diag-bg-dark: #1a1d21;
+        --diag-card-dark: #2d3239;
+        --diag-card-header: #3a4149;
+        --diag-text-light: #e9ecef;
+        --diag-text-muted: #8b949e;
+        --diag-border: #484f58;
+        
+        /* Status Colors */
+        --status-success: #28a745;
+        --status-warning: #ffc107;
+        --status-danger: #dc3545;
+        --status-info: #17a2b8;
+    }
+    
+    .diagnostics-page {
+        background-color: var(--diag-bg-dark);
+        min-height: 100vh;
+        color: var(--diag-text-light);
+        padding: 1rem;
+    }
+    
+    .diagnostics-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid var(--diag-border);
+    }
+    
+    .diagnostics-header h1 {
+        color: var(--diag-text-light);
+        margin: 0;
+        font-size: 1.5rem;
+    }
+    
+    .header-controls {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+    
+    .window-selector {
+        display: flex;
+        gap: 0.25rem;
+    }
+    
+    .window-btn {
+        padding: 0.35rem 0.75rem;
+        font-size: 0.8rem;
+        border-radius: 4px;
+        background-color: rgba(0, 0, 0, 0.3);
+        border: 1px solid var(--diag-border);
+        color: var(--diag-text-muted);
+        cursor: pointer;
+        text-decoration: none;
+    }
+    
+    .window-btn:hover {
+        background-color: rgba(0, 0, 0, 0.5);
+        color: var(--diag-text-light);
+    }
+    
+    .window-btn.active {
+        background-color: #2563eb;
+        border-color: #2563eb;
+        color: white;
+    }
+    
+    /* Asset Card */
+    .asset-card {
+        background-color: var(--diag-card-dark);
+        border: 1px solid var(--diag-border);
+        border-radius: 12px;
+        margin-bottom: 1rem;
+        overflow: hidden;
+    }
+    
+    .asset-card-header {
+        background-color: var(--diag-card-header);
+        padding: 0.75rem 1rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        border-bottom: 1px solid var(--diag-border);
+    }
+    
+    .asset-name {
+        font-weight: 700;
+        font-size: 1.1rem;
+        color: var(--diag-text-light);
+    }
+    
+    .asset-symbol {
+        font-size: 0.85rem;
+        color: var(--diag-text-muted);
+        margin-left: 0.5rem;
+    }
+    
+    .asset-badges {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+    
+    .mode-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+    
+    .mode-badge.strict {
+        background-color: rgba(40, 167, 69, 0.2);
+        color: var(--status-success);
+        border: 1px solid var(--status-success);
+    }
+    
+    .mode-badge.diagnostic {
+        background-color: rgba(255, 193, 7, 0.2);
+        color: var(--status-warning);
+        border: 1px solid var(--status-warning);
+    }
+    
+    .phase-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        background-color: rgba(0, 0, 0, 0.3);
+        color: var(--diag-text-light);
+        border: 1px solid var(--diag-border);
+    }
+    
+    .asset-card-body {
+        padding: 1rem;
+    }
+    
+    /* Last Cycle Info */
+    .last-cycle-info {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+        font-size: 0.85rem;
+        color: var(--diag-text-muted);
+    }
+    
+    .last-cycle-info i {
+        color: var(--status-info);
+    }
+    
+    /* Counter Grid */
+    .counter-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+    }
+    
+    .counter-item {
+        background-color: rgba(0, 0, 0, 0.2);
+        border-radius: 8px;
+        padding: 0.75rem;
+        text-align: center;
+    }
+    
+    .counter-value {
+        font-size: 1.25rem;
+        font-weight: 700;
+        font-family: 'Roboto Mono', monospace;
+        color: var(--diag-text-light);
+    }
+    
+    .counter-value.zero {
+        color: var(--diag-text-muted);
+    }
+    
+    .counter-value.highlight {
+        color: var(--status-success);
+    }
+    
+    .counter-value.warning {
+        color: var(--status-warning);
+    }
+    
+    .counter-label {
+        font-size: 0.7rem;
+        color: var(--diag-text-muted);
+        text-transform: uppercase;
+        margin-top: 0.25rem;
+    }
+    
+    /* Section Label */
+    .section-label {
+        font-size: 0.75rem;
+        color: var(--diag-text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 0.5rem;
+        padding-bottom: 0.25rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    /* Reason Table */
+    .reason-section {
+        margin-top: 1rem;
+    }
+    
+    .reason-table {
+        width: 100%;
+        font-size: 0.85rem;
+    }
+    
+    .reason-table th {
+        text-align: left;
+        color: var(--diag-text-muted);
+        font-weight: 500;
+        padding: 0.35rem 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .reason-table td {
+        padding: 0.35rem 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    
+    .reason-code {
+        font-family: 'Roboto Mono', monospace;
+        font-size: 0.75rem;
+        color: var(--diag-text-light);
+    }
+    
+    .reason-count {
+        font-weight: 700;
+        font-family: 'Roboto Mono', monospace;
+        text-align: right;
+        min-width: 50px;
+    }
+    
+    .reason-source {
+        font-size: 0.65rem;
+        padding: 0.15rem 0.35rem;
+        border-radius: 3px;
+        text-transform: uppercase;
+    }
+    
+    .reason-source.strategy {
+        background-color: rgba(37, 99, 235, 0.2);
+        color: #3b82f6;
+    }
+    
+    .reason-source.risk {
+        background-color: rgba(220, 53, 69, 0.2);
+        color: var(--status-danger);
+    }
+    
+    .reason-description {
+        font-size: 0.75rem;
+        color: var(--diag-text-muted);
+    }
+    
+    /* Empty State */
+    .empty-state {
+        text-align: center;
+        padding: 3rem 1.5rem;
+        color: var(--diag-text-muted);
+    }
+    
+    .empty-state i {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        opacity: 0.5;
+    }
+    
+    .empty-state h3 {
+        color: var(--diag-text-light);
+        margin-bottom: 0.5rem;
+    }
+    
+    /* No Reasons Message */
+    .no-reasons {
+        text-align: center;
+        padding: 1rem;
+        color: var(--diag-text-muted);
+        font-size: 0.85rem;
+    }
+    
+    /* Refresh Button */
+    .refresh-btn {
+        background: transparent;
+        border: 1px solid var(--diag-border);
+        color: var(--diag-text-muted);
+        cursor: pointer;
+        padding: 0.35rem 0.75rem;
+        border-radius: 4px;
+        transition: all 0.2s;
+    }
+    
+    .refresh-btn:hover {
+        background-color: rgba(0, 0, 0, 0.3);
+        color: var(--diag-text-light);
+    }
+    
+    .refresh-btn.spinning i {
+        animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+    
+    /* Counter Sections */
+    .counter-section {
+        margin-bottom: 1.25rem;
+    }
+    
+    .counter-section:last-child {
+        margin-bottom: 0;
+    }
+    
+    /* Responsive */
+    @media (max-width: 576px) {
+        .diagnostics-header {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        
+        .header-controls {
+            width: 100%;
+            justify-content: space-between;
+        }
+        
+        .window-selector {
+            flex-wrap: wrap;
+        }
+        
+        .counter-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+        
+        .asset-card-header {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="diagnostics-page">
+    <div class="container-fluid">
+        <!-- Header -->
+        <div class="diagnostics-header">
+            <div>
+                <h1>
+                    <i class="bi bi-activity"></i> Trading Diagnostics
+                </h1>
+                <small class="text-muted">Sanity & Confidence Layer - Transparenz über den Trading-Flow</small>
+            </div>
+            <div class="header-controls">
+                <div class="window-selector">
+                    {% for opt in window_options %}
+                    <a href="?window={{ opt.value }}" 
+                       class="window-btn {% if window_minutes == opt.value %}active{% endif %}">
+                        {{ opt.label }}
+                    </a>
+                    {% endfor %}
+                </div>
+                <button class="refresh-btn" onclick="location.reload()" title="Aktualisieren">
+                    <i class="bi bi-arrow-clockwise"></i> Refresh
+                </button>
+                <a href="{% url 'signal_dashboard' %}" class="btn btn-sm btn-outline-light">
+                    <i class="bi bi-arrow-left"></i> Dashboard
+                </a>
+            </div>
+        </div>
+        
+        <!-- Asset Diagnostics Cards -->
+        {% if asset_diagnostics %}
+        {% for diag in asset_diagnostics %}
+        <div class="asset-card">
+            <div class="asset-card-header">
+                <div>
+                    <span class="asset-name">{{ diag.asset.name }}</span>
+                    <span class="asset-symbol">({{ diag.asset.symbol }})</span>
+                </div>
+                <div class="asset-badges">
+                    <span class="phase-badge">
+                        <i class="bi bi-clock"></i>
+                        {{ diag.current_phase|default:"--" }}
+                    </span>
+                    <span class="mode-badge {% if diag.trading_mode == 'DIAGNOSTIC' %}diagnostic{% else %}strict{% endif %}">
+                        {% if diag.trading_mode == 'DIAGNOSTIC' %}
+                            <i class="bi bi-bug"></i> Diagnostic
+                        {% else %}
+                            <i class="bi bi-shield-check"></i> Strict
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+            
+            <div class="asset-card-body">
+                <!-- Last Cycle Info -->
+                <div class="last-cycle-info">
+                    <i class="bi bi-cpu"></i>
+                    <span>
+                        {% if diag.last_cycle_at %}
+                        Letzter Worker-Zyklus: {{ diag.last_cycle_at }}
+                        {% else %}
+                        Noch keine Daten im gewählten Zeitraum
+                        {% endif %}
+                    </span>
+                </div>
+                
+                <!-- Strategy Counters -->
+                <div class="counter-section">
+                    <div class="section-label">
+                        <i class="bi bi-gear"></i> Strategy Engine
+                    </div>
+                    <div class="counter-grid">
+                        <div class="counter-item">
+                            <div class="counter-value {% if diag.counters.candles_evaluated == 0 %}zero{% endif %}">
+                                {{ diag.counters.candles_evaluated }}
+                            </div>
+                            <div class="counter-label">Candles</div>
+                        </div>
+                        <div class="counter-item">
+                            <div class="counter-value {% if diag.counters.ranges_built.asia == 0 and diag.counters.ranges_built.london == 0 and diag.counters.ranges_built.pre_us == 0 and diag.counters.ranges_built.us_core == 0 %}zero{% endif %}">
+                                {{ diag.counters.ranges_built.asia|add:diag.counters.ranges_built.london|add:diag.counters.ranges_built.pre_us|add:diag.counters.ranges_built.us_core }}
+                            </div>
+                            <div class="counter-label">Ranges Built</div>
+                        </div>
+                        <div class="counter-item">
+                            <div class="counter-value {% if diag.counters.setups.generated_total > 0 %}highlight{% else %}zero{% endif %}">
+                                {{ diag.counters.setups.generated_total }}
+                            </div>
+                            <div class="counter-label">Setups Generated</div>
+                        </div>
+                        <div class="counter-item">
+                            <div class="counter-value {% if diag.counters.setups.discarded_strategy > 0 %}warning{% else %}zero{% endif %}">
+                                {{ diag.counters.setups.discarded_strategy }}
+                            </div>
+                            <div class="counter-label">Discarded (Strategy)</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Risk Counters -->
+                <div class="counter-section">
+                    <div class="section-label">
+                        <i class="bi bi-shield-exclamation"></i> Risk Engine
+                    </div>
+                    <div class="counter-grid">
+                        <div class="counter-item">
+                            <div class="counter-value {% if diag.counters.risk.evaluated == 0 %}zero{% endif %}">
+                                {{ diag.counters.risk.evaluated }}
+                            </div>
+                            <div class="counter-label">Evaluated</div>
+                        </div>
+                        <div class="counter-item">
+                            <div class="counter-value {% if diag.counters.risk.rejected > 0 %}warning{% else %}zero{% endif %}">
+                                {{ diag.counters.risk.rejected }}
+                            </div>
+                            <div class="counter-label">Rejected</div>
+                        </div>
+                        <div class="counter-item">
+                            <div class="counter-value {% if diag.counters.risk.approved > 0 %}highlight{% else %}zero{% endif %}">
+                                {{ diag.counters.risk.approved }}
+                            </div>
+                            <div class="counter-label">Approved</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Execution Counters -->
+                <div class="counter-section">
+                    <div class="section-label">
+                        <i class="bi bi-lightning-charge"></i> Execution Layer
+                    </div>
+                    <div class="counter-grid">
+                        <div class="counter-item">
+                            <div class="counter-value {% if diag.counters.orders.built == 0 %}zero{% endif %}">
+                                {{ diag.counters.orders.built }}
+                            </div>
+                            <div class="counter-label">Orders Built</div>
+                        </div>
+                        <div class="counter-item">
+                            <div class="counter-value {% if diag.counters.orders.sent_shadow > 0 %}highlight{% else %}zero{% endif %}">
+                                {{ diag.counters.orders.sent_shadow }}
+                            </div>
+                            <div class="counter-label">Shadow</div>
+                        </div>
+                        <div class="counter-item">
+                            <div class="counter-value {% if diag.counters.orders.sent_live > 0 %}highlight{% else %}zero{% endif %}">
+                                {{ diag.counters.orders.sent_live }}
+                            </div>
+                            <div class="counter-label">Live</div>
+                        </div>
+                        <div class="counter-item">
+                            <div class="counter-value {% if diag.counters.orders.failed > 0 %}warning{% else %}zero{% endif %}">
+                                {{ diag.counters.orders.failed }}
+                            </div>
+                            <div class="counter-label">Failed</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Top Reason Codes -->
+                <div class="reason-section">
+                    <div class="section-label">
+                        <i class="bi bi-exclamation-triangle"></i> Top Rejection Reasons
+                    </div>
+                    {% if diag.top_reasons %}
+                    <table class="reason-table">
+                        <thead>
+                            <tr>
+                                <th>Reason Code</th>
+                                <th style="text-align: right;">Count</th>
+                                <th>Source</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for reason in diag.top_reasons %}
+                            <tr>
+                                <td>
+                                    <span class="reason-code">{{ reason.0 }}</span>
+                                    <div class="reason-description">{{ reason.2 }}</div>
+                                </td>
+                                <td class="reason-count">{{ reason.1 }}</td>
+                                <td>
+                                    <span class="reason-source {{ reason.3 }}">{{ reason.3 }}</span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <div class="no-reasons">
+                        <i class="bi bi-check-circle"></i> Keine Ablehnungen im gewählten Zeitraum
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="empty-state">
+            <i class="bi bi-box-seam"></i>
+            <h3>Keine aktiven Assets</h3>
+            <p>Es sind derzeit keine aktiven Trading-Assets konfiguriert.</p>
+            <a href="{% url 'asset_list' %}" class="btn btn-outline-light mt-3">
+                <i class="bi bi-plus-lg"></i> Assets verwalten
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Auto-refresh every 30 seconds
+    let autoRefreshInterval = null;
+    const REFRESH_INTERVAL = 30000;
+    
+    function startAutoRefresh() {
+        autoRefreshInterval = setInterval(function() {
+            // Only refresh if page is visible
+            if (!document.hidden) {
+                location.reload();
+            }
+        }, REFRESH_INTERVAL);
+    }
+    
+    function stopAutoRefresh() {
+        if (autoRefreshInterval) {
+            clearInterval(autoRefreshInterval);
+            autoRefreshInterval = null;
+        }
+    }
+    
+    // Start auto-refresh when page loads
+    document.addEventListener('DOMContentLoaded', startAutoRefresh);
+    
+    // Handle visibility changes
+    document.addEventListener('visibilitychange', function() {
+        if (document.hidden) {
+            stopAutoRefresh();
+        } else {
+            startAutoRefresh();
+        }
+    });
+</script>
+{% endblock %}
