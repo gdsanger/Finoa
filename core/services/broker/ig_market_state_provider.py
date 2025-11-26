@@ -67,8 +67,8 @@ class SessionTimesConfig:
         asia_end: str = "08:00",
         london_core_start: str = "08:00",
         london_core_end: str = "11:00",
-        us_core_start: str = "13:00",
-        us_core_end: str = "15:00",
+        us_core_start: str = "14:00",
+        us_core_end: str = "17:00",
         friday_late: int = 21,
     ) -> 'SessionTimesConfig':
         """
@@ -79,8 +79,8 @@ class SessionTimesConfig:
             asia_end: Asia range end (HH:MM format, e.g., "08:00")
             london_core_start: London core start (HH:MM format)
             london_core_end: London core end (HH:MM format)
-            us_core_start: US core start (HH:MM format)
-            us_core_end: US core end (HH:MM format)
+            us_core_start: US core start (HH:MM format, default: "14:00")
+            us_core_end: US core end (HH:MM format, default: "17:00")
             friday_late: Friday late cutoff hour
             
         Returns:
