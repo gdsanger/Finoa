@@ -28,6 +28,7 @@ from core.services.broker import (
     AuthenticationError,
     create_ig_broker_service,
 )
+from trading.models import WorkerStatus
 from core.services.strategy import (
     StrategyEngine,
     StrategyConfig,
@@ -269,6 +270,13 @@ class Command(BaseCommand):
         """Run one cycle of the worker loop."""
         now = datetime.now(timezone.utc)
         
+        # Initialize status tracking variables
+        bid_price = None
+        ask_price = None
+        spread = None
+        setup_count = 0
+        diagnostic_message = ''
+        
         # 1. Determine session phase
         phase = self.market_state_provider.get_phase(now)
         self.stdout.write(f"\n[{now.strftime('%H:%M:%S')} UTC] Phase: {phase.value}")
@@ -280,36 +288,103 @@ class Command(BaseCommand):
             logger.warning(f"Failed to update candle: {e}")
         
         # 3. Get current price for logging
+        price = None
         try:
             price = self.broker_service.get_symbol_price(epic)
+            bid_price = price.bid
+            ask_price = price.ask
+            spread = price.spread
             self.stdout.write(
                 f"  Price: {price.bid}/{price.ask} (spread: {price.spread})"
             )
         except Exception as e:
             self.stdout.write(self.style.WARNING(f"  Could not get price: {e}"))
+            diagnostic_message = f"Could not get price: {e}"
         
         # 4. Skip if not in tradeable phase
         if phase in [SessionPhase.FRIDAY_LATE, SessionPhase.OTHER]:
             self.stdout.write("  → Phase not tradeable, skipping strategy evaluation")
+            diagnostic_message = f"Phase {phase.value} not tradeable, skipping strategy evaluation"
+            self._update_worker_status(
+                now, phase, epic, setup_count, bid_price, ask_price, spread, diagnostic_message
+            )
             return
         
         # 5. Run Strategy Engine
         self.stdout.write("  → Running Strategy Engine...")
         try:
             setups = self.strategy_engine.evaluate(epic, now)
+            setup_count = len(setups)
             self.stdout.write(f"    Found {len(setups)} setup(s)")
         except Exception as e:
             self.stdout.write(self.style.ERROR(f"    Strategy error: {e}"))
             logger.exception("Strategy evaluation failed")
+            diagnostic_message = f"Strategy evaluation error: {e}"
+            self._update_worker_status(
+                now, phase, epic, setup_count, bid_price, ask_price, spread, diagnostic_message
+            )
             return
         
         if not setups:
             self.stdout.write("  → No setups found")
+            diagnostic_message = self._generate_no_setup_reason(phase, price)
+            self._update_worker_status(
+                now, phase, epic, setup_count, bid_price, ask_price, spread, diagnostic_message
+            )
             return
+        
+        # Setups found - update status with success message
+        diagnostic_message = f"Found {setup_count} setup(s)"
+        self._update_worker_status(
+            now, phase, epic, setup_count, bid_price, ask_price, spread, diagnostic_message
+        )
         
         # 6. Process each setup
         for setup in setups:
             self._process_setup(setup, shadow_only, dry_run, now)
+    
+    def _update_worker_status(
+        self,
+        now: datetime,
+        phase,
+        epic: str,
+        setup_count: int,
+        bid_price,
+        ask_price,
+        spread,
+        diagnostic_message: str
+    ) -> None:
+        """Update the worker status in the database."""
+        try:
+            from decimal import Decimal
+            WorkerStatus.update_status(
+                last_run_at=now,
+                phase=phase.value if hasattr(phase, 'value') else str(phase),
+                epic=epic,
+                setup_count=setup_count,
+                bid_price=Decimal(str(bid_price)) if bid_price is not None else None,
+                ask_price=Decimal(str(ask_price)) if ask_price is not None else None,
+                spread=Decimal(str(spread)) if spread is not None else None,
+                diagnostic_message=diagnostic_message,
+                worker_interval=60,  # Default interval
+            )
+        except Exception as e:
+            logger.warning(f"Failed to update worker status: {e}")
+    
+    def _generate_no_setup_reason(self, phase, price) -> str:
+        """Generate a human-readable reason for why no setups were found."""
+        if phase == SessionPhase.LONDON_CORE:
+            return "No setups found – no valid Asia Range breakout detected"
+        elif phase == SessionPhase.US_CORE:
+            return "No setups found – no valid Pre-US Range breakout detected"
+        elif phase == SessionPhase.EIA_POST:
+            return "No setups found – no valid EIA pattern detected"
+        elif phase == SessionPhase.EIA_PRE:
+            return "No setups found – waiting for EIA release"
+        elif phase == SessionPhase.ASIA_RANGE:
+            return "No setups found – building Asia Range"
+        else:
+            return f"No setups found – phase {phase.value if hasattr(phase, 'value') else phase}"
 
     def _process_setup(self, setup, shadow_only: bool, dry_run: bool, now: datetime) -> None:
         """Process a single setup through risk and execution."""

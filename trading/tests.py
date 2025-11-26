@@ -1,9 +1,11 @@
 from django.test import TestCase
 from django.contrib.auth.models import User
+from django.utils import timezone
 from decimal import Decimal
+from datetime import timedelta
 import uuid
 
-from .models import Signal, Trade
+from .models import Signal, Trade, WorkerStatus
 
 
 class SignalModelTest(TestCase):
@@ -346,4 +348,217 @@ class APIEndpointsTest(TestCase):
         response = self.client.get('/fiona/api/account-state/')
         self.assertEqual(response.status_code, 302)
         self.assertTrue(response.url.startswith('/login/'))
+
+
+class WorkerStatusModelTest(TestCase):
+    """Tests for WorkerStatus model."""
+    
+    def test_worker_status_creation(self):
+        """Test basic worker status creation."""
+        now = timezone.now()
+        status = WorkerStatus.objects.create(
+            last_run_at=now,
+            phase='LONDON_CORE',
+            epic='CC.D.CL.UNC.IP',
+            bid_price=Decimal('75.50'),
+            ask_price=Decimal('75.55'),
+            spread=Decimal('0.05'),
+            setup_count=0,
+            diagnostic_message='No setups found',
+            worker_interval=60,
+        )
+        
+        self.assertEqual(status.phase, 'LONDON_CORE')
+        self.assertEqual(status.epic, 'CC.D.CL.UNC.IP')
+        self.assertEqual(status.setup_count, 0)
+        self.assertEqual(status.worker_interval, 60)
+    
+    def test_worker_status_get_current(self):
+        """Test getting current worker status."""
+        now = timezone.now()
+        
+        # Initially should return None
+        self.assertIsNone(WorkerStatus.get_current())
+        
+        # Create a status
+        WorkerStatus.objects.create(
+            last_run_at=now,
+            phase='LONDON_CORE',
+            epic='CC.D.CL.UNC.IP',
+        )
+        
+        # Should return the status
+        current = WorkerStatus.get_current()
+        self.assertIsNotNone(current)
+        self.assertEqual(current.phase, 'LONDON_CORE')
+    
+    def test_worker_status_update_status(self):
+        """Test updating worker status."""
+        now = timezone.now()
+        
+        # Create initial status
+        status1 = WorkerStatus.update_status(
+            last_run_at=now,
+            phase='LONDON_CORE',
+            epic='CC.D.CL.UNC.IP',
+            setup_count=0,
+            diagnostic_message='No setups found',
+        )
+        
+        self.assertEqual(WorkerStatus.objects.count(), 1)
+        
+        # Update status (should replace the old one)
+        status2 = WorkerStatus.update_status(
+            last_run_at=now + timedelta(seconds=60),
+            phase='US_CORE',
+            epic='CC.D.CL.UNC.IP',
+            setup_count=1,
+            diagnostic_message='Found 1 setup(s)',
+        )
+        
+        # Should still have only 1 record
+        self.assertEqual(WorkerStatus.objects.count(), 1)
+        
+        # Should be the new status
+        current = WorkerStatus.get_current()
+        self.assertEqual(current.phase, 'US_CORE')
+        self.assertEqual(current.setup_count, 1)
+    
+    def test_worker_status_str_representation(self):
+        """Test worker status string representation."""
+        now = timezone.now()
+        status = WorkerStatus.objects.create(
+            last_run_at=now,
+            phase='LONDON_CORE',
+            epic='CC.D.CL.UNC.IP',
+        )
+        
+        str_repr = str(status)
+        self.assertIn('Worker Status', str_repr)
+        self.assertIn('LONDON_CORE', str_repr)
+
+
+class WorkerStatusAPITest(TestCase):
+    """Tests for Worker Status API endpoint."""
+    
+    def setUp(self):
+        self.user = User.objects.create_user(username='testuser', password='testpass')
+        self.client.login(username='testuser', password='testpass')
+    
+    def test_api_worker_status_returns_json(self):
+        """Test that worker status API returns JSON."""
+        response = self.client.get('/fiona/api/worker/status/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/json')
+        
+        data = response.json()
+        self.assertIn('success', data)
+        self.assertIn('worker_status', data)
+    
+    def test_api_worker_status_no_data(self):
+        """Test worker status when no data exists."""
+        response = self.client.get('/fiona/api/worker/status/')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['worker_status'], 'NO_DATA')
+        self.assertIsNone(data['data'])
+    
+    def test_api_worker_status_online(self):
+        """Test worker status shows ONLINE when recent."""
+        now = timezone.now()
+        WorkerStatus.objects.create(
+            last_run_at=now,
+            phase='LONDON_CORE',
+            epic='CC.D.CL.UNC.IP',
+            bid_price=Decimal('75.50'),
+            ask_price=Decimal('75.55'),
+            spread=Decimal('0.05'),
+            setup_count=0,
+            diagnostic_message='No setups found',
+            worker_interval=60,
+        )
+        
+        response = self.client.get('/fiona/api/worker/status/')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['worker_status'], 'ONLINE')
+        self.assertIsNotNone(data['data'])
+        self.assertEqual(data['data']['phase'], 'LONDON_CORE')
+        self.assertEqual(data['data']['epic'], 'CC.D.CL.UNC.IP')
+        self.assertEqual(data['data']['setup_count'], 0)
+    
+    def test_api_worker_status_offline(self):
+        """Test worker status shows OFFLINE when stale."""
+        # Create a status from 5 minutes ago (more than 2 * 60s threshold)
+        old_time = timezone.now() - timedelta(minutes=5)
+        WorkerStatus.objects.create(
+            last_run_at=old_time,
+            phase='LONDON_CORE',
+            epic='CC.D.CL.UNC.IP',
+            setup_count=0,
+            diagnostic_message='No setups found',
+            worker_interval=60,
+        )
+        
+        response = self.client.get('/fiona/api/worker/status/')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['worker_status'], 'OFFLINE')
+        # Data should still be present
+        self.assertIsNotNone(data['data'])
+    
+    def test_api_worker_status_requires_login(self):
+        """Test that worker status API requires login."""
+        self.client.logout()
+        response = self.client.get('/fiona/api/worker/status/')
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.url.startswith('/login/'))
+    
+    def test_api_worker_status_includes_price_info(self):
+        """Test that worker status includes price info."""
+        now = timezone.now()
+        WorkerStatus.objects.create(
+            last_run_at=now,
+            phase='LONDON_CORE',
+            epic='CC.D.CL.UNC.IP',
+            bid_price=Decimal('75.50'),
+            ask_price=Decimal('75.55'),
+            spread=Decimal('0.05'),
+            setup_count=1,
+            diagnostic_message='Found 1 setup(s)',
+            worker_interval=60,
+        )
+        
+        response = self.client.get('/fiona/api/worker/status/')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertIn('price_info', data['data'])
+        self.assertEqual(data['data']['price_info']['bid'], '75.5000')
+        self.assertEqual(data['data']['price_info']['ask'], '75.5500')
+        self.assertEqual(data['data']['price_info']['spread'], '0.0500')
+
+
+class SignalDashboardWorkerStatusTest(TestCase):
+    """Tests for Worker Status in Signal Dashboard."""
+    
+    def setUp(self):
+        self.user = User.objects.create_user(username='testuser', password='testpass')
+        self.client.login(username='testuser', password='testpass')
+    
+    def test_signal_dashboard_shows_worker_status_section(self):
+        """Test that dashboard shows worker status section."""
+        response = self.client.get('/fiona/signals/')
+        self.assertEqual(response.status_code, 200)
+        # Check for worker status card elements
+        self.assertContains(response, 'Worker Status')
+        self.assertContains(response, 'worker-status')
+        self.assertContains(response, 'Letzte Aktivität')
+        self.assertContains(response, 'Diagnose')
 

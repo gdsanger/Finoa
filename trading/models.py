@@ -159,3 +159,128 @@ class Trade(models.Model):
     
     def __str__(self):
         return f"{self.trade_type} - {self.signal.direction} ({self.status})"
+
+
+class WorkerStatus(models.Model):
+    """
+    Stores the current status of the Fiona trading worker.
+    
+    Only one record is maintained (singleton pattern) representing
+    the latest worker state.
+    """
+    
+    # Session Phases (same as Strategy Engine phases)
+    SESSION_PHASES = [
+        ('ASIA_RANGE', 'Asia Range'),
+        ('LONDON_CORE', 'London Core'),
+        ('US_CORE', 'US Core'),
+        ('EIA_PRE', 'EIA Pre'),
+        ('EIA_POST', 'EIA Post'),
+        ('FRIDAY_LATE', 'Friday Late'),
+        ('OTHER', 'Other'),
+    ]
+    
+    # Worker loop timestamp
+    last_run_at = models.DateTimeField(
+        help_text='Timestamp of the last worker loop execution'
+    )
+    
+    # Current session phase
+    phase = models.CharField(
+        max_length=20,
+        choices=SESSION_PHASES,
+        help_text='Current session phase'
+    )
+    
+    # Instrument/Epic being monitored
+    epic = models.CharField(
+        max_length=100,
+        help_text='Current instrument EPIC (e.g., CC.D.CL.UNC.IP)'
+    )
+    
+    # Price information
+    bid_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text='Last bid price'
+    )
+    ask_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text='Last ask price'
+    )
+    spread = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        help_text='Current spread'
+    )
+    
+    # Strategy Engine results
+    setup_count = models.PositiveIntegerField(
+        default=0,
+        help_text='Number of setups found in last run'
+    )
+    
+    # Diagnostic message explaining why no setups were found
+    diagnostic_message = models.TextField(
+        blank=True,
+        help_text='Human-readable diagnostic message (e.g., why no setups found)'
+    )
+    
+    # Worker configuration
+    worker_interval = models.PositiveIntegerField(
+        default=60,
+        help_text='Expected interval between worker loops in seconds'
+    )
+    
+    class Meta:
+        verbose_name = 'Worker Status'
+        verbose_name_plural = 'Worker Status'
+    
+    def __str__(self):
+        return f"Worker Status - {self.phase} @ {self.last_run_at}"
+    
+    @classmethod
+    def get_current(cls):
+        """Get the current (most recent) worker status, or None if not available."""
+        return cls.objects.order_by('-last_run_at').first()
+    
+    @classmethod
+    def update_status(
+        cls,
+        last_run_at,
+        phase,
+        epic,
+        setup_count=0,
+        bid_price=None,
+        ask_price=None,
+        spread=None,
+        diagnostic_message='',
+        worker_interval=60
+    ):
+        """
+        Update or create the worker status record.
+        
+        Uses update_or_create to maintain a single status record.
+        """
+        # Delete all existing records and create a new one
+        # This ensures we only have one record (singleton)
+        cls.objects.all().delete()
+        
+        return cls.objects.create(
+            last_run_at=last_run_at,
+            phase=phase,
+            epic=epic,
+            setup_count=setup_count,
+            bid_price=bid_price,
+            ask_price=ask_price,
+            spread=spread,
+            diagnostic_message=diagnostic_message,
+            worker_interval=worker_interval,
+        )
