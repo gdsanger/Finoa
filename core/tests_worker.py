@@ -344,6 +344,26 @@ class IGMarketStateProviderTest(TestCase):
         ts = datetime(2024, 1, 9, 21, 30, 0, tzinfo=timezone.utc)
         phase = provider.get_phase(ts)
         self.assertEqual(phase, SessionPhase.OTHER)
+    
+    def test_set_session_times_logs_us_core_trading(self):
+        """Test that set_session_times logs US Core Trading times correctly."""
+        from core.services.broker import SessionTimesConfig
+        import logging
+        
+        provider = IGMarketStateProvider(broker_service=self.mock_broker)
+        
+        # Configure custom US Core Trading times
+        session_times = SessionTimesConfig.from_time_strings(
+            us_core_trading_start="15:00",
+            us_core_trading_end="22:00",
+        )
+        
+        # Capture log output
+        with self.assertLogs('core.services.broker.ig_market_state_provider', level='INFO') as cm:
+            provider.set_session_times(session_times)
+        
+        # Verify log message contains "US Core Trading" not "US Core"
+        self.assertTrue(any('US Core Trading 15:00 - 22:00' in log for log in cm.output))
 
 
 class FionaWorkerCommandTest(TestCase):
@@ -595,3 +615,108 @@ class WorkerIntegrationTest(TestCase):
         
         # Verify we got a list (may be empty)
         self.assertIsInstance(setups, list)
+
+
+class SessionPhaseConfigIntegrationTest(TestCase):
+    """Integration tests for AssetSessionPhaseConfig and worker behavior."""
+    
+    def setUp(self):
+        """Set up test fixtures."""
+        from trading.models import TradingAsset, AssetSessionPhaseConfig
+        
+        # Create a test asset
+        self.asset = TradingAsset.objects.create(
+            name="Test Oil",
+            symbol="OIL",
+            epic="CC.D.CL.UNC.IP",
+            category="commodity",
+            tick_size="0.01",
+            is_active=True,
+        )
+        
+        # Create session phase configs for the asset
+        AssetSessionPhaseConfig.objects.create(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time_utc='00:00',
+            end_time_utc='08:00',
+            is_range_build_phase=True,
+            is_trading_phase=False,
+            enabled=True,
+        )
+        AssetSessionPhaseConfig.objects.create(
+            asset=self.asset,
+            phase='PRE_US_RANGE',
+            start_time_utc='13:00',
+            end_time_utc='15:00',
+            is_range_build_phase=True,
+            is_trading_phase=False,
+            enabled=True,
+        )
+        AssetSessionPhaseConfig.objects.create(
+            asset=self.asset,
+            phase='US_CORE_TRADING',
+            start_time_utc='15:00',
+            end_time_utc='22:00',
+            is_range_build_phase=False,
+            is_trading_phase=True,
+            enabled=True,
+        )
+    
+    def test_session_phase_config_get_phases_for_asset(self):
+        """Test getting session phase configs for an asset."""
+        from trading.models import AssetSessionPhaseConfig
+        
+        configs = AssetSessionPhaseConfig.get_phases_for_asset(self.asset)
+        
+        self.assertEqual(configs.count(), 3)
+        
+        # Verify US_CORE_TRADING config has correct flags
+        us_core_trading = configs.get(phase='US_CORE_TRADING')
+        self.assertTrue(us_core_trading.is_trading_phase)
+        self.assertFalse(us_core_trading.is_range_build_phase)
+        self.assertEqual(us_core_trading.start_time_utc, '15:00')
+        self.assertEqual(us_core_trading.end_time_utc, '22:00')
+    
+    def test_session_phase_config_is_trading_phase_flag(self):
+        """Test that is_trading_phase flag is correctly set for trading phases."""
+        from trading.models import AssetSessionPhaseConfig
+        
+        # PRE_US_RANGE should NOT be tradeable
+        pre_us = AssetSessionPhaseConfig.objects.get(asset=self.asset, phase='PRE_US_RANGE')
+        self.assertFalse(pre_us.is_trading_phase)
+        
+        # US_CORE_TRADING should be tradeable
+        us_trading = AssetSessionPhaseConfig.objects.get(asset=self.asset, phase='US_CORE_TRADING')
+        self.assertTrue(us_trading.is_trading_phase)
+    
+    def test_session_times_config_from_phase_configs(self):
+        """Test building SessionTimesConfig from AssetSessionPhaseConfig."""
+        from trading.models import AssetSessionPhaseConfig
+        from core.services.broker import SessionTimesConfig
+        
+        configs = AssetSessionPhaseConfig.get_enabled_phases_for_asset(self.asset)
+        
+        # Build session times from configs
+        session_times_kwargs = {}
+        for pc in configs:
+            if pc.phase == 'ASIA_RANGE':
+                session_times_kwargs['asia_start'] = pc.start_time_utc
+                session_times_kwargs['asia_end'] = pc.end_time_utc
+            elif pc.phase == 'PRE_US_RANGE':
+                session_times_kwargs['pre_us_start'] = pc.start_time_utc
+                session_times_kwargs['pre_us_end'] = pc.end_time_utc
+            elif pc.phase == 'US_CORE_TRADING':
+                session_times_kwargs['us_core_trading_start'] = pc.start_time_utc
+                session_times_kwargs['us_core_trading_end'] = pc.end_time_utc
+                session_times_kwargs['us_core_trading_enabled'] = pc.enabled
+        
+        session_times = SessionTimesConfig.from_time_strings(**session_times_kwargs)
+        
+        self.assertEqual(session_times.asia_start, 0)
+        self.assertEqual(session_times.asia_end, 8)
+        self.assertEqual(session_times.pre_us_start, 13)
+        self.assertEqual(session_times.pre_us_end, 15)
+        self.assertEqual(session_times.us_core_trading_start, 15)
+        self.assertEqual(session_times.us_core_trading_end, 22)
+        self.assertTrue(session_times.us_core_trading_enabled)

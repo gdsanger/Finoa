@@ -484,21 +484,54 @@ class Command(BaseCommand):
         Returns:
             Number of setups found
         """
+        from trading.models import AssetSessionPhaseConfig
+        
         epic = asset.epic
         
-        # 1. Configure session times from asset's breakout configuration
+        # 1. Configure session times from asset's Sessions & Phases configuration
         try:
-            breakout_cfg = asset.breakout_config
-            session_times = SessionTimesConfig.from_time_strings(
-                asia_start=breakout_cfg.asia_range_start,
-                asia_end=breakout_cfg.asia_range_end,
-                us_core_start=breakout_cfg.pre_us_start,
-                us_core_end=breakout_cfg.pre_us_end,
-            )
-            self.market_state_provider.set_session_times(session_times)
+            # Get enabled phase configs for this asset
+            phase_configs = AssetSessionPhaseConfig.get_enabled_phases_for_asset(asset)
+            
+            # Build session times from phase configs
+            session_times_kwargs = {}
+            for pc in phase_configs:
+                if pc.phase == 'ASIA_RANGE':
+                    session_times_kwargs['asia_start'] = pc.start_time_utc
+                    session_times_kwargs['asia_end'] = pc.end_time_utc
+                elif pc.phase == 'LONDON_CORE':
+                    session_times_kwargs['london_core_start'] = pc.start_time_utc
+                    session_times_kwargs['london_core_end'] = pc.end_time_utc
+                elif pc.phase == 'PRE_US_RANGE':
+                    session_times_kwargs['pre_us_start'] = pc.start_time_utc
+                    session_times_kwargs['pre_us_end'] = pc.end_time_utc
+                elif pc.phase == 'US_CORE_TRADING':
+                    session_times_kwargs['us_core_trading_start'] = pc.start_time_utc
+                    session_times_kwargs['us_core_trading_end'] = pc.end_time_utc
+                    session_times_kwargs['us_core_trading_enabled'] = pc.enabled
+            
+            if session_times_kwargs:
+                session_times = SessionTimesConfig.from_time_strings(**session_times_kwargs)
+                self.market_state_provider.set_session_times(session_times)
+            else:
+                # Fallback to breakout config if no session phase configs exist
+                try:
+                    breakout_cfg = asset.breakout_config
+                    session_times = SessionTimesConfig.from_time_strings(
+                        asia_start=breakout_cfg.asia_range_start,
+                        asia_end=breakout_cfg.asia_range_end,
+                        pre_us_start=breakout_cfg.pre_us_start,
+                        pre_us_end=breakout_cfg.pre_us_end,
+                        us_core_trading_start=breakout_cfg.us_core_trading_start,
+                        us_core_trading_end=breakout_cfg.us_core_trading_end,
+                        us_core_trading_enabled=breakout_cfg.us_core_trading_enabled,
+                    )
+                    self.market_state_provider.set_session_times(session_times)
+                except Exception:
+                    self.market_state_provider.set_session_times(SessionTimesConfig())
         except Exception as e:
             logger.debug(f"Using default session times for {epic}: {e}")
-            # Use default session times if no breakout config exists
+            # Use default session times if no configuration exists
             self.market_state_provider.set_session_times(SessionTimesConfig())
         
         # 2. Determine session phase (now using asset-specific times)
@@ -518,8 +551,22 @@ class Command(BaseCommand):
         except Exception as e:
             self.stdout.write(self.style.WARNING(f"     Could not get price: {e}"))
         
-        # 5. Skip if not in tradeable phase
-        if phase in [SessionPhase.FRIDAY_LATE, SessionPhase.OTHER]:
+        # 5. Skip if not in tradeable phase - check using is_trading_phase flag
+        is_tradeable = False
+        try:
+            # Check if the current phase is marked as tradeable in AssetSessionPhaseConfig
+            phase_config = AssetSessionPhaseConfig.objects.filter(
+                asset=asset,
+                phase=phase.value,
+                enabled=True
+            ).first()
+            if phase_config:
+                is_tradeable = phase_config.is_trading_phase
+        except Exception:
+            # Fallback to legacy behavior if config lookup fails
+            is_tradeable = phase not in [SessionPhase.FRIDAY_LATE, SessionPhase.OTHER]
+        
+        if not is_tradeable:
             self.stdout.write("     → Phase not tradeable, skipping")
             return 0
         
