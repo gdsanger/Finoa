@@ -727,6 +727,8 @@ class SignalDashboardWorkerStatusTest(TestCase):
         self.assertLessEqual(now_timestamp, after_request)
 
 
+class BreakoutRangeDiagnosticsAPITest(TestCase):
+    """Tests for Breakout Range Diagnostics API endpoint."""
 
 class WorkerStatusDiagnosticsTest(TestCase):
     """Tests for WorkerStatus diagnostic criteria and countdown."""
@@ -735,6 +737,165 @@ class WorkerStatusDiagnosticsTest(TestCase):
         self.user = User.objects.create_user(username='testuser', password='testpass')
         self.client.login(username='testuser', password='testpass')
     
+    def test_api_breakout_range_diagnostics_requires_login(self):
+        """Test that breakout range diagnostics API requires login."""
+        self.client.logout()
+        response = self.client.get('/fiona/api/debug/breakout-range/')
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.url.startswith('/login/'))
+    
+    def test_api_breakout_range_diagnostics_no_worker_data(self):
+        """Test breakout range diagnostics when no worker data exists."""
+        response = self.client.get('/fiona/api/debug/breakout-range/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/json')
+        
+        data = response.json()
+        self.assertFalse(data['success'])
+        self.assertIn('error', data)
+    
+    def test_api_breakout_range_diagnostics_with_worker_data(self):
+        """Test breakout range diagnostics when worker data exists."""
+        now = timezone.now()
+        WorkerStatus.objects.create(
+            last_run_at=now,
+            phase='LONDON_CORE',
+            epic='CC.D.CL.UNC.IP',
+            bid_price=Decimal('75.50'),
+            ask_price=Decimal('75.55'),
+            spread=Decimal('0.05'),
+            setup_count=0,
+            diagnostic_message='No setups found',
+            worker_interval=60,
+        )
+        
+        response = self.client.get('/fiona/api/debug/breakout-range/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/json')
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertIn('data', data)
+        self.assertIn('epic', data)
+        self.assertIn('range_type', data)
+    
+    def test_api_breakout_range_diagnostics_asia_range(self):
+        """Test breakout range diagnostics for Asia range."""
+        now = timezone.now()
+        WorkerStatus.objects.create(
+            last_run_at=now,
+            phase='LONDON_CORE',
+            epic='CC.D.CL.UNC.IP',
+            bid_price=Decimal('75.50'),
+            ask_price=Decimal('75.55'),
+            setup_count=0,
+            worker_interval=60,
+        )
+        
+        response = self.client.get('/fiona/api/debug/breakout-range/?range_type=asia')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['range_type'], 'asia')
+        self.assertIn('range_type', data['data'])
+        self.assertEqual(data['data']['range_type'], 'Asia Range')
+    
+    def test_api_breakout_range_diagnostics_pre_us_range(self):
+        """Test breakout range diagnostics for Pre-US range."""
+        now = timezone.now()
+        WorkerStatus.objects.create(
+            last_run_at=now,
+            phase='US_CORE',
+            epic='CC.D.CL.UNC.IP',
+            bid_price=Decimal('75.50'),
+            ask_price=Decimal('75.55'),
+            setup_count=0,
+            worker_interval=60,
+        )
+        
+        response = self.client.get('/fiona/api/debug/breakout-range/?range_type=pre_us')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['range_type'], 'pre_us')
+        self.assertIn('range_type', data['data'])
+        self.assertEqual(data['data']['range_type'], 'Pre-US Range')
+    
+    def test_api_breakout_range_diagnostics_custom_epic(self):
+        """Test breakout range diagnostics with custom epic parameter."""
+        now = timezone.now()
+        WorkerStatus.objects.create(
+            last_run_at=now,
+            phase='LONDON_CORE',
+            epic='CC.D.CL.UNC.IP',
+            bid_price=Decimal('75.50'),
+            ask_price=Decimal('75.55'),
+            setup_count=0,
+            worker_interval=60,
+        )
+        
+        custom_epic = 'IX.D.DAX.DAILY.IP'
+        response = self.client.get(f'/fiona/api/debug/breakout-range/?epic={custom_epic}')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['epic'], custom_epic)
+    
+    def test_api_breakout_range_diagnostics_includes_config(self):
+        """Test that breakout range diagnostics includes configuration values."""
+        now = timezone.now()
+        WorkerStatus.objects.create(
+            last_run_at=now,
+            phase='LONDON_CORE',
+            epic='CC.D.CL.UNC.IP',
+            bid_price=Decimal('75.50'),
+            ask_price=Decimal('75.55'),
+            setup_count=0,
+            worker_interval=60,
+        )
+        
+        response = self.client.get('/fiona/api/debug/breakout-range/')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        
+        # Check config is present with expected keys
+        self.assertIn('config', data['data'])
+        config = data['data']['config']
+        self.assertIn('min_range_ticks', config)
+        self.assertIn('max_range_ticks', config)
+        self.assertIn('min_breakout_body_fraction', config)
+        self.assertIn('tick_size', config)
+    
+    def test_api_breakout_range_diagnostics_includes_diagnostics(self):
+        """Test that breakout range diagnostics includes diagnostic messages."""
+        now = timezone.now()
+        WorkerStatus.objects.create(
+            last_run_at=now,
+            phase='LONDON_CORE',
+            epic='CC.D.CL.UNC.IP',
+            bid_price=Decimal('75.50'),
+            ask_price=Decimal('75.55'),
+            setup_count=0,
+            worker_interval=60,
+        )
+        
+        response = self.client.get('/fiona/api/debug/breakout-range/')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        
+        # Check diagnostics are present
+        self.assertIn('diagnostics', data['data'])
+        diagnostics = data['data']['diagnostics']
+        self.assertIn('message', diagnostics)
+        self.assertIn('detailed_explanation', diagnostics)
+
     def test_worker_status_stores_diagnostic_criteria(self):
         """Test that WorkerStatus stores diagnostic criteria."""
         now = timezone.now()
