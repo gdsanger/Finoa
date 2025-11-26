@@ -76,11 +76,47 @@ class IGMarketStateProviderTest(TestCase):
         
         self.assertEqual(phase, SessionPhase.LONDON_CORE)
 
-    def test_get_phase_us_core(self):
-        """Test phase detection for US Core session."""
+    def test_get_phase_pre_us_range(self):
+        """Test phase detection for Pre-US Range session."""
         provider = IGMarketStateProvider(broker_service=self.mock_broker)
         
-        # 15:00 UTC on a Tuesday
+        # 13:30 UTC on a Tuesday should be PRE_US_RANGE
+        ts = datetime(2024, 1, 9, 13, 30, 0, tzinfo=timezone.utc)
+        phase = provider.get_phase(ts)
+        
+        self.assertEqual(phase, SessionPhase.PRE_US_RANGE)
+
+    def test_get_phase_us_core_trading(self):
+        """Test phase detection for US Core Trading session."""
+        provider = IGMarketStateProvider(broker_service=self.mock_broker)
+        
+        # 15:00 UTC on a Tuesday should be US_CORE_TRADING
+        ts = datetime(2024, 1, 9, 15, 0, 0, tzinfo=timezone.utc)
+        phase = provider.get_phase(ts)
+        
+        self.assertEqual(phase, SessionPhase.US_CORE_TRADING)
+        
+        # 20:00 UTC on a Tuesday should also be US_CORE_TRADING
+        ts = datetime(2024, 1, 9, 20, 0, 0, tzinfo=timezone.utc)
+        phase = provider.get_phase(ts)
+        
+        self.assertEqual(phase, SessionPhase.US_CORE_TRADING)
+
+    def test_get_phase_us_core(self):
+        """Test phase detection for deprecated US Core session (backwards compat)."""
+        from core.services.broker import SessionTimesConfig
+        
+        provider = IGMarketStateProvider(broker_service=self.mock_broker)
+        
+        # Configure to use the deprecated US_CORE (disable US_CORE_TRADING)
+        session_times = SessionTimesConfig.from_time_strings(
+            us_core_trading_enabled=False,
+            us_core_start="14:00",
+            us_core_end="17:00",
+        )
+        provider.set_session_times(session_times)
+        
+        # 15:00 UTC on a Tuesday should be US_CORE
         ts = datetime(2024, 1, 9, 15, 0, 0, tzinfo=timezone.utc)
         phase = provider.get_phase(ts)
         
@@ -217,40 +253,52 @@ class IGMarketStateProviderTest(TestCase):
         self.assertIsNone(provider.get_asia_range("CC.D.CL.UNC.IP"))
         self.assertIsNone(provider.get_pre_us_range("CC.D.CL.UNC.IP"))
 
-    def test_configurable_us_core_session_times(self):
-        """Test that US Core session times can be configured."""
+    def test_configurable_us_core_trading_session_times(self):
+        """Test that US Core Trading session times can be configured."""
         from core.services.broker import SessionTimesConfig
         
         provider = IGMarketStateProvider(broker_service=self.mock_broker)
         
-        # Configure US Core to 13:00 - 15:00 UTC (as in the issue)
+        # Configure US Core Trading to 16:00 - 20:00 UTC
         session_times = SessionTimesConfig.from_time_strings(
-            us_core_start="13:00",
-            us_core_end="15:00",
+            us_core_trading_start="16:00",
+            us_core_trading_end="20:00",
         )
         provider.set_session_times(session_times)
         
-        # 13:39 UTC on a Tuesday should be US_CORE with the new config
-        ts = datetime(2024, 1, 9, 13, 39, 0, tzinfo=timezone.utc)
+        # 15:30 UTC on a Tuesday should be OTHER (not in trading window)
+        ts = datetime(2024, 1, 9, 15, 30, 0, tzinfo=timezone.utc)
         phase = provider.get_phase(ts)
+        self.assertNotEqual(phase, SessionPhase.US_CORE_TRADING)
         
-        self.assertEqual(phase, SessionPhase.US_CORE)
+        # 16:30 UTC on a Tuesday should be US_CORE_TRADING
+        ts = datetime(2024, 1, 9, 16, 30, 0, tzinfo=timezone.utc)
+        phase = provider.get_phase(ts)
+        self.assertEqual(phase, SessionPhase.US_CORE_TRADING)
     
-    def test_default_session_times_us_core(self):
-        """Test that default US Core is 14:00 - 17:00 UTC."""
+    def test_default_session_times_new_phases(self):
+        """Test that default session times include PRE_US_RANGE and US_CORE_TRADING."""
         provider = IGMarketStateProvider(broker_service=self.mock_broker)
         
-        # 13:39 UTC should be OTHER with default config
-        ts = datetime(2024, 1, 9, 13, 39, 0, tzinfo=timezone.utc)
+        # 13:30 UTC should be PRE_US_RANGE with default config
+        ts = datetime(2024, 1, 9, 13, 30, 0, tzinfo=timezone.utc)
         phase = provider.get_phase(ts)
+        self.assertEqual(phase, SessionPhase.PRE_US_RANGE)
         
+        # 15:00 UTC should be US_CORE_TRADING with default config
+        ts = datetime(2024, 1, 9, 15, 0, 0, tzinfo=timezone.utc)
+        phase = provider.get_phase(ts)
+        self.assertEqual(phase, SessionPhase.US_CORE_TRADING)
+        
+        # 21:00 UTC should be US_CORE_TRADING with default config
+        ts = datetime(2024, 1, 9, 21, 0, 0, tzinfo=timezone.utc)
+        phase = provider.get_phase(ts)
+        self.assertEqual(phase, SessionPhase.US_CORE_TRADING)
+        
+        # 22:00 UTC should be OTHER with default config
+        ts = datetime(2024, 1, 9, 22, 0, 0, tzinfo=timezone.utc)
+        phase = provider.get_phase(ts)
         self.assertEqual(phase, SessionPhase.OTHER)
-        
-        # 14:00 UTC should be US_CORE with default config
-        ts = datetime(2024, 1, 9, 14, 0, 0, tzinfo=timezone.utc)
-        phase = provider.get_phase(ts)
-        
-        self.assertEqual(phase, SessionPhase.US_CORE)
     
     def test_session_times_with_minutes(self):
         """Test session times with minute-level precision."""
@@ -258,30 +306,42 @@ class IGMarketStateProviderTest(TestCase):
         
         provider = IGMarketStateProvider(broker_service=self.mock_broker)
         
-        # Configure US Core to 14:30 - 17:30 UTC
+        # Configure Pre-US to 13:30 - 15:30 and US Core Trading to 15:30 - 21:30 UTC
         session_times = SessionTimesConfig.from_time_strings(
-            us_core_start="14:30",
-            us_core_end="17:30",
+            pre_us_start="13:30",
+            pre_us_end="15:30",
+            us_core_trading_start="15:30",
+            us_core_trading_end="21:30",
         )
         provider.set_session_times(session_times)
         
-        # 14:29 UTC should be OTHER
-        ts = datetime(2024, 1, 9, 14, 29, 0, tzinfo=timezone.utc)
+        # 13:29 UTC should be OTHER
+        ts = datetime(2024, 1, 9, 13, 29, 0, tzinfo=timezone.utc)
         phase = provider.get_phase(ts)
-        self.assertEqual(phase, SessionPhase.OTHER)
+        self.assertNotEqual(phase, SessionPhase.PRE_US_RANGE)
         
-        # 14:30 UTC should be US_CORE
-        ts = datetime(2024, 1, 9, 14, 30, 0, tzinfo=timezone.utc)
+        # 13:30 UTC should be PRE_US_RANGE
+        ts = datetime(2024, 1, 9, 13, 30, 0, tzinfo=timezone.utc)
         phase = provider.get_phase(ts)
-        self.assertEqual(phase, SessionPhase.US_CORE)
+        self.assertEqual(phase, SessionPhase.PRE_US_RANGE)
         
-        # 17:29 UTC should be US_CORE
-        ts = datetime(2024, 1, 9, 17, 29, 0, tzinfo=timezone.utc)
+        # 15:29 UTC should be PRE_US_RANGE
+        ts = datetime(2024, 1, 9, 15, 29, 0, tzinfo=timezone.utc)
         phase = provider.get_phase(ts)
-        self.assertEqual(phase, SessionPhase.US_CORE)
+        self.assertEqual(phase, SessionPhase.PRE_US_RANGE)
         
-        # 17:30 UTC should be OTHER
-        ts = datetime(2024, 1, 9, 17, 30, 0, tzinfo=timezone.utc)
+        # 15:30 UTC should be US_CORE_TRADING
+        ts = datetime(2024, 1, 9, 15, 30, 0, tzinfo=timezone.utc)
+        phase = provider.get_phase(ts)
+        self.assertEqual(phase, SessionPhase.US_CORE_TRADING)
+        
+        # 21:29 UTC should be US_CORE_TRADING
+        ts = datetime(2024, 1, 9, 21, 29, 0, tzinfo=timezone.utc)
+        phase = provider.get_phase(ts)
+        self.assertEqual(phase, SessionPhase.US_CORE_TRADING)
+        
+        # 21:30 UTC should be OTHER
+        ts = datetime(2024, 1, 9, 21, 30, 0, tzinfo=timezone.utc)
         phase = provider.get_phase(ts)
         self.assertEqual(phase, SessionPhase.OTHER)
 

@@ -98,6 +98,12 @@ class StrategyEngine:
             breakout_candidates = self._evaluate_asia_breakout(epic, ts, phase)
             candidates.extend(breakout_candidates)
         
+        # US Core Trading - allows breakouts based on Pre-US Range
+        if phase == SessionPhase.US_CORE_TRADING:
+            breakout_candidates = self._evaluate_us_breakout(epic, ts, phase)
+            candidates.extend(breakout_candidates)
+        
+        # Deprecated US_CORE - kept for backwards compatibility
         if phase == SessionPhase.US_CORE:
             breakout_candidates = self._evaluate_us_breakout(epic, ts, phase)
             candidates.extend(breakout_candidates)
@@ -139,10 +145,22 @@ class StrategyEngine:
         # Check if phase is tradeable
         tradeable_phases = [
             SessionPhase.LONDON_CORE,
-            SessionPhase.US_CORE,
+            SessionPhase.US_CORE_TRADING,
+            SessionPhase.US_CORE,  # Deprecated, kept for backwards compatibility
             SessionPhase.EIA_POST,
         ]
         phase_tradeable = phase in tradeable_phases
+        
+        # PRE_US_RANGE is explicitly not tradeable (range formation only)
+        if phase == SessionPhase.PRE_US_RANGE:
+            result.criteria.append(DiagnosticCriterion(
+                name="Phase is tradeable",
+                passed=False,
+                detail=f"{phase.value} is a range formation phase only - no breakouts allowed",
+            ))
+            result.summary = f"Phase {phase.value}: Collecting range, no setups"
+            return result
+        
         result.criteria.append(DiagnosticCriterion(
             name="Phase is tradeable",
             passed=phase_tradeable,
@@ -156,7 +174,7 @@ class StrategyEngine:
         # Evaluate based on phase
         if phase == SessionPhase.LONDON_CORE:
             self._evaluate_asia_breakout_with_diagnostics(epic, ts, phase, result)
-        elif phase == SessionPhase.US_CORE:
+        elif phase in (SessionPhase.US_CORE_TRADING, SessionPhase.US_CORE):
             self._evaluate_us_breakout_with_diagnostics(epic, ts, phase, result)
         elif phase == SessionPhase.EIA_POST:
             self._evaluate_eia_with_diagnostics(epic, ts, phase, result)

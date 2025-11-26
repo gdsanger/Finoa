@@ -41,9 +41,22 @@ class LondonCoreConfig:
 
 @dataclass
 class UsCoreConfig:
-    """Configuration for US Core session breakout strategy."""
+    """Configuration for US Core session breakout strategy.
+    
+    Includes both:
+    - Pre-US Range period (range formation, 13:00-15:00 UTC default)
+    - US Core Trading session (trading, 15:00-22:00 UTC default)
+    """
+    # Pre-US Range (range formation only)
     pre_us_start: str = "13:00"  # UTC time
     pre_us_end: str = "15:00"    # UTC time
+    
+    # US Core Trading session (breakouts allowed)
+    us_core_trading_start: str = "15:00"  # UTC time
+    us_core_trading_end: str = "22:00"    # UTC time
+    us_core_trading_enabled: bool = True   # Whether trading is enabled in this session
+    
+    # Range requirements (for Pre-US Range)
     min_range_ticks: int = 10
     max_range_ticks: int = 200
     min_breakout_body_fraction: float = 0.5
@@ -171,6 +184,9 @@ class StrategyConfig:
         us_core = UsCoreConfig(
             pre_us_start=us_core_data.get('pre_us_start', '13:00'),
             pre_us_end=us_core_data.get('pre_us_end', '15:00'),
+            us_core_trading_start=us_core_data.get('us_core_trading_start', '15:00'),
+            us_core_trading_end=us_core_data.get('us_core_trading_end', '22:00'),
+            us_core_trading_enabled=us_core_data.get('us_core_trading_enabled', True),
             min_range_ticks=us_core_data.get('min_range_ticks', 10),
             max_range_ticks=us_core_data.get('max_range_ticks', 200),
             min_breakout_body_fraction=us_core_data.get('min_breakout_body_fraction', 0.5),
@@ -258,6 +274,9 @@ class StrategyConfig:
                 'us_core': {
                     'pre_us_start': self.breakout.us_core.pre_us_start,
                     'pre_us_end': self.breakout.us_core.pre_us_end,
+                    'us_core_trading_start': self.breakout.us_core.us_core_trading_start,
+                    'us_core_trading_end': self.breakout.us_core.us_core_trading_end,
+                    'us_core_trading_enabled': self.breakout.us_core.us_core_trading_enabled,
                     'min_range_ticks': self.breakout.us_core.min_range_ticks,
                     'max_range_ticks': self.breakout.us_core.max_range_ticks,
                     'min_breakout_body_fraction': self.breakout.us_core.min_breakout_body_fraction,

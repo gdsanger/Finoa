@@ -24,7 +24,9 @@ class SessionPhase(str, Enum):
     """Current market session phase for strategy evaluation."""
     ASIA_RANGE = "ASIA_RANGE"
     LONDON_CORE = "LONDON_CORE"
-    US_CORE = "US_CORE"
+    PRE_US_RANGE = "PRE_US_RANGE"
+    US_CORE_TRADING = "US_CORE_TRADING"
+    US_CORE = "US_CORE"  # Deprecated: kept for backwards compatibility
     EIA_PRE = "EIA_PRE"
     EIA_POST = "EIA_POST"
     FRIDAY_LATE = "FRIDAY_LATE"
