@@ -1087,11 +1087,12 @@ class BreakoutRange(models.Model):
         Returns:
             BreakoutRange instance
         """
-        from decimal import Decimal
+        from decimal import Decimal, ROUND_HALF_UP
         
         height_points = Decimal(str(high)) - Decimal(str(low))
         tick_size_decimal = Decimal(str(tick_size)) if tick_size > 0 else Decimal('0.01')
-        height_ticks = int(height_points / tick_size_decimal)
+        # Use proper rounding instead of truncation for accurate tick calculations
+        height_ticks = int((height_points / tick_size_decimal).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
         
         return cls.objects.create(
             asset=asset,

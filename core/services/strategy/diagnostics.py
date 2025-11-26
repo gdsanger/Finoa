@@ -740,6 +740,7 @@ class BreakoutRangeDiagnosticService:
                 f"London Core Range data is available for reference. "
                 f"Current phase is {phase.value}."
             )
+        # US_CORE is kept for backwards compatibility with older configurations
         elif diagnostics.range_type == "Pre-US Range" and phase not in (SessionPhase.US_CORE_TRADING, SessionPhase.US_CORE):
             messages.append(f"Current phase ({phase.value}) not suitable for Pre-US breakout")
             explanations.append(

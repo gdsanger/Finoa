@@ -1038,7 +1038,11 @@ def api_breakout_range_diagnostics(request):
             def __init__(self, worker_status, persisted_ranges):
                 self._status = worker_status
                 self._persisted_ranges = persisted_ranges
-                self._phase = SessionPhase(worker_status.phase) if worker_status and worker_status.phase else SessionPhase.OTHER
+                # Gracefully handle invalid phase values
+                try:
+                    self._phase = SessionPhase(worker_status.phase) if worker_status and worker_status.phase else SessionPhase.OTHER
+                except ValueError:
+                    self._phase = SessionPhase.OTHER
             
             def get_phase(self, ts):
                 return self._phase
@@ -1166,9 +1170,14 @@ def api_breakout_range_history(request, asset_id):
     try:
         asset = get_object_or_404(TradingAsset, id=asset_id)
         
-        # Get query parameters
+        # Get query parameters with validation
         phase = request.GET.get('phase')
-        limit = int(request.GET.get('limit', 20))
+        try:
+            limit = int(request.GET.get('limit', 20))
+        except (ValueError, TypeError):
+            limit = 20
+        # Enforce maximum limit to prevent performance issues
+        limit = min(max(limit, 1), 100)
         
         # Build query
         queryset = BreakoutRange.objects.filter(asset=asset)
