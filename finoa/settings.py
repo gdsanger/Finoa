@@ -143,3 +143,21 @@ LOGOUT_REDIRECT_URL = 'login'
 WEAVIATE_URL = os.environ.get('WEAVIATE_URL', '')
 WEAVIATE_API_KEY = os.environ.get('WEAVIATE_API_KEY', '')
 WEAVIATE_GRPC_PORT = int(os.environ.get('WEAVIATE_GRPC_PORT', '50051'))
+
+# =============================================================================
+# Logging Configuration
+# =============================================================================
+# Central logging configuration for Web and Worker
+# - Logs are stored in ./logs directory with daily rotation
+# - Logs older than 7 days are automatically deleted
+# - Sentry integration for error tracking (if SENTRY_DSN is set)
+# - Log level can be configured via FIONA_LOG_LEVEL environment variable
+
+from finoa.logging_config import configure_logging, setup_sentry
+
+# Configure Django logging
+LOGGING = configure_logging()
+
+# Initialize Sentry (if configured)
+# Note: This is called here so Sentry is initialized when Django starts
+setup_sentry()
