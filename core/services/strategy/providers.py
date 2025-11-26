@@ -86,6 +86,18 @@ class MarketStateProvider(Protocol):
         """
         ...
 
+    def get_london_core_range(self, epic: str) -> Optional[tuple[float, float]]:
+        """
+        Get the London Core session range (high, low).
+        
+        Args:
+            epic: Market identifier.
+            
+        Returns:
+            Tuple of (high, low) or None if not available.
+        """
+        ...
+
     def get_atr(
         self,
         epic: str,
@@ -148,6 +160,10 @@ class BaseMarketStateProvider(ABC):
 
     def get_pre_us_range(self, epic: str) -> Optional[tuple[float, float]]:
         """Get the pre-US session range."""
+        return None
+
+    def get_london_core_range(self, epic: str) -> Optional[tuple[float, float]]:
+        """Get the London Core session range."""
         return None
 
     def get_atr(

@@ -745,14 +745,21 @@ class WorkerStatusDiagnosticsTest(TestCase):
         self.assertTrue(response.url.startswith('/login/'))
     
     def test_api_breakout_range_diagnostics_no_worker_data(self):
-        """Test breakout range diagnostics when no worker data exists."""
+        """Test breakout range diagnostics when no worker data exists.
+        
+        The endpoint should still return success=True with diagnostic data,
+        even if worker status is not available. It will show NOT_AVAILABLE
+        for range data but still provides useful configuration info.
+        """
         response = self.client.get('/fiona/api/debug/breakout-range/')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['Content-Type'], 'application/json')
         
         data = response.json()
-        self.assertFalse(data['success'])
-        self.assertIn('error', data)
+        self.assertTrue(data['success'])
+        self.assertIn('data', data)
+        # Worker status should indicate no data
+        self.assertIsNone(data['worker_status']['phase'])
     
     def test_api_breakout_range_diagnostics_with_worker_data(self):
         """Test breakout range diagnostics when worker data exists."""
@@ -1492,3 +1499,365 @@ class SignalWithAssetTest(TestCase):
         )
         
         self.assertEqual(asset.signals.count(), 2)
+
+
+# =============================================================================
+# Breakout Range Model Tests
+# =============================================================================
+
+class BreakoutRangeModelTest(TestCase):
+    """Tests for BreakoutRange model."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.asset = TradingAsset.objects.create(
+            name='US Crude Oil',
+            symbol='CL',
+            epic='CC.D.CL.UNC.IP',
+            category='commodity',
+            tick_size=Decimal('0.01'),
+            is_active=True,
+        )
+    
+    def test_breakout_range_creation(self):
+        """Test basic breakout range creation."""
+        from .models import BreakoutRange
+        
+        now = timezone.now()
+        start_time = now - timedelta(hours=8)
+        
+        br = BreakoutRange.objects.create(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time=start_time,
+            end_time=now,
+            high=Decimal('75.50'),
+            low=Decimal('74.50'),
+            height_ticks=100,
+            height_points=Decimal('1.00'),
+            candle_count=480,
+            atr=Decimal('0.50'),
+            valid_flags={'incomplete_range': False, 'too_small': False},
+            is_valid=True,
+        )
+        
+        self.assertEqual(br.phase, 'ASIA_RANGE')
+        self.assertEqual(br.high, Decimal('75.50'))
+        self.assertEqual(br.low, Decimal('74.50'))
+        self.assertEqual(br.height_ticks, 100)
+        self.assertTrue(br.is_valid)
+    
+    def test_breakout_range_save_snapshot(self):
+        """Test save_range_snapshot class method."""
+        from .models import BreakoutRange
+        
+        now = timezone.now()
+        start_time = now - timedelta(hours=4)
+        
+        br = BreakoutRange.save_range_snapshot(
+            asset=self.asset,
+            phase='LONDON_CORE',
+            start_time=start_time,
+            end_time=now,
+            high=76.00,
+            low=75.00,
+            tick_size=0.01,
+            candle_count=240,
+            atr=0.45,
+            valid_flags={'incomplete_range': False},
+            is_valid=True,
+        )
+        
+        self.assertEqual(br.phase, 'LONDON_CORE')
+        self.assertEqual(br.high, Decimal('76.00'))
+        self.assertEqual(br.low, Decimal('75.00'))
+        self.assertEqual(br.height_points, Decimal('1.00'))
+        self.assertEqual(br.height_ticks, 100)
+        self.assertEqual(br.atr, Decimal('0.45'))
+    
+    def test_get_latest_for_asset_phase(self):
+        """Test getting latest range for asset and phase."""
+        from .models import BreakoutRange
+        
+        now = timezone.now()
+        
+        # Create older range
+        BreakoutRange.save_range_snapshot(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time=now - timedelta(hours=32),
+            end_time=now - timedelta(hours=24),
+            high=74.50,
+            low=73.50,
+            tick_size=0.01,
+        )
+        
+        # Create newer range
+        newer = BreakoutRange.save_range_snapshot(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time=now - timedelta(hours=8),
+            end_time=now,
+            high=75.50,
+            low=74.50,
+            tick_size=0.01,
+        )
+        
+        latest = BreakoutRange.get_latest_for_asset_phase(self.asset, 'ASIA_RANGE')
+        
+        self.assertEqual(latest.id, newer.id)
+        self.assertEqual(latest.high, Decimal('75.50'))
+    
+    def test_get_latest_for_asset(self):
+        """Test getting latest ranges for all phases."""
+        from .models import BreakoutRange
+        
+        now = timezone.now()
+        
+        # Create ranges for different phases
+        asia = BreakoutRange.save_range_snapshot(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time=now - timedelta(hours=8),
+            end_time=now,
+            high=75.50,
+            low=74.50,
+            tick_size=0.01,
+        )
+        
+        london = BreakoutRange.save_range_snapshot(
+            asset=self.asset,
+            phase='LONDON_CORE',
+            start_time=now - timedelta(hours=4),
+            end_time=now,
+            high=76.00,
+            low=75.00,
+            tick_size=0.01,
+        )
+        
+        latest = BreakoutRange.get_latest_for_asset(self.asset)
+        
+        self.assertEqual(len(latest), 2)
+        self.assertIn('ASIA_RANGE', latest)
+        self.assertIn('LONDON_CORE', latest)
+        self.assertEqual(latest['ASIA_RANGE'].id, asia.id)
+        self.assertEqual(latest['LONDON_CORE'].id, london.id)
+    
+    def test_breakout_range_to_dict(self):
+        """Test to_dict serialization."""
+        from .models import BreakoutRange
+        
+        now = timezone.now()
+        start_time = now - timedelta(hours=8)
+        
+        br = BreakoutRange.save_range_snapshot(
+            asset=self.asset,
+            phase='PRE_US_RANGE',
+            start_time=start_time,
+            end_time=now,
+            high=77.00,
+            low=76.50,
+            tick_size=0.01,
+            candle_count=120,
+            atr=0.30,
+            valid_flags={'incomplete_range': False},
+            is_valid=True,
+        )
+        
+        data = br.to_dict()
+        
+        self.assertEqual(data['phase'], 'PRE_US_RANGE')
+        self.assertEqual(data['asset_symbol'], 'CL')
+        self.assertEqual(float(data['high']), 77.00)
+        self.assertEqual(float(data['low']), 76.50)
+        self.assertEqual(data['height_ticks'], 50)
+        self.assertTrue(data['is_valid'])
+
+
+class BreakoutRangeAPITest(TestCase):
+    """Tests for Breakout Range API endpoints."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.user = User.objects.create_user(
+            username='testuser',
+            password='testpass123'
+        )
+        self.client.login(username='testuser', password='testpass123')
+        
+        self.asset = TradingAsset.objects.create(
+            name='US Crude Oil',
+            symbol='CL',
+            epic='CC.D.CL.UNC.IP',
+            category='commodity',
+            tick_size=Decimal('0.01'),
+            is_active=True,
+        )
+    
+    def test_api_breakout_range_history(self):
+        """Test breakout range history API."""
+        from .models import BreakoutRange
+        
+        now = timezone.now()
+        
+        # Create some ranges
+        BreakoutRange.save_range_snapshot(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time=now - timedelta(hours=32),
+            end_time=now - timedelta(hours=24),
+            high=74.50,
+            low=73.50,
+            tick_size=0.01,
+        )
+        BreakoutRange.save_range_snapshot(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time=now - timedelta(hours=8),
+            end_time=now,
+            high=75.50,
+            low=74.50,
+            tick_size=0.01,
+        )
+        
+        response = self.client.get(f'/fiona/api/assets/{self.asset.id}/breakout-ranges/')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['count'], 2)
+        self.assertEqual(len(data['ranges']), 2)
+    
+    def test_api_breakout_range_history_filter_by_phase(self):
+        """Test breakout range history API with phase filter."""
+        from .models import BreakoutRange
+        
+        now = timezone.now()
+        
+        # Create ranges for different phases
+        BreakoutRange.save_range_snapshot(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time=now - timedelta(hours=8),
+            end_time=now,
+            high=75.50,
+            low=74.50,
+            tick_size=0.01,
+        )
+        BreakoutRange.save_range_snapshot(
+            asset=self.asset,
+            phase='LONDON_CORE',
+            start_time=now - timedelta(hours=4),
+            end_time=now,
+            high=76.00,
+            low=75.00,
+            tick_size=0.01,
+        )
+        
+        response = self.client.get(f'/fiona/api/assets/{self.asset.id}/breakout-ranges/?phase=ASIA_RANGE')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['count'], 1)
+        self.assertEqual(data['ranges'][0]['phase'], 'ASIA_RANGE')
+    
+    def test_api_breakout_range_latest(self):
+        """Test latest breakout ranges API."""
+        from .models import BreakoutRange
+        
+        now = timezone.now()
+        
+        # Create ranges for different phases
+        BreakoutRange.save_range_snapshot(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time=now - timedelta(hours=8),
+            end_time=now,
+            high=75.50,
+            low=74.50,
+            tick_size=0.01,
+        )
+        BreakoutRange.save_range_snapshot(
+            asset=self.asset,
+            phase='LONDON_CORE',
+            start_time=now - timedelta(hours=4),
+            end_time=now,
+            high=76.00,
+            low=75.00,
+            tick_size=0.01,
+        )
+        
+        response = self.client.get(f'/fiona/api/assets/{self.asset.id}/breakout-ranges/latest/')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertIn('ASIA_RANGE', data['ranges'])
+        self.assertIn('LONDON_CORE', data['ranges'])
+    
+    def test_api_breakout_range_diagnostics_all_phases(self):
+        """Test breakout range diagnostics for all phases."""
+        now = timezone.now()
+        WorkerStatus.objects.create(
+            last_run_at=now,
+            phase='LONDON_CORE',
+            epic='CC.D.CL.UNC.IP',
+            bid_price=Decimal('75.50'),
+            ask_price=Decimal('75.55'),
+            setup_count=0,
+            worker_interval=60,
+        )
+        
+        response = self.client.get('/fiona/api/debug/breakout-range/?range_type=all')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['range_type'], 'all')
+        self.assertIn('ASIA_RANGE', data['data'])
+        self.assertIn('LONDON_CORE', data['data'])
+        self.assertIn('PRE_US_RANGE', data['data'])
+        self.assertIn('US_CORE_TRADING', data['data'])
+    
+    def test_api_breakout_range_diagnostics_london_core(self):
+        """Test breakout range diagnostics for London Core."""
+        now = timezone.now()
+        WorkerStatus.objects.create(
+            last_run_at=now,
+            phase='LONDON_CORE',
+            epic='CC.D.CL.UNC.IP',
+            bid_price=Decimal('75.50'),
+            ask_price=Decimal('75.55'),
+            setup_count=0,
+            worker_interval=60,
+        )
+        
+        response = self.client.get('/fiona/api/debug/breakout-range/?range_type=london_core')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['range_type'], 'london_core')
+        self.assertEqual(data['data']['range_type'], 'London Core')
+    
+    def test_api_breakout_range_diagnostics_us_core_trading(self):
+        """Test breakout range diagnostics for US Core Trading."""
+        now = timezone.now()
+        WorkerStatus.objects.create(
+            last_run_at=now,
+            phase='US_CORE_TRADING',
+            epic='CC.D.CL.UNC.IP',
+            bid_price=Decimal('75.50'),
+            ask_price=Decimal('75.55'),
+            setup_count=0,
+            worker_interval=60,
+        )
+        
+        response = self.client.get('/fiona/api/debug/breakout-range/?range_type=us_core_trading')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['range_type'], 'us_core_trading')
+        self.assertEqual(data['data']['range_type'], 'US Core Trading')

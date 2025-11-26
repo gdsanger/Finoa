@@ -982,7 +982,8 @@ def api_breakout_range_diagnostics(request):
     Query parameters:
         epic: Market identifier (optional, defaults to CC.D.CL.UNC.IP)
         range_type: Type of range to diagnose (optional, defaults to 'asia')
-                    Values: 'asia' or 'pre_us'
+                    Values: 'asia', 'london_core', 'pre_us', 'us_core_trading', 'all'
+        asset_id: Asset ID to use for loading persisted range data (optional)
     
     Returns JSON with:
         - Range type and period
@@ -991,6 +992,7 @@ def api_breakout_range_diagnostics(request):
         - Breakout status
         - Configuration parameters
         - Diagnostic messages
+        - Persisted range data (if available)
     """
     from datetime import datetime
     from core.services.strategy import (
@@ -1000,79 +1002,146 @@ def api_breakout_range_diagnostics(request):
         SessionPhase,
         Candle,
     )
+    from .models import BreakoutRange, TradingAsset
     
     # Get query parameters
     epic = request.GET.get('epic', 'CC.D.CL.UNC.IP')
     range_type = request.GET.get('range_type', 'asia')
+    asset_id = request.GET.get('asset_id')
     
     try:
         # Get current worker status for price and phase info
         status = WorkerStatus.get_current()
         
-        if status is None:
-            return JsonResponse({
-                'success': False,
-                'error': 'Keine Worker-Daten verfügbar',
-                'message': 'Der Worker ist noch nicht aktiv oder hat noch keine Daten gesammelt.',
-                'data': None,
-            })
+        # Try to load asset and its persisted ranges
+        persisted_ranges = {}
+        asset = None
         
-        # Create a dummy market state provider using worker status data
-        # In production, this would use the real MarketStateProvider from the worker
-        class WorkerStatusMarketStateProvider(BaseMarketStateProvider):
-            """Minimal provider using WorkerStatus data."""
+        if asset_id:
+            try:
+                asset = TradingAsset.objects.get(id=asset_id)
+                persisted_ranges = BreakoutRange.get_latest_for_asset(asset)
+            except TradingAsset.DoesNotExist:
+                pass
+        elif epic:
+            # Try to find asset by epic
+            try:
+                asset = TradingAsset.objects.get(epic=epic)
+                persisted_ranges = BreakoutRange.get_latest_for_asset(asset)
+            except TradingAsset.DoesNotExist:
+                pass
+        
+        # Create a market state provider using persisted data and worker status
+        class PersistentMarketStateProvider(BaseMarketStateProvider):
+            """Provider using persisted range data and WorkerStatus."""
             
-            def __init__(self, worker_status):
+            def __init__(self, worker_status, persisted_ranges):
                 self._status = worker_status
-                self._phase = SessionPhase(worker_status.phase) if worker_status.phase else SessionPhase.OTHER
+                self._persisted_ranges = persisted_ranges
+                # Gracefully handle invalid phase values
+                try:
+                    self._phase = SessionPhase(worker_status.phase) if worker_status and worker_status.phase else SessionPhase.OTHER
+                except ValueError:
+                    self._phase = SessionPhase.OTHER
             
             def get_phase(self, ts):
                 return self._phase
             
             def get_recent_candles(self, epic, timeframe, limit):
-                # Return empty list - we don't have candle data in WorkerStatus
+                # Return empty list - we don't have candle data
                 return []
             
             def get_asia_range(self, epic):
-                # Note: In production, this would come from the real MarketStateProvider
-                # For now, return None to indicate data is not available
+                range_data = self._persisted_ranges.get('ASIA_RANGE')
+                if range_data:
+                    return (float(range_data.high), float(range_data.low))
+                return None
+            
+            def get_london_core_range(self, epic):
+                range_data = self._persisted_ranges.get('LONDON_CORE')
+                if range_data:
+                    return (float(range_data.high), float(range_data.low))
                 return None
             
             def get_pre_us_range(self, epic):
-                # Note: In production, this would come from the real MarketStateProvider
+                range_data = self._persisted_ranges.get('PRE_US_RANGE')
+                if range_data:
+                    return (float(range_data.high), float(range_data.low))
                 return None
             
             def get_atr(self, epic, timeframe, period):
+                # Try to get ATR from most recent persisted range
+                for phase_key in ['US_CORE_TRADING', 'PRE_US_RANGE', 'LONDON_CORE', 'ASIA_RANGE']:
+                    range_data = self._persisted_ranges.get(phase_key)
+                    if range_data and range_data.atr:
+                        return float(range_data.atr)
                 return None
         
         # Create diagnostic service
-        provider = WorkerStatusMarketStateProvider(status)
-        config = StrategyConfig()
+        provider = PersistentMarketStateProvider(status, persisted_ranges)
+        
+        # Get asset-specific config if available
+        if asset:
+            try:
+                config = asset.get_strategy_config()
+            except Exception:
+                config = StrategyConfig()
+        else:
+            config = StrategyConfig()
+        
         service = BreakoutRangeDiagnosticService(provider, config)
         
         # Get current price from worker status
         current_price = None
-        if status.bid_price and status.ask_price:
-            # Use mid price
+        if status and status.bid_price and status.ask_price:
             current_price = float((status.bid_price + status.ask_price) / 2)
-        elif status.bid_price:
+        elif status and status.bid_price:
             current_price = float(status.bid_price)
         
         # Get diagnostics based on range type
         ts = timezone.now()
-        if range_type == 'pre_us':
+        
+        if range_type == 'all':
+            # Return all phases
+            all_diagnostics = service.get_all_phase_diagnostics(epic, ts, current_price)
+            return JsonResponse({
+                'success': True,
+                'epic': epic,
+                'range_type': 'all',
+                'data': {k: v.to_dict() for k, v in all_diagnostics.items()},
+                'persisted_ranges': {k: v.to_dict() for k, v in persisted_ranges.items()},
+                'worker_status': {
+                    'phase': status.phase if status else None,
+                    'last_run_at': status.last_run_at.isoformat() if status and status.last_run_at else None,
+                },
+            })
+        elif range_type == 'london_core':
+            diagnostics = service.get_london_core_range_diagnostics(epic, ts, current_price)
+        elif range_type == 'pre_us':
             diagnostics = service.get_pre_us_range_diagnostics(epic, ts, current_price)
+        elif range_type == 'us_core_trading':
+            diagnostics = service.get_us_core_trading_diagnostics(epic, ts, current_price)
         else:
             diagnostics = service.get_asia_range_diagnostics(epic, ts, current_price)
+        
+        # Get persisted range for this specific type
+        phase_mapping = {
+            'asia': 'ASIA_RANGE',
+            'london_core': 'LONDON_CORE',
+            'pre_us': 'PRE_US_RANGE',
+            'us_core_trading': 'US_CORE_TRADING',
+        }
+        persisted_range = persisted_ranges.get(phase_mapping.get(range_type, 'ASIA_RANGE'))
         
         return JsonResponse({
             'success': True,
             'epic': epic,
             'range_type': range_type,
             'data': diagnostics.to_dict(),
+            'persisted_range': persisted_range.to_dict() if persisted_range else None,
             'worker_status': {
-                'phase': status.phase,
-                'last_run_at': status.last_run_at.isoformat() if status.last_run_at else None,
+                'phase': status.phase if status else None,
+                'last_run_at': status.last_run_at.isoformat() if status and status.last_run_at else None,
             },
         })
         
@@ -1082,4 +1151,86 @@ def api_breakout_range_diagnostics(request):
             'success': False,
             'error': f'Fehler beim Abrufen der Range-Diagnose: {str(e)}',
             'data': None,
+        }, status=500)
+
+
+@login_required
+def api_breakout_range_history(request, asset_id):
+    """
+    GET /api/assets/{asset_id}/breakout-ranges/ - Return breakout range history for an asset.
+    
+    Query parameters:
+        phase: Filter by phase (optional, e.g., 'ASIA_RANGE', 'LONDON_CORE', 'PRE_US_RANGE', 'US_CORE_TRADING')
+        limit: Maximum number of records to return (optional, default 20)
+    
+    Returns JSON with list of breakout range records.
+    """
+    from .models import BreakoutRange, TradingAsset
+    
+    try:
+        asset = get_object_or_404(TradingAsset, id=asset_id)
+        
+        # Get query parameters with validation
+        phase = request.GET.get('phase')
+        try:
+            limit = int(request.GET.get('limit', 20))
+        except (ValueError, TypeError):
+            limit = 20
+        # Enforce maximum limit to prevent performance issues
+        limit = min(max(limit, 1), 100)
+        
+        # Build query
+        queryset = BreakoutRange.objects.filter(asset=asset)
+        if phase:
+            queryset = queryset.filter(phase=phase)
+        
+        queryset = queryset.order_by('-end_time')[:limit]
+        
+        ranges_data = [r.to_dict() for r in queryset]
+        
+        return JsonResponse({
+            'success': True,
+            'asset_id': asset.id,
+            'asset_symbol': asset.symbol,
+            'count': len(ranges_data),
+            'ranges': ranges_data,
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching breakout range history: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': f'Fehler beim Abrufen der Range-Historie: {str(e)}',
+        }, status=500)
+
+
+@login_required
+def api_breakout_range_latest(request, asset_id):
+    """
+    GET /api/assets/{asset_id}/breakout-ranges/latest/ - Return latest breakout range for each phase.
+    
+    Returns JSON with the most recent breakout range for each phase.
+    """
+    from .models import BreakoutRange, TradingAsset
+    
+    try:
+        asset = get_object_or_404(TradingAsset, id=asset_id)
+        
+        # Get latest ranges for all phases
+        latest_ranges = BreakoutRange.get_latest_for_asset(asset)
+        
+        ranges_data = {k: v.to_dict() for k, v in latest_ranges.items()}
+        
+        return JsonResponse({
+            'success': True,
+            'asset_id': asset.id,
+            'asset_symbol': asset.symbol,
+            'ranges': ranges_data,
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching latest breakout ranges: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': f'Fehler beim Abrufen der aktuellen Ranges: {str(e)}',
         }, status=500)
