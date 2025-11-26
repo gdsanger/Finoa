@@ -1,4 +1,5 @@
 import logging
+from datetime import timedelta
 
 from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse
@@ -8,10 +9,40 @@ from django.core.paginator import Paginator
 from django.core.exceptions import ImproperlyConfigured
 from django.utils import timezone
 
-from .models import Signal, Trade, WorkerStatus
+from .models import Signal, Trade, WorkerStatus, TradingAsset, AssetDiagnostics
+
 from core.services.broker import create_ig_broker_service, BrokerError, AuthenticationError
 
 logger = logging.getLogger(__name__)
+
+# Diagnostics time window constants
+DIAGNOSTICS_MIN_WINDOW_MINUTES = 1
+DIAGNOSTICS_MAX_WINDOW_MINUTES = 1440  # 24 hours
+DIAGNOSTICS_DEFAULT_WINDOW_MINUTES = 60
+
+
+def _parse_window_minutes(window_str: str) -> int:
+    """
+    Parse and validate window minutes from request parameter.
+    
+    Args:
+        window_str: String value from request GET parameter
+        
+    Returns:
+        Validated window minutes within allowed bounds
+    """
+    try:
+        window_minutes = int(window_str)
+    except ValueError:
+        window_minutes = DIAGNOSTICS_DEFAULT_WINDOW_MINUTES
+    
+    # Clamp to valid range
+    if window_minutes < DIAGNOSTICS_MIN_WINDOW_MINUTES:
+        window_minutes = DIAGNOSTICS_MIN_WINDOW_MINUTES
+    elif window_minutes > DIAGNOSTICS_MAX_WINDOW_MINUTES:
+        window_minutes = DIAGNOSTICS_MAX_WINDOW_MINUTES
+    
+    return window_minutes
 
 
 @login_required
@@ -1254,21 +1285,9 @@ def diagnostics_view(request):
     This is a separate page from the main dashboard, designed for
     mobile-friendly access to understand why (not) trading is happening.
     """
-    from .models import TradingAsset, AssetDiagnostics
-    from datetime import timedelta
-    
-    # Get time window from request (default: 60 minutes)
-    window = request.GET.get('window', '60')
-    try:
-        window_minutes = int(window)
-    except ValueError:
-        window_minutes = 60
-    
-    # Limit window to reasonable values
-    if window_minutes < 1:
-        window_minutes = 15
-    elif window_minutes > 1440:  # Max 24 hours
-        window_minutes = 1440
+    # Get time window from request
+    window = request.GET.get('window', str(DIAGNOSTICS_DEFAULT_WINDOW_MINUTES))
+    window_minutes = _parse_window_minutes(window)
     
     # Calculate time window
     now = timezone.now()
@@ -1320,24 +1339,11 @@ def api_diagnostics(request):
     - Counters (candles, ranges, setups, orders)
     - Top rejection reason codes
     """
-    from .models import TradingAsset, AssetDiagnostics
-    from datetime import timedelta
-    
     try:
         # Get query parameters
         asset_id = request.GET.get('asset')
-        window = request.GET.get('window', '60')
-        
-        try:
-            window_minutes = int(window)
-        except ValueError:
-            window_minutes = 60
-        
-        # Limit window to reasonable values
-        if window_minutes < 1:
-            window_minutes = 15
-        elif window_minutes > 1440:  # Max 24 hours
-            window_minutes = 1440
+        window = request.GET.get('window', str(DIAGNOSTICS_DEFAULT_WINDOW_MINUTES))
+        window_minutes = _parse_window_minutes(window)
         
         # Calculate time window
         now = timezone.now()
@@ -1390,8 +1396,6 @@ def asset_toggle_trading_mode(request, asset_id):
     """
     Toggle the trading mode of an asset between STRICT and DIAGNOSTIC via HTMX/AJAX.
     """
-    from .models import TradingAsset
-    
     asset = get_object_or_404(TradingAsset, id=asset_id)
     
     # Toggle trading mode
