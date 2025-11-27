@@ -4,7 +4,6 @@ Strategy Engine for Fiona.
 Analyzes market data and generates SetupCandidate objects for potential trades.
 Does NOT make trading decisions or place orders.
 """
-import json
 import logging
 import uuid
 from dataclasses import dataclass, field
