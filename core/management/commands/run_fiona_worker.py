@@ -474,6 +474,9 @@ class Command(BaseCommand):
         """
         Run strategy evaluation for a single asset.
         
+        This method also handles range building and persistence when in
+        range-building phases (ASIA_RANGE, LONDON_CORE, PRE_US_RANGE).
+        
         Args:
             asset: TradingAsset instance
             strategy_engine: Strategy engine configured for this asset
@@ -488,110 +491,216 @@ class Command(BaseCommand):
         
         epic = asset.epic
         
-        # 1. Configure session times from asset's Sessions & Phases configuration
-        # Pre-fetch all phase configs for this asset to avoid N+1 queries
-        phase_configs_by_phase = {}
+        # Set current asset for range persistence (Acceptance Criteria #2)
+        self.market_state_provider.set_current_asset(asset)
+        
         try:
-            phase_configs = list(AssetSessionPhaseConfig.get_enabled_phases_for_asset(asset))
-            phase_configs_by_phase = {pc.phase: pc for pc in phase_configs}
-            
-            # Build session times from phase configs
-            session_times_kwargs = {}
-            for pc in phase_configs:
-                if pc.phase == 'ASIA_RANGE':
-                    session_times_kwargs['asia_start'] = pc.start_time_utc
-                    session_times_kwargs['asia_end'] = pc.end_time_utc
-                elif pc.phase == 'LONDON_CORE':
-                    session_times_kwargs['london_core_start'] = pc.start_time_utc
-                    session_times_kwargs['london_core_end'] = pc.end_time_utc
-                elif pc.phase == 'PRE_US_RANGE':
-                    session_times_kwargs['pre_us_start'] = pc.start_time_utc
-                    session_times_kwargs['pre_us_end'] = pc.end_time_utc
-                elif pc.phase == 'US_CORE_TRADING':
-                    session_times_kwargs['us_core_trading_start'] = pc.start_time_utc
-                    session_times_kwargs['us_core_trading_end'] = pc.end_time_utc
-                    session_times_kwargs['us_core_trading_enabled'] = pc.enabled
-            
-            if session_times_kwargs:
-                session_times = SessionTimesConfig.from_time_strings(**session_times_kwargs)
-                self.market_state_provider.set_session_times(session_times)
-            else:
-                # Fallback to breakout config if no session phase configs exist
-                logger.debug(f"No AssetSessionPhaseConfig found for {epic}, falling back to AssetBreakoutConfig")
-                try:
-                    breakout_cfg = asset.breakout_config
-                    session_times = SessionTimesConfig.from_time_strings(
-                        asia_start=getattr(breakout_cfg, 'asia_range_start', '00:00'),
-                        asia_end=getattr(breakout_cfg, 'asia_range_end', '08:00'),
-                        pre_us_start=getattr(breakout_cfg, 'pre_us_start', '13:00'),
-                        pre_us_end=getattr(breakout_cfg, 'pre_us_end', '15:00'),
-                        us_core_trading_start=getattr(breakout_cfg, 'us_core_trading_start', '15:00'),
-                        us_core_trading_end=getattr(breakout_cfg, 'us_core_trading_end', '22:00'),
-                        us_core_trading_enabled=getattr(breakout_cfg, 'us_core_trading_enabled', True),
-                    )
+            # 1. Configure session times from asset's Sessions & Phases configuration
+            # Pre-fetch all phase configs for this asset to avoid N+1 queries
+            phase_configs_by_phase = {}
+            try:
+                phase_configs = list(AssetSessionPhaseConfig.get_enabled_phases_for_asset(asset))
+                phase_configs_by_phase = {pc.phase: pc for pc in phase_configs}
+                
+                # Build session times from phase configs
+                session_times_kwargs = {}
+                for pc in phase_configs:
+                    if pc.phase == 'ASIA_RANGE':
+                        session_times_kwargs['asia_start'] = pc.start_time_utc
+                        session_times_kwargs['asia_end'] = pc.end_time_utc
+                    elif pc.phase == 'LONDON_CORE':
+                        session_times_kwargs['london_core_start'] = pc.start_time_utc
+                        session_times_kwargs['london_core_end'] = pc.end_time_utc
+                    elif pc.phase == 'PRE_US_RANGE':
+                        session_times_kwargs['pre_us_start'] = pc.start_time_utc
+                        session_times_kwargs['pre_us_end'] = pc.end_time_utc
+                    elif pc.phase == 'US_CORE_TRADING':
+                        session_times_kwargs['us_core_trading_start'] = pc.start_time_utc
+                        session_times_kwargs['us_core_trading_end'] = pc.end_time_utc
+                        session_times_kwargs['us_core_trading_enabled'] = pc.enabled
+                
+                if session_times_kwargs:
+                    session_times = SessionTimesConfig.from_time_strings(**session_times_kwargs)
                     self.market_state_provider.set_session_times(session_times)
-                except Exception:
-                    logger.debug(f"No AssetBreakoutConfig found for {epic}, using default session times")
-                    self.market_state_provider.set_session_times(SessionTimesConfig())
-        except Exception as e:
-            logger.debug(f"Using default session times for {epic}: {e}")
-            # Use default session times if no configuration exists
-            self.market_state_provider.set_session_times(SessionTimesConfig())
-        
-        # 2. Determine session phase (now using asset-specific times)
-        phase = self.market_state_provider.get_phase(now)
-        self.stdout.write(f"     Phase: {phase.value}")
-        
-        # 3. Update candle cache with current price
-        try:
-            self.market_state_provider.update_candle_from_price(epic)
-        except Exception as e:
-            logger.warning(f"Failed to update candle for {epic}: {e}")
-        
-        # 4. Get current price for logging
-        try:
-            price = self.broker_service.get_symbol_price(epic)
-            self.stdout.write(f"     Price: {price.bid}/{price.ask}")
-        except Exception as e:
-            self.stdout.write(self.style.WARNING(f"     Could not get price: {e}"))
-        
-        # 5. Skip if not in tradeable phase - check using is_trading_phase flag
-        # Use pre-fetched phase configs to avoid additional DB query
-        is_tradeable = False
-        phase_config = phase_configs_by_phase.get(phase.value)
-        if phase_config:
-            is_tradeable = phase_config.is_trading_phase
-        else:
-            # Fallback to legacy behavior for phases not in config (e.g., FRIDAY_LATE, OTHER)
-            # These phases are not tradeable by default
-            if phase in [SessionPhase.FRIDAY_LATE, SessionPhase.OTHER]:
-                is_tradeable = False
+                else:
+                    # Fallback to breakout config if no session phase configs exist
+                    logger.debug(f"No AssetSessionPhaseConfig found for {epic}, falling back to AssetBreakoutConfig")
+                    try:
+                        breakout_cfg = asset.breakout_config
+                        session_times = SessionTimesConfig.from_time_strings(
+                            asia_start=getattr(breakout_cfg, 'asia_range_start', '00:00'),
+                            asia_end=getattr(breakout_cfg, 'asia_range_end', '08:00'),
+                            pre_us_start=getattr(breakout_cfg, 'pre_us_start', '13:00'),
+                            pre_us_end=getattr(breakout_cfg, 'pre_us_end', '15:00'),
+                            us_core_trading_start=getattr(breakout_cfg, 'us_core_trading_start', '15:00'),
+                            us_core_trading_end=getattr(breakout_cfg, 'us_core_trading_end', '22:00'),
+                            us_core_trading_enabled=getattr(breakout_cfg, 'us_core_trading_enabled', True),
+                        )
+                        self.market_state_provider.set_session_times(session_times)
+                    except Exception:
+                        logger.debug(f"No AssetBreakoutConfig found for {epic}, using default session times")
+                        self.market_state_provider.set_session_times(SessionTimesConfig())
+            except Exception as e:
+                logger.debug(f"Using default session times for {epic}: {e}")
+                # Use default session times if no configuration exists
+                self.market_state_provider.set_session_times(SessionTimesConfig())
+            
+            # 2. Determine session phase (now using asset-specific times)
+            phase = self.market_state_provider.get_phase(now)
+            self.stdout.write(f"     Phase: {phase.value}")
+            
+            # 3. Update candle cache with current price
+            try:
+                self.market_state_provider.update_candle_from_price(epic)
+            except Exception as e:
+                logger.warning(f"Failed to update candle for {epic}: {e}")
+            
+            # 4. Get current price for logging and range building
+            current_price = None
+            try:
+                price = self.broker_service.get_symbol_price(epic)
+                current_price = price
+                self.stdout.write(f"     Price: {price.bid}/{price.ask}")
+            except Exception as e:
+                self.stdout.write(self.style.WARNING(f"     Could not get price: {e}"))
+            
+            # 5. Build and persist range if in a range-building phase
+            self._build_range_for_phase(asset, epic, phase, phase_configs_by_phase, current_price, now)
+            
+            # 6. Skip if not in tradeable phase - check using is_trading_phase flag
+            # Use pre-fetched phase configs to avoid additional DB query
+            is_tradeable = False
+            phase_config = phase_configs_by_phase.get(phase.value)
+            if phase_config:
+                is_tradeable = phase_config.is_trading_phase
             else:
-                # For other phases without config, log a warning and don't trade
-                logger.debug(f"No phase config for {phase.value} on {epic}, using fallback (not tradeable)")
-                is_tradeable = False
+                # Fallback to legacy behavior for phases not in config (e.g., FRIDAY_LATE, OTHER)
+                # These phases are not tradeable by default
+                if phase in [SessionPhase.FRIDAY_LATE, SessionPhase.OTHER]:
+                    is_tradeable = False
+                else:
+                    # For other phases without config, log a warning and don't trade
+                    logger.debug(f"No phase config for {phase.value} on {epic}, using fallback (not tradeable)")
+                    is_tradeable = False
+            
+            if not is_tradeable:
+                self.stdout.write("     → Phase not tradeable, skipping")
+                return 0
+            
+            # 7. Run Strategy Engine
+            try:
+                setups = strategy_engine.evaluate(epic, now)
+                self.stdout.write(f"     Found {len(setups)} setup(s)")
+            except Exception as e:
+                self.stdout.write(self.style.ERROR(f"     Strategy error: {e}"))
+                logger.exception(f"Strategy evaluation failed for {epic}")
+                return 0
+            
+            if not setups:
+                return 0
+            
+            # 8. Process each setup
+            for setup in setups:
+                self._process_setup(setup, shadow_only, dry_run, now, trading_asset=asset)
+            
+            return len(setups)
+            
+        finally:
+            # Clear current asset after processing
+            self.market_state_provider.clear_current_asset()
+
+    def _build_range_for_phase(
+        self,
+        asset,
+        epic: str,
+        phase: SessionPhase,
+        phase_configs: dict,
+        current_price,
+        now: datetime
+    ) -> None:
+        """
+        Build and persist range data for the current phase.
         
-        if not is_tradeable:
-            self.stdout.write("     → Phase not tradeable, skipping")
-            return 0
+        If the current phase is a range-building phase (ASIA_RANGE, LONDON_CORE, PRE_US_RANGE),
+        this method will update the range high/low from the current price and persist it.
         
-        # 6. Run Strategy Engine
-        try:
-            setups = strategy_engine.evaluate(epic, now)
-            self.stdout.write(f"     Found {len(setups)} setup(s)")
-        except Exception as e:
-            self.stdout.write(self.style.ERROR(f"     Strategy error: {e}"))
-            logger.exception(f"Strategy evaluation failed for {epic}")
-            return 0
+        This ensures ranges are captured even during the range-building period,
+        not just at the end.
         
-        if not setups:
-            return 0
+        Args:
+            asset: TradingAsset instance
+            epic: Market EPIC
+            phase: Current session phase
+            phase_configs: Dict of phase configs by phase name
+            current_price: Current SymbolPrice (or None)
+            now: Current timestamp
+        """
+        if current_price is None:
+            return
         
-        # 7. Process each setup
-        for setup in setups:
-            self._process_setup(setup, shadow_only, dry_run, now, trading_asset=asset)
+        # Get phase config to check if this is a range-building phase
+        phase_config = phase_configs.get(phase.value)
+        is_range_build = False
         
-        return len(setups)
+        if phase_config:
+            is_range_build = phase_config.is_range_build_phase
+        else:
+            # Fallback: these phases are range-building phases by default
+            is_range_build = phase in [
+                SessionPhase.ASIA_RANGE,
+                SessionPhase.LONDON_CORE,
+                SessionPhase.PRE_US_RANGE,
+            ]
+        
+        if not is_range_build:
+            return
+        
+        # Get high/low from price (daily high/low updated by broker)
+        if current_price.high is None or current_price.low is None:
+            logger.debug(f"No high/low data for {epic}, skipping range build")
+            return
+        
+        high = float(current_price.high)
+        low = float(current_price.low)
+        
+        # Get ATR for context
+        atr = self.market_state_provider.get_atr(epic, '1h', 14)
+        
+        # Get candle count
+        candle_count = self.market_state_provider.get_candle_count_for_epic(epic)
+        
+        # Set the range based on current phase
+        # Note: The set_*_range methods will persist to database
+        if phase == SessionPhase.ASIA_RANGE:
+            self.market_state_provider.set_asia_range(
+                epic=epic,
+                high=high,
+                low=low,
+                start_time=None,  # Will use now
+                end_time=now,
+                candle_count=candle_count,
+                atr=atr,
+            )
+        elif phase == SessionPhase.LONDON_CORE:
+            self.market_state_provider.set_london_core_range(
+                epic=epic,
+                high=high,
+                low=low,
+                start_time=None,
+                end_time=now,
+                candle_count=candle_count,
+                atr=atr,
+            )
+        elif phase == SessionPhase.PRE_US_RANGE:
+            self.market_state_provider.set_pre_us_range(
+                epic=epic,
+                high=high,
+                low=low,
+                start_time=None,
+                end_time=now,
+                candle_count=candle_count,
+                atr=atr,
+            )
     
     def _update_worker_status(
         self,
