@@ -2,7 +2,7 @@ import logging
 from datetime import timedelta
 
 from django.shortcuts import render, get_object_or_404, redirect
-from django.http import JsonResponse
+from django.http import JsonResponse, Http404
 from django.views.decorators.http import require_http_methods
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
@@ -1285,6 +1285,133 @@ def api_breakout_range_latest(request, asset_id):
             'success': False,
             'error': f'Fehler beim Abrufen der aktuellen Ranges: {str(e)}',
         }, status=500)
+
+
+@login_required
+def api_price_range_status(request):
+    """
+    GET /api/price-range-status/ - Return price vs range live status.
+    
+    Query parameters:
+        asset_id: Required - Asset ID to compute status for
+        phase: Required - Session phase ('ASIA_RANGE', 'LONDON_CORE', 'PRE_US_RANGE', 'US_CORE_TRADING')
+    
+    Returns JSON with:
+        - Range data (high, low, height in ticks)
+        - Current price (bid/ask)
+        - Distance to range boundaries (in ticks)
+        - Status code and text (INSIDE_RANGE, NEAR_BREAKOUT_*, BREAKOUT_*, NO_RANGE)
+        - Badge color for UI display
+        
+    This endpoint uses persisted data only - no IG API calls.
+    """
+    from .services.price_range_status import compute_price_range_status, get_phase_display_name
+    
+    # Get required parameters
+    asset_id = request.GET.get('asset_id')
+    phase = request.GET.get('phase')
+    
+    # Validate parameters
+    if not asset_id:
+        return JsonResponse({
+            'success': False,
+            'error': 'asset_id is required',
+        }, status=400)
+    
+    if not phase:
+        return JsonResponse({
+            'success': False,
+            'error': 'phase is required',
+        }, status=400)
+    
+    # Validate phase value
+    valid_phases = ['ASIA_RANGE', 'LONDON_CORE', 'PRE_US_RANGE', 'US_CORE_TRADING']
+    if phase not in valid_phases:
+        return JsonResponse({
+            'success': False,
+            'error': f'Invalid phase. Must be one of: {", ".join(valid_phases)}',
+        }, status=400)
+    
+    try:
+        # Get asset
+        asset = get_object_or_404(TradingAsset, id=asset_id)
+        
+        # Compute price range status
+        status = compute_price_range_status(asset, phase)
+        
+        # Get current worker status for additional context
+        worker_status = WorkerStatus.get_current()
+        
+        return JsonResponse({
+            'success': True,
+            'data': status.to_dict(),
+            'phase_display': get_phase_display_name(phase),
+            'worker_status': {
+                'phase': worker_status.phase if worker_status else None,
+                'last_run_at': worker_status.last_run_at.isoformat() if worker_status and worker_status.last_run_at else None,
+            },
+        })
+        
+    except Exception as e:
+        logger.error(f"Error computing price range status: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': 'Fehler beim Berechnen des Preis-Range-Status',
+        }, status=500)
+
+
+@login_required
+def htmx_price_range_status(request):
+    """
+    HTMX partial view for Price vs Range - Live Status panel.
+    
+    Query parameters:
+        asset_id: Required - Asset ID to compute status for
+        phase: Required - Session phase ('ASIA_RANGE', 'LONDON_CORE', 'PRE_US_RANGE', 'US_CORE_TRADING')
+    
+    Returns an HTML partial that can be loaded via HTMX.
+    """
+    from .services.price_range_status import compute_price_range_status, get_phase_display_name
+    
+    # Get required parameters
+    asset_id = request.GET.get('asset_id')
+    phase = request.GET.get('phase', 'ASIA_RANGE')
+    
+    context = {
+        'error': None,
+        'status': None,
+        'phase': phase,
+        'phase_display': get_phase_display_name(phase),
+        'asset_id': asset_id,
+    }
+    
+    if not asset_id:
+        context['error'] = 'Kein Asset ausgewählt'
+        return render(request, 'trading/partials/price_range_status.html', context)
+    
+    try:
+        # Get asset - use get_object_or_404 for consistency
+        asset = get_object_or_404(TradingAsset, id=asset_id)
+        
+        # Compute price range status
+        status = compute_price_range_status(asset, phase)
+        
+        # Get current worker status for additional context
+        worker_status = WorkerStatus.get_current()
+        
+        context.update({
+            'status': status,
+            'asset': asset,
+            'worker_phase': worker_status.phase if worker_status else None,
+        })
+        
+    except Http404:
+        context['error'] = 'Asset nicht gefunden'
+    except Exception as e:
+        logger.error(f"Error computing price range status for HTMX: {e}")
+        context['error'] = 'Fehler beim Berechnen des Status'
+    
+    return render(request, 'trading/partials/price_range_status.html', context)
 
 
 # ============================================================================
