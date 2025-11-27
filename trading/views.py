@@ -2,7 +2,7 @@ import logging
 from datetime import timedelta
 
 from django.shortcuts import render, get_object_or_404, redirect
-from django.http import JsonResponse
+from django.http import JsonResponse, Http404
 from django.views.decorators.http import require_http_methods
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
@@ -1356,7 +1356,7 @@ def api_price_range_status(request):
         logger.error(f"Error computing price range status: {e}")
         return JsonResponse({
             'success': False,
-            'error': f'Fehler beim Berechnen des Preis-Range-Status: {str(e)}',
+            'error': 'Fehler beim Berechnen des Preis-Range-Status',
         }, status=500)
 
 
@@ -1390,8 +1390,8 @@ def htmx_price_range_status(request):
         return render(request, 'trading/partials/price_range_status.html', context)
     
     try:
-        # Get asset
-        asset = TradingAsset.objects.get(id=asset_id)
+        # Get asset - use get_object_or_404 for consistency
+        asset = get_object_or_404(TradingAsset, id=asset_id)
         
         # Compute price range status
         status = compute_price_range_status(asset, phase)
@@ -1405,11 +1405,11 @@ def htmx_price_range_status(request):
             'worker_phase': worker_status.phase if worker_status else None,
         })
         
-    except TradingAsset.DoesNotExist:
+    except Http404:
         context['error'] = 'Asset nicht gefunden'
     except Exception as e:
         logger.error(f"Error computing price range status for HTMX: {e}")
-        context['error'] = f'Fehler: {str(e)}'
+        context['error'] = 'Fehler beim Berechnen des Status'
     
     return render(request, 'trading/partials/price_range_status.html', context)
 

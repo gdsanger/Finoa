@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Literal, Optional
 
+from django.core.exceptions import ObjectDoesNotExist
+
 from ..models import BreakoutRange, TradingAsset, WorkerStatus
 
 
@@ -122,7 +124,8 @@ def compute_price_range_status(
     try:
         breakout_config = asset.breakout_config
         min_breakout_distance_ticks = breakout_config.min_breakout_distance_ticks or 1
-    except Exception:
+    except (AttributeError, ObjectDoesNotExist):
+        # Asset doesn't have a breakout config, use default
         pass
     
     status.min_breakout_distance_ticks = min_breakout_distance_ticks
