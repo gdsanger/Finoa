@@ -56,9 +56,13 @@ def signal_dashboard(request):
     signals = Signal.objects.filter(status='ACTIVE')
     active_count = signals.count()
     
+    # Get active trading assets for the asset selector in the Breakout Range Diagnose card
+    active_assets = TradingAsset.objects.filter(is_active=True).order_by('name')
+    
     context = {
         'signals': signals,
         'active_count': active_count,
+        'active_assets': active_assets,
     }
     
     return render(request, 'trading/signal_dashboard.html', context)
