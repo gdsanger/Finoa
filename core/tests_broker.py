@@ -1399,3 +1399,231 @@ class BrokerErrorDataTest(TestCase):
         data = error.to_dict()
         
         self.assertIsNone(data['raw'])
+
+
+class IGMarketStateProviderTest(TestCase):
+    """Tests for IGMarketStateProvider functionality."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        from trading.models import TradingAsset
+        from decimal import Decimal
+        
+        # Create a test trading asset
+        self.asset = TradingAsset.objects.create(
+            name="Test Oil",
+            symbol="CL",
+            epic="CC.D.CL.UNC.IP",
+            category="commodity",
+            tick_size=Decimal("0.01"),
+            is_active=True,
+        )
+        
+        # Create mock broker service
+        self.mock_broker = MagicMock()
+
+    def tearDown(self):
+        """Clean up test data."""
+        from trading.models import TradingAsset, BreakoutRange
+        BreakoutRange.objects.all().delete()
+        TradingAsset.objects.all().delete()
+
+    def test_set_current_asset(self):
+        """Test setting current asset for range persistence."""
+        from core.services.broker import IGMarketStateProvider
+        
+        provider = IGMarketStateProvider(broker_service=self.mock_broker)
+        
+        # Initially no asset set
+        self.assertIsNone(provider._current_asset)
+        
+        # Set asset
+        provider.set_current_asset(self.asset)
+        self.assertEqual(provider._current_asset, self.asset)
+        
+        # Clear asset
+        provider.clear_current_asset()
+        self.assertIsNone(provider._current_asset)
+
+    def test_set_asia_range_persists_to_database(self):
+        """Test that set_asia_range persists range to database when asset is set."""
+        from core.services.broker import IGMarketStateProvider
+        from trading.models import BreakoutRange
+        from datetime import datetime, timezone
+        
+        provider = IGMarketStateProvider(broker_service=self.mock_broker)
+        provider.set_current_asset(self.asset)
+        
+        now = datetime.now(timezone.utc)
+        
+        # Set a range
+        provider.set_asia_range(
+            epic="CC.D.CL.UNC.IP",
+            high=75.50,
+            low=74.00,
+            start_time=now,
+            end_time=now,
+            candle_count=10,
+            atr=0.50,
+        )
+        
+        # Verify it's persisted
+        range_obj = BreakoutRange.objects.filter(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+        ).first()
+        
+        self.assertIsNotNone(range_obj)
+        self.assertEqual(float(range_obj.high), 75.50)
+        self.assertEqual(float(range_obj.low), 74.00)
+        self.assertEqual(range_obj.candle_count, 10)
+
+    def test_set_asia_range_without_asset_not_persisted(self):
+        """Test that set_asia_range does NOT persist when no asset is set."""
+        from core.services.broker import IGMarketStateProvider
+        from trading.models import BreakoutRange
+        
+        provider = IGMarketStateProvider(broker_service=self.mock_broker)
+        # Explicitly do NOT set current asset
+        
+        # Set a range
+        provider.set_asia_range(
+            epic="CC.D.CL.UNC.IP",
+            high=75.50,
+            low=74.00,
+        )
+        
+        # Verify cache is still updated
+        cached = provider.get_asia_range("CC.D.CL.UNC.IP")
+        self.assertIsNotNone(cached)
+        self.assertEqual(cached, (75.50, 74.00))
+        
+        # Verify it's NOT persisted to database
+        count = BreakoutRange.objects.count()
+        self.assertEqual(count, 0)
+
+    def test_set_london_core_range_persists_to_database(self):
+        """Test that set_london_core_range persists range to database when asset is set."""
+        from core.services.broker import IGMarketStateProvider
+        from trading.models import BreakoutRange
+        from datetime import datetime, timezone
+        
+        provider = IGMarketStateProvider(broker_service=self.mock_broker)
+        provider.set_current_asset(self.asset)
+        
+        now = datetime.now(timezone.utc)
+        
+        # Set a range
+        provider.set_london_core_range(
+            epic="CC.D.CL.UNC.IP",
+            high=76.00,
+            low=75.00,
+            start_time=now,
+            end_time=now,
+            candle_count=15,
+        )
+        
+        # Verify it's persisted
+        range_obj = BreakoutRange.objects.filter(
+            asset=self.asset,
+            phase='LONDON_CORE',
+        ).first()
+        
+        self.assertIsNotNone(range_obj)
+        self.assertEqual(float(range_obj.high), 76.00)
+        self.assertEqual(float(range_obj.low), 75.00)
+
+    def test_set_pre_us_range_persists_to_database(self):
+        """Test that set_pre_us_range persists range to database when asset is set."""
+        from core.services.broker import IGMarketStateProvider
+        from trading.models import BreakoutRange
+        from datetime import datetime, timezone
+        
+        provider = IGMarketStateProvider(broker_service=self.mock_broker)
+        provider.set_current_asset(self.asset)
+        
+        now = datetime.now(timezone.utc)
+        
+        # Set a range
+        provider.set_pre_us_range(
+            epic="CC.D.CL.UNC.IP",
+            high=77.00,
+            low=76.50,
+            start_time=now,
+            end_time=now,
+        )
+        
+        # Verify it's persisted
+        range_obj = BreakoutRange.objects.filter(
+            asset=self.asset,
+            phase='PRE_US_RANGE',
+        ).first()
+        
+        self.assertIsNotNone(range_obj)
+        self.assertEqual(float(range_obj.high), 77.00)
+        self.assertEqual(float(range_obj.low), 76.50)
+
+    def test_range_not_persisted_for_mismatched_epic(self):
+        """Test that range is NOT persisted when epic doesn't match asset."""
+        from core.services.broker import IGMarketStateProvider
+        from trading.models import BreakoutRange
+        
+        provider = IGMarketStateProvider(broker_service=self.mock_broker)
+        provider.set_current_asset(self.asset)
+        
+        # Set a range with wrong epic
+        provider.set_asia_range(
+            epic="WRONG.EPIC",  # Different from asset's epic
+            high=75.50,
+            low=74.00,
+        )
+        
+        # Verify it's NOT persisted to database
+        count = BreakoutRange.objects.count()
+        self.assertEqual(count, 0)
+
+    def test_candle_count_tracking(self):
+        """Test that candle counts are tracked per epic."""
+        from core.services.broker import IGMarketStateProvider
+        
+        provider = IGMarketStateProvider(broker_service=self.mock_broker)
+        
+        # Initially 0
+        self.assertEqual(provider.get_candle_count_for_epic("CC.D.CL.UNC.IP"), 0)
+        
+        # Manually increment (normally done by get_recent_candles)
+        provider._candle_counts["CC.D.CL.UNC.IP"] = 10
+        
+        self.assertEqual(provider.get_candle_count_for_epic("CC.D.CL.UNC.IP"), 10)
+
+    def test_check_no_data_warning(self):
+        """Test the sanity check for no data warning."""
+        from core.services.broker import IGMarketStateProvider
+        
+        provider = IGMarketStateProvider(broker_service=self.mock_broker)
+        
+        # With 0 candles, should trigger warning
+        result = provider.check_no_data_warning("CC.D.CL.UNC.IP")
+        self.assertTrue(result)
+        
+        # With some candles, should NOT trigger warning
+        provider._candle_counts["CC.D.CL.UNC.IP"] = 10
+        result = provider.check_no_data_warning("CC.D.CL.UNC.IP")
+        self.assertFalse(result)
+
+    def test_clear_session_caches_resets_counts(self):
+        """Test that clear_session_caches also resets candle counts."""
+        from core.services.broker import IGMarketStateProvider
+        
+        provider = IGMarketStateProvider(broker_service=self.mock_broker)
+        
+        # Set some counts
+        provider._candle_counts["CC.D.CL.UNC.IP"] = 10
+        provider._asia_range_cache["CC.D.CL.UNC.IP"] = (75.50, 74.00)
+        
+        # Clear caches
+        provider.clear_session_caches()
+        
+        # Verify everything is cleared
+        self.assertEqual(len(provider._candle_counts), 0)
+        self.assertEqual(len(provider._asia_range_cache), 0)
