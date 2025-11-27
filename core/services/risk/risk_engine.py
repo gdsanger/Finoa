@@ -4,6 +4,7 @@ Risk Engine implementation for Fiona trading system.
 The Risk Engine evaluates trades and determines whether they are
 allowed based on configurable risk limits.
 """
+import logging
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 from typing import Optional, List, Tuple
@@ -11,6 +12,9 @@ from typing import Optional, List, Tuple
 from core.services.broker.models import AccountState, Position, OrderRequest, OrderDirection
 from core.services.strategy.models import SetupCandidate, SessionPhase, SetupKind
 from .models import RiskConfig, RiskEvaluationResult
+
+
+logger = logging.getLogger(__name__)
 
 
 class RiskEngine:
@@ -80,31 +84,118 @@ class RiskEngine:
         violations = []
         risk_metrics = {}
         
+        logger.debug(
+            "Risk evaluation started",
+            extra={
+                "risk_data": {
+                    "setup_id": setup.id,
+                    "epic": order.epic,
+                    "direction": order.direction.value if hasattr(order.direction, 'value') else str(order.direction),
+                    "size": float(order.size),
+                    "stop_loss": float(order.stop_loss) if order.stop_loss else None,
+                    "take_profit": float(order.take_profit) if order.take_profit else None,
+                    "timestamp": now.isoformat(),
+                    "account_equity": float(account.equity),
+                    "open_positions": len(positions),
+                    "daily_pnl": float(daily_pnl),
+                    "weekly_pnl": float(weekly_pnl),
+                    "trend_direction": trend_direction,
+                }
+            }
+        )
+        
         # 1. Check time-based restrictions
         time_result = self._check_time_restrictions(now, eia_timestamp, setup)
         if time_result:
             violations.append(time_result)
+            logger.debug(
+                "Risk check: time restriction violated",
+                extra={
+                    "risk_data": {
+                        "setup_id": setup.id,
+                        "check": "time_restrictions",
+                        "result": "denied",
+                        "reason": time_result,
+                        "timestamp": now.isoformat(),
+                        "eia_timestamp": eia_timestamp.isoformat() if eia_timestamp else None,
+                    }
+                }
+            )
         
         # 2. Check daily/weekly loss limits
         loss_result = self._check_loss_limits(account, daily_pnl, weekly_pnl)
         if loss_result:
             violations.append(loss_result)
+            logger.debug(
+                "Risk check: loss limit violated",
+                extra={
+                    "risk_data": {
+                        "setup_id": setup.id,
+                        "check": "loss_limits",
+                        "result": "denied",
+                        "reason": loss_result,
+                        "daily_pnl": float(daily_pnl),
+                        "weekly_pnl": float(weekly_pnl),
+                        "max_daily_loss_percent": float(self.config.max_daily_loss_percent),
+                        "max_weekly_loss_percent": float(self.config.max_weekly_loss_percent),
+                    }
+                }
+            )
         
         # 3. Check open positions limit
         position_result = self._check_open_positions(positions)
         if position_result:
             violations.append(position_result)
+            logger.debug(
+                "Risk check: position limit exceeded",
+                extra={
+                    "risk_data": {
+                        "setup_id": setup.id,
+                        "check": "open_positions",
+                        "result": "denied",
+                        "reason": position_result,
+                        "current_positions": len(positions),
+                        "max_positions": self.config.max_open_positions,
+                    }
+                }
+            )
         
         # 4. Check countertrend rule (optional)
         if not self.config.allow_countertrend and trend_direction:
             countertrend_result = self._check_countertrend(setup, trend_direction)
             if countertrend_result:
                 violations.append(countertrend_result)
+                logger.debug(
+                    "Risk check: countertrend trade denied",
+                    extra={
+                        "risk_data": {
+                            "setup_id": setup.id,
+                            "check": "countertrend",
+                            "result": "denied",
+                            "reason": countertrend_result,
+                            "trade_direction": setup.direction,
+                            "trend_direction": trend_direction,
+                        }
+                    }
+                )
         
         # 5. Check SL/TP validity
         sltp_result = self._check_sltp_validity(order)
         if sltp_result:
             violations.append(sltp_result)
+            logger.debug(
+                "Risk check: SL/TP invalid",
+                extra={
+                    "risk_data": {
+                        "setup_id": setup.id,
+                        "check": "sltp_validity",
+                        "result": "denied",
+                        "reason": sltp_result,
+                        "stop_loss": float(order.stop_loss) if order.stop_loss else None,
+                        "take_profit": float(order.take_profit) if order.take_profit else None,
+                    }
+                }
+            )
         
         # 6. Check position size and risk per trade
         risk_result, adjusted_order, metrics = self._check_position_risk(
@@ -114,10 +205,34 @@ class RiskEngine:
         
         if risk_result:
             violations.append(risk_result)
+            logger.debug(
+                "Risk check: position risk exceeded",
+                extra={
+                    "risk_data": {
+                        "setup_id": setup.id,
+                        "check": "position_risk",
+                        "result": "denied",
+                        "reason": risk_result,
+                        "risk_metrics": {k: float(v) if isinstance(v, Decimal) else v for k, v in metrics.items()},
+                    }
+                }
+            )
         elif adjusted_order:
             # Order was adjusted to fit risk limits
             # If there are no other violations, return the adjusted order
             if not violations:
+                logger.debug(
+                    "Risk evaluation: order adjusted to fit limits",
+                    extra={
+                        "risk_data": {
+                            "setup_id": setup.id,
+                            "result": "allowed_adjusted",
+                            "original_size": float(order.size),
+                            "adjusted_size": float(adjusted_order.size),
+                            "risk_metrics": {k: float(v) if isinstance(v, Decimal) else v for k, v in metrics.items()},
+                        }
+                    }
+                )
                 return RiskEvaluationResult(
                     allowed=True,
                     reason="Position size reduced to fit risk limits",
@@ -129,6 +244,18 @@ class RiskEngine:
         
         # Build final result
         if violations:
+            logger.debug(
+                "Risk evaluation: trade denied",
+                extra={
+                    "risk_data": {
+                        "setup_id": setup.id,
+                        "result": "denied",
+                        "primary_reason": violations[0],
+                        "all_violations": violations,
+                        "risk_metrics": {k: float(v) if isinstance(v, Decimal) else v for k, v in risk_metrics.items()},
+                    }
+                }
+            )
             return RiskEvaluationResult(
                 allowed=False,
                 reason=violations[0],  # Primary rejection reason
@@ -137,6 +264,17 @@ class RiskEngine:
                 risk_metrics=risk_metrics,
             )
         
+        logger.debug(
+            "Risk evaluation: trade approved",
+            extra={
+                "risk_data": {
+                    "setup_id": setup.id,
+                    "result": "allowed",
+                    "size": float(order.size),
+                    "risk_metrics": {k: float(v) if isinstance(v, Decimal) else v for k, v in risk_metrics.items()},
+                }
+            }
+        )
         return RiskEvaluationResult(
             allowed=True,
             reason="Trade meets all risk requirements",
