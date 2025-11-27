@@ -29,7 +29,7 @@ from core.services.broker import (
     create_ig_broker_service,
     SessionTimesConfig,
 )
-from trading.models import WorkerStatus, AssetDiagnostics
+from trading.models import WorkerStatus, AssetDiagnostics, AssetPriceStatus
 from core.services.strategy import (
     StrategyEngine,
     StrategyConfig,
@@ -40,9 +40,19 @@ from core.services.risk.models import RiskConfig
 from core.services.execution import ExecutionService
 from core.services.execution.models import ExecutionConfig
 from core.services.weaviate import WeaviateService
+from dataclasses import dataclass
 
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class AssetCycleResult:
+    """Result of a single asset cycle execution."""
+    setups_found: int = 0
+    bid_price: Optional[Decimal] = None
+    ask_price: Optional[Decimal] = None
+    spread: Optional[Decimal] = None
 
 
 class GracefulShutdown:
@@ -412,6 +422,10 @@ class Command(BaseCommand):
         
         total_setups = 0
         processed_epics = []
+        # Track price from first asset with valid prices for WorkerStatus
+        last_bid_price = None
+        last_ask_price = None
+        last_spread = None
         
         # Process each active asset
         for asset in active_assets:
@@ -429,7 +443,7 @@ class Command(BaseCommand):
                 )
                 
                 # Run cycle for this asset
-                setups_found = self._run_asset_cycle(
+                cycle_result = self._run_asset_cycle(
                     asset=asset,
                     strategy_engine=asset_strategy_engine,
                     shadow_only=shadow_only,
@@ -437,23 +451,29 @@ class Command(BaseCommand):
                     now=now,
                 )
                 
-                total_setups += setups_found
+                total_setups += cycle_result.setups_found
                 processed_epics.append(asset.epic)
+                
+                # Use price from first asset with valid prices
+                if last_bid_price is None and cycle_result.bid_price is not None:
+                    last_bid_price = cycle_result.bid_price
+                    last_ask_price = cycle_result.ask_price
+                    last_spread = cycle_result.spread
                 
             except Exception as e:
                 self.stdout.write(self.style.ERROR(f"     ✗ Error processing asset: {e}"))
                 logger.exception(f"Error processing asset {asset.epic}")
         
-        # Update worker status with summary
+        # Update worker status with summary including price from first asset
         phase = self.market_state_provider.get_phase(now)
         self._update_worker_status(
             now=now,
             phase=phase,
             epic=f"{asset_count} assets",  # Show count instead of single epic
             setup_count=total_setups,
-            bid_price=None,
-            ask_price=None,
-            spread=None,
+            bid_price=last_bid_price,
+            ask_price=last_ask_price,
+            spread=last_spread,
             diagnostic_message=f"Processed {asset_count} assets: {', '.join(processed_epics)}",
             diagnostic_criteria=[{
                 'name': f'Active Assets ({asset_count})',
@@ -470,7 +490,7 @@ class Command(BaseCommand):
         shadow_only: bool,
         dry_run: bool,
         now: datetime
-    ) -> int:
+    ) -> AssetCycleResult:
         """
         Run strategy evaluation for a single asset.
         
@@ -485,11 +505,12 @@ class Command(BaseCommand):
             now: Current timestamp
             
         Returns:
-            Number of setups found
+            AssetCycleResult with setups found and price information
         """
         from trading.models import AssetSessionPhaseConfig
         
         epic = asset.epic
+        result = AssetCycleResult()
         
         # Set current asset for range persistence (Acceptance Criteria #2)
         self.market_state_provider.set_current_asset(asset)
@@ -560,7 +581,19 @@ class Command(BaseCommand):
             try:
                 price = self.broker_service.get_symbol_price(epic)
                 current_price = price
+                # Store price in result for WorkerStatus update
+                result.bid_price = Decimal(str(price.bid)) if price.bid is not None else None
+                result.ask_price = Decimal(str(price.ask)) if price.ask is not None else None
+                result.spread = Decimal(str(price.spread)) if price.spread is not None else None
                 self.stdout.write(f"     Price: {price.bid}/{price.ask}")
+                
+                # Update asset-specific price status for multi-asset support
+                AssetPriceStatus.update_price(
+                    asset=asset,
+                    bid_price=price.bid,
+                    ask_price=price.ask,
+                    spread=price.spread,
+                )
             except Exception as e:
                 self.stdout.write(self.style.WARNING(f"     Could not get price: {e}"))
             
@@ -594,11 +627,12 @@ class Command(BaseCommand):
                     candles_evaluated=1,  # At least one cycle was run
                     range_built_phase=range_built_phase,
                 )
-                return 0
+                return result
             
             # 7. Run Strategy Engine
             try:
                 setups = strategy_engine.evaluate(epic, now)
+                result.setups_found = len(setups)
                 self.stdout.write(f"     Found {len(setups)} setup(s)")
             except Exception as e:
                 self.stdout.write(self.style.ERROR(f"     Strategy error: {e}"))
@@ -612,7 +646,7 @@ class Command(BaseCommand):
                     candles_evaluated=1,
                     range_built_phase=range_built_phase,
                 )
-                return 0
+                return result
             
             # Update diagnostics with the results
             self._update_asset_diagnostics(
@@ -625,13 +659,13 @@ class Command(BaseCommand):
             )
             
             if not setups:
-                return 0
+                return result
             
             # 8. Process each setup
             for setup in setups:
                 self._process_setup(setup, shadow_only, dry_run, now, trading_asset=asset)
             
-            return len(setups)
+            return result
             
         finally:
             # Clear current asset after processing

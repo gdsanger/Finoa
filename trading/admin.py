@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import TradingAsset, AssetBreakoutConfig, AssetEventConfig, Signal, Trade, WorkerStatus
+from .models import TradingAsset, AssetBreakoutConfig, AssetEventConfig, Signal, Trade, WorkerStatus, AssetPriceStatus
 
 
 class AssetBreakoutConfigInline(admin.StackedInline):
@@ -214,4 +214,12 @@ class WorkerStatusAdmin(admin.ModelAdmin):
     """Admin for worker status."""
     list_display = ['phase', 'epic', 'bid_price', 'setup_count', 'last_run_at']
     readonly_fields = ['last_run_at', 'phase', 'epic', 'bid_price', 'ask_price', 'spread', 'setup_count', 'diagnostic_message', 'diagnostic_criteria', 'worker_interval']
+
+
+@admin.register(AssetPriceStatus)
+class AssetPriceStatusAdmin(admin.ModelAdmin):
+    """Admin for asset price status."""
+    list_display = ['asset', 'bid_price', 'ask_price', 'spread', 'updated_at']
+    readonly_fields = ['asset', 'bid_price', 'ask_price', 'spread', 'updated_at']
+    list_filter = ['asset']
 

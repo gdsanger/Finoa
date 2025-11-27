@@ -12,12 +12,13 @@ from typing import Literal, Optional
 
 from django.core.exceptions import ObjectDoesNotExist
 
-from ..models import BreakoutRange, TradingAsset, WorkerStatus
+from ..models import AssetPriceStatus, BreakoutRange, TradingAsset, WorkerStatus
 
 
 # Status code type alias
 StatusCode = Literal[
     "NO_RANGE",
+    "NO_PRICE",
     "INSIDE_RANGE",
     "NEAR_BREAKOUT_LONG",
     "NEAR_BREAKOUT_SHORT",
@@ -28,6 +29,7 @@ StatusCode = Literal[
 # Status display text mapping
 STATUS_TEXTS = {
     "NO_RANGE": "NO RANGE DATA",
+    "NO_PRICE": "NO PRICE DATA",
     "INSIDE_RANGE": "INSIDE RANGE",
     "NEAR_BREAKOUT_LONG": "NEAR BREAKOUT (LONG)",
     "NEAR_BREAKOUT_SHORT": "NEAR BREAKOUT (SHORT)",
@@ -38,6 +40,7 @@ STATUS_TEXTS = {
 # Badge colors for status codes
 STATUS_BADGE_COLORS = {
     "NO_RANGE": "gray",       # ⚪
+    "NO_PRICE": "gray",       # ⚪
     "INSIDE_RANGE": "green",  # 🟩
     "NEAR_BREAKOUT_LONG": "yellow",   # 🟨
     "NEAR_BREAKOUT_SHORT": "yellow",  # 🟨
@@ -96,14 +99,14 @@ def compute_price_range_status(
     """
     Compute the price vs range status for a given asset and phase.
     
-    Uses persisted range snapshots and worker status price data.
+    Uses persisted range snapshots and asset-specific price data.
     No IG API calls are made - data comes from persistence layer only.
     
     Args:
         asset: The trading asset to compute status for.
         phase: The session phase ('ASIA_RANGE', 'LONDON_CORE', 'PRE_US_RANGE', 'US_CORE_TRADING').
-        worker_status: Optional worker status for current price data.
-            If not provided, will be fetched from database.
+        worker_status: Optional worker status (deprecated, kept for backwards compatibility).
+            Price data is now fetched from AssetPriceStatus for multi-asset support.
     
     Returns:
         PriceRangeStatus with computed values and status code.
@@ -114,10 +117,6 @@ def compute_price_range_status(
         phase=phase,
         tick_size=asset.tick_size,
     )
-    
-    # Get worker status for current price if not provided
-    if worker_status is None:
-        worker_status = WorkerStatus.get_current()
     
     # Get min breakout distance from asset config
     min_breakout_distance_ticks = 1  # Default
@@ -144,14 +143,15 @@ def compute_price_range_status(
     status.range_low = range_data.low
     status.range_ticks = range_data.height_ticks
     
-    # Get current price from worker status
-    if worker_status and worker_status.bid_price and worker_status.ask_price:
-        status.current_bid = worker_status.bid_price
-        status.current_ask = worker_status.ask_price
+    # Get current price from asset-specific price status (multi-asset support)
+    price_status = AssetPriceStatus.get_for_asset(asset)
+    if price_status and price_status.bid_price and price_status.ask_price:
+        status.current_bid = price_status.bid_price
+        status.current_ask = price_status.ask_price
     else:
-        # No price data - can't compute status
-        status.status_code = "NO_RANGE"
-        status.status_text = STATUS_TEXTS["NO_RANGE"]
+        # No price data - can't compute status but range data exists
+        status.status_code = "NO_PRICE"
+        status.status_text = STATUS_TEXTS["NO_PRICE"]
         return status
     
     # Calculate distances in ticks
