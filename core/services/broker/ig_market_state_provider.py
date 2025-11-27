@@ -3,15 +3,23 @@ IG Market State Provider for Fiona Strategy Engine.
 
 Implements the MarketStateProvider protocol using the IG Broker Service
 to fetch real market data.
+
+Logging Guidelines (Acceptance Criteria #1):
+- Log each candle fetch with EPIC, time window, candle count, first/last timestamps
+- Log each range build with Asset, Phase, Range High/Low, Ticks, Tick Size
 """
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
-from typing import Optional
+from decimal import Decimal
+from typing import Optional, TYPE_CHECKING
 
 from core.services.strategy.models import Candle, SessionPhase
 from core.services.strategy.providers import BaseMarketStateProvider
 from .ig_broker_service import IgBrokerService
+
+if TYPE_CHECKING:
+    from trading.models import TradingAsset
 
 
 logger = logging.getLogger(__name__)
@@ -172,6 +180,10 @@ class IGMarketStateProvider(BaseMarketStateProvider):
     Provides real-time market data from IG for the Strategy Engine.
     Note: Some methods use cached/simulated data as IG API may not
     provide all required historical data in all scenarios.
+    
+    Range Persistence:
+    When an asset is associated via set_current_asset(), ranges will be
+    persisted to the database using BreakoutRange.save_range_snapshot().
     """
 
     def __init__(
@@ -201,7 +213,96 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         # Cache for candles (limited history)
         self._candle_cache: dict[str, list[Candle]] = {}
         
+        # Current asset for range persistence (optional)
+        self._current_asset: Optional['TradingAsset'] = None
+        
+        # Track candle counts per epic (for sanity checks)
+        self._candle_counts: dict[str, int] = {}
+        
         logger.info("IGMarketStateProvider initialized")
+    
+    def set_current_asset(self, asset: 'TradingAsset') -> None:
+        """
+        Set the current trading asset for range persistence.
+        
+        When an asset is set, range updates will be persisted to the
+        BreakoutRange database model.
+        
+        Args:
+            asset: TradingAsset instance to associate with ranges.
+        """
+        self._current_asset = asset
+        logger.debug(f"Current asset set to: {asset.symbol} ({asset.epic})")
+    
+    def clear_current_asset(self) -> None:
+        """Clear the current asset association."""
+        self._current_asset = None
+    
+    def get_candle_count_for_epic(self, epic: str) -> int:
+        """
+        Get the total number of candles fetched for an epic.
+        
+        Used for sanity checks (Acceptance Criteria #4).
+        
+        Args:
+            epic: Market identifier.
+            
+        Returns:
+            Number of candles fetched since last cache clear.
+        """
+        return self._candle_counts.get(epic, 0)
+    
+    def _get_range_metrics(self, high: float, low: float) -> tuple[float, float, int]:
+        """
+        Calculate range metrics for logging and persistence.
+        
+        Args:
+            high: Range high price.
+            low: Range low price.
+            
+        Returns:
+            Tuple of (range_height, tick_size, height_ticks)
+        """
+        range_height = high - low
+        tick_size = 0.01  # Default
+        if self._current_asset:
+            tick_size = float(self._current_asset.tick_size)
+        
+        height_ticks = int(range_height / tick_size) if tick_size > 0 else 0
+        return range_height, tick_size, height_ticks
+    
+    def _get_asset_name(self) -> str:
+        """Get the current asset name or 'N/A' if no asset is set."""
+        return self._current_asset.symbol if self._current_asset else 'N/A'
+    
+    def _log_range_build(
+        self,
+        phase: str,
+        epic: str,
+        high: float,
+        low: float,
+        height_ticks: int,
+        tick_size: float,
+        candle_count: int,
+    ) -> None:
+        """
+        Log range build details (Acceptance Criteria #1).
+        
+        Args:
+            phase: Phase name (e.g., 'ASIA_RANGE')
+            epic: Market identifier
+            high: Range high price
+            low: Range low price
+            height_ticks: Range height in ticks
+            tick_size: Tick size used
+            candle_count: Number of candles in range
+        """
+        asset_name = self._get_asset_name()
+        logger.info(
+            f"Range built: asset={asset_name}, phase={phase}, epic={epic}, "
+            f"high={high:.4f}, low={low:.4f}, ticks={height_ticks}, "
+            f"tick_size={tick_size}, candles={candle_count}"
+        )
     
     def set_session_times(self, session_times: SessionTimesConfig) -> None:
         """
@@ -305,6 +406,9 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         This implementation returns cached/simulated candles or
         creates a single candle from current price data.
         
+        Logging (Acceptance Criteria #1):
+        - Logs EPIC, time window, candle count, first/last timestamps
+        
         Args:
             epic: Market identifier.
             timeframe: Candle timeframe (e.g., '1m', '5m', '1h').
@@ -338,6 +442,21 @@ class IGMarketStateProvider(BaseMarketStateProvider):
             
             # Update cache
             self._candle_cache[cache_key] = candles[-50:]  # Keep last 50
+            
+            # Track candle count - increment by actual number of candles returned
+            self._candle_counts[epic] = self._candle_counts.get(epic, 0) + len(candles)
+            
+            # Log candle fetch details (Acceptance Criteria #1)
+            if len(candles) > 0:
+                first_ts = candles[0].timestamp.isoformat()
+                last_ts = candles[-1].timestamp.isoformat()
+            else:
+                first_ts = 'N/A'
+                last_ts = 'N/A'
+            logger.info(
+                f"Candle fetch: epic={epic}, timeframe={timeframe}, "
+                f"count={len(candles)}, first={first_ts}, last={last_ts}"
+            )
             
             return candles
             
@@ -413,19 +532,53 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         """
         return self._asia_range_cache.get(epic)
 
-    def set_asia_range(self, epic: str, high: float, low: float) -> None:
+    def set_asia_range(
+        self,
+        epic: str,
+        high: float,
+        low: float,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        candle_count: int = 0,
+        atr: Optional[float] = None,
+    ) -> None:
         """
         Set the Asia session range for a market.
         
         Call this after Asia session ends to record the range.
         
+        If a current asset is set via set_current_asset(), the range will
+        be persisted to the database.
+        
+        Logging (Acceptance Criteria #1):
+        - Logs Asset, Phase, Range High/Low, Ticks, Tick Size
+        
         Args:
             epic: Market identifier.
             high: Asia session high.
             low: Asia session low.
+            start_time: Optional range start time.
+            end_time: Optional range end time.
+            candle_count: Number of candles in the range.
+            atr: Optional ATR value at time of range capture.
         """
         self._asia_range_cache[epic] = (high, low)
-        logger.info(f"Asia range set for {epic}: high={high}, low={low}")
+        
+        # Calculate range metrics and log
+        _, tick_size, height_ticks = self._get_range_metrics(high, low)
+        self._log_range_build('ASIA_RANGE', epic, high, low, height_ticks, tick_size, candle_count)
+        
+        # Persist to database if asset is set
+        self._persist_range(
+            phase='ASIA_RANGE',
+            epic=epic,
+            high=high,
+            low=low,
+            start_time=start_time,
+            end_time=end_time,
+            candle_count=candle_count,
+            atr=atr,
+        )
 
     def get_pre_us_range(self, epic: str) -> Optional[tuple[float, float]]:
         """
@@ -442,19 +595,53 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         """
         return self._pre_us_range_cache.get(epic)
 
-    def set_pre_us_range(self, epic: str, high: float, low: float) -> None:
+    def set_pre_us_range(
+        self,
+        epic: str,
+        high: float,
+        low: float,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        candle_count: int = 0,
+        atr: Optional[float] = None,
+    ) -> None:
         """
         Set the pre-US session range for a market.
         
         Call this before US core session to record the range.
         
+        If a current asset is set via set_current_asset(), the range will
+        be persisted to the database.
+        
+        Logging (Acceptance Criteria #1):
+        - Logs Asset, Phase, Range High/Low, Ticks, Tick Size
+        
         Args:
             epic: Market identifier.
             high: Pre-US session high.
             low: Pre-US session low.
+            start_time: Optional range start time.
+            end_time: Optional range end time.
+            candle_count: Number of candles in the range.
+            atr: Optional ATR value at time of range capture.
         """
         self._pre_us_range_cache[epic] = (high, low)
-        logger.info(f"Pre-US range set for {epic}: high={high}, low={low}")
+        
+        # Calculate range metrics and log
+        _, tick_size, height_ticks = self._get_range_metrics(high, low)
+        self._log_range_build('PRE_US_RANGE', epic, high, low, height_ticks, tick_size, candle_count)
+        
+        # Persist to database if asset is set
+        self._persist_range(
+            phase='PRE_US_RANGE',
+            epic=epic,
+            high=high,
+            low=low,
+            start_time=start_time,
+            end_time=end_time,
+            candle_count=candle_count,
+            atr=atr,
+        )
 
     def get_london_core_range(self, epic: str) -> Optional[tuple[float, float]]:
         """
@@ -471,19 +658,118 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         """
         return self._london_core_range_cache.get(epic)
 
-    def set_london_core_range(self, epic: str, high: float, low: float) -> None:
+    def set_london_core_range(
+        self,
+        epic: str,
+        high: float,
+        low: float,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        candle_count: int = 0,
+        atr: Optional[float] = None,
+    ) -> None:
         """
         Set the London Core session range for a market.
         
         Call this after London Core session ends to record the range.
         
+        If a current asset is set via set_current_asset(), the range will
+        be persisted to the database.
+        
+        Logging (Acceptance Criteria #1):
+        - Logs Asset, Phase, Range High/Low, Ticks, Tick Size
+        
         Args:
             epic: Market identifier.
             high: London Core session high.
             low: London Core session low.
+            start_time: Optional range start time.
+            end_time: Optional range end time.
+            candle_count: Number of candles in the range.
+            atr: Optional ATR value at time of range capture.
         """
         self._london_core_range_cache[epic] = (high, low)
-        logger.info(f"London Core range set for {epic}: high={high}, low={low}")
+        
+        # Calculate range metrics and log
+        _, tick_size, height_ticks = self._get_range_metrics(high, low)
+        self._log_range_build('LONDON_CORE', epic, high, low, height_ticks, tick_size, candle_count)
+        
+        # Persist to database if asset is set
+        self._persist_range(
+            phase='LONDON_CORE',
+            epic=epic,
+            high=high,
+            low=low,
+            start_time=start_time,
+            end_time=end_time,
+            candle_count=candle_count,
+            atr=atr,
+        )
+
+    def _persist_range(
+        self,
+        phase: str,
+        epic: str,
+        high: float,
+        low: float,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        candle_count: int = 0,
+        atr: Optional[float] = None,
+    ) -> None:
+        """
+        Persist a range to the database.
+        
+        Only persists if a current asset is set. Logs a warning if persistence
+        fails but does not raise an exception.
+        
+        Args:
+            phase: Phase identifier (e.g., 'ASIA_RANGE', 'LONDON_CORE', 'PRE_US_RANGE')
+            epic: Market identifier.
+            high: Range high.
+            low: Range low.
+            start_time: Optional range start time.
+            end_time: Optional range end time.
+            candle_count: Number of candles in the range.
+            atr: Optional ATR value.
+        """
+        if not self._current_asset:
+            logger.debug(f"Range not persisted (no asset set): phase={phase}, epic={epic}")
+            return
+        
+        # Ensure the asset EPIC matches
+        if self._current_asset.epic != epic:
+            logger.warning(
+                f"Range EPIC mismatch: asset.epic={self._current_asset.epic}, "
+                f"range epic={epic}. Not persisting."
+            )
+            return
+        
+        try:
+            from trading.models import BreakoutRange
+            
+            now = datetime.now(timezone.utc)
+            
+            BreakoutRange.save_range_snapshot(
+                asset=self._current_asset,
+                phase=phase,
+                start_time=start_time or now,
+                end_time=end_time or now,
+                high=high,
+                low=low,
+                tick_size=float(self._current_asset.tick_size),
+                candle_count=candle_count,
+                atr=atr,
+                is_valid=True,
+            )
+            
+            logger.info(
+                f"Range persisted: asset={self._current_asset.symbol}, phase={phase}, "
+                f"high={high:.4f}, low={low:.4f}"
+            )
+            
+        except Exception as e:
+            logger.warning(f"Failed to persist range for {phase}: {e}")
 
     def get_atr(
         self,
@@ -555,8 +841,78 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         Clear session range caches.
         
         Call this at the start of a new trading day.
+        Also resets candle counts.
         """
         self._asia_range_cache.clear()
         self._london_core_range_cache.clear()
         self._pre_us_range_cache.clear()
+        self._candle_counts.clear()
         logger.info("Session range caches cleared")
+
+    def check_no_data_warning(self, epic: str, threshold_hours: int = 24) -> bool:
+        """
+        Check if an asset has received no candles in the given time period.
+        
+        Sanity Check (Acceptance Criteria #4):
+        Logs a warning if no candles were received for an asset in the threshold period.
+        
+        Args:
+            epic: Market identifier.
+            threshold_hours: Hours to check (default: 24).
+            
+        Returns:
+            True if no data warning was triggered, False otherwise.
+        """
+        candle_count = self._candle_counts.get(epic, 0)
+        
+        if candle_count == 0:
+            logger.warning(
+                f"No candles received for asset {epic} in the last {threshold_hours}h. "
+                "Check EPIC or IG API configuration."
+            )
+            return True
+        
+        return False
+
+    def get_range_count_for_asset(self, asset_id: int) -> dict:
+        """
+        Get the count of persisted ranges for an asset.
+        
+        Sanity Check (Acceptance Criteria #4):
+        Used to check if ranges have been built for an asset.
+        
+        Args:
+            asset_id: ID of the TradingAsset.
+            
+        Returns:
+            Dict with counts per phase.
+        """
+        try:
+            from trading.models import BreakoutRange
+            from datetime import timedelta
+            
+            now = datetime.now(timezone.utc)
+            since = now - timedelta(hours=24)
+            
+            # Get counts per phase
+            phases = ['ASIA_RANGE', 'LONDON_CORE', 'PRE_US_RANGE', 'US_CORE_TRADING']
+            counts = {}
+            
+            for phase in phases:
+                count = BreakoutRange.objects.filter(
+                    asset_id=asset_id,
+                    phase=phase,
+                    created_at__gte=since,
+                ).count()
+                counts[phase] = count
+                
+                if count == 0:
+                    logger.warning(
+                        f"No ranges built for asset_id={asset_id}, phase={phase} in the last 24h."
+                    )
+            
+            return counts
+            
+        except Exception as e:
+            logger.warning(f"Failed to get range counts for asset_id={asset_id}: {e}")
+            return {}
