@@ -210,6 +210,39 @@ def configure_logging() -> dict:
                 'level': log_level,
                 'propagate': False,
             },
+            # Strategy Engine logging
+            'core.services.strategy': {
+                'handlers': ['console', 'file'],
+                'level': log_level,
+                'propagate': False,
+            },
+            'core.services.strategy.strategy_engine': {
+                'handlers': ['console', 'file'],
+                'level': log_level,
+                'propagate': False,
+            },
+            # Risk Engine logging
+            'core.services.risk': {
+                'handlers': ['console', 'file'],
+                'level': log_level,
+                'propagate': False,
+            },
+            'core.services.risk.risk_engine': {
+                'handlers': ['console', 'file'],
+                'level': log_level,
+                'propagate': False,
+            },
+            # Execution Layer logging
+            'core.services.execution': {
+                'handlers': ['console', 'file'],
+                'level': log_level,
+                'propagate': False,
+            },
+            'core.services.execution.execution_service': {
+                'handlers': ['console', 'file'],
+                'level': log_level,
+                'propagate': False,
+            },
             'trading': {
                 'handlers': ['console', 'file'],
                 'level': log_level,

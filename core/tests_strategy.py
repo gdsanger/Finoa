@@ -1195,3 +1195,128 @@ class UsCoreTradinSessionTest(TestCase):
         
         # Verify backwards compatibility (US_CORE still exists)
         self.assertEqual(SessionPhase.US_CORE.value, "US_CORE")
+
+
+class StrategyEngineDebugLoggingTest(TestCase):
+    """Tests for Strategy Engine debug logging."""
+
+    def test_evaluate_logs_debug_on_setup_found(self):
+        """Test that debug logging is called when a setup is found."""
+        import logging
+        from unittest.mock import patch
+        
+        ts = datetime(2025, 1, 15, 9, 0, tzinfo=timezone.utc)
+        
+        # Create a bullish breakout candle with body >= 50% of range
+        candle = Candle(
+            timestamp=ts,
+            open=75.15,
+            high=75.30,
+            low=75.10,
+            close=75.28,
+        )
+        
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.LONDON_CORE,
+            candles=[candle],
+            asia_range=(75.20, 75.00),
+            atr=0.50,
+        )
+        engine = StrategyEngine(provider)
+        
+        with patch('core.services.strategy.strategy_engine.logger') as mock_logger:
+            candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
+            
+            # Should have debug calls
+            self.assertTrue(mock_logger.debug.called)
+            
+            # Check that setup_found is logged
+            calls = [str(c) for c in mock_logger.debug.call_args_list]
+            self.assertTrue(any('setup' in str(c).lower() for c in calls))
+
+    def test_evaluate_logs_debug_on_no_setup(self):
+        """Test that debug logging is called when no setup is found."""
+        import logging
+        from unittest.mock import patch
+        
+        ts = datetime(2025, 1, 15, 10, 0, tzinfo=timezone.utc)
+        
+        provider = DummyMarketStateProvider(phase=SessionPhase.OTHER)
+        engine = StrategyEngine(provider)
+        
+        with patch('core.services.strategy.strategy_engine.logger') as mock_logger:
+            candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
+            
+            # Should have debug calls
+            self.assertTrue(mock_logger.debug.called)
+            
+            # Should return no candidates
+            self.assertEqual(len(candidates), 0)
+
+    def test_asia_breakout_logs_range_validation(self):
+        """Test that Asia breakout logs range validation details."""
+        import logging
+        from unittest.mock import patch
+        
+        ts = datetime(2025, 1, 15, 9, 0, tzinfo=timezone.utc)
+        
+        # Too small range
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.LONDON_CORE,
+            candles=[],
+            asia_range=(75.03, 75.00),  # Only 3 ticks
+        )
+        engine = StrategyEngine(provider)
+        
+        with patch('core.services.strategy.strategy_engine.logger') as mock_logger:
+            candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
+            
+            # Should have debug calls
+            self.assertTrue(mock_logger.debug.called)
+            
+            # Check for range validation logging
+            calls = [str(c) for c in mock_logger.debug.call_args_list]
+            # Should log either about range size or about the evaluation
+            self.assertTrue(len(calls) > 0)
+
+    def test_eia_evaluation_logs_impulse_analysis(self):
+        """Test that EIA evaluation logs impulse analysis details."""
+        import logging
+        from unittest.mock import patch
+        
+        eia_ts = datetime(2025, 1, 15, 15, 30, tzinfo=timezone.utc)
+        ts = datetime(2025, 1, 15, 15, 35, tzinfo=timezone.utc)
+        
+        # Create impulse candles (LONG)
+        impulse_candles = [
+            Candle(datetime(2025, 1, 15, 15, 30), open=74.00, high=74.50, low=73.90, close=74.40),
+            Candle(datetime(2025, 1, 15, 15, 31), open=74.40, high=75.00, low=74.30, close=74.90),
+            Candle(datetime(2025, 1, 15, 15, 32), open=74.90, high=75.50, low=74.80, close=75.40),
+        ]
+        
+        reversion_candle = Candle(
+            datetime(2025, 1, 15, 15, 33),
+            open=75.30,
+            high=75.40,
+            low=74.50,
+            close=74.60,
+        )
+        
+        all_candles = impulse_candles + [reversion_candle]
+        
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.EIA_POST,
+            candles=all_candles,
+            eia_timestamp=eia_ts,
+        )
+        engine = StrategyEngine(provider)
+        
+        with patch('core.services.strategy.strategy_engine.logger') as mock_logger:
+            candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
+            
+            # Should have debug calls
+            self.assertTrue(mock_logger.debug.called)
+            
+            # Check for EIA-related logging
+            calls = [str(c) for c in mock_logger.debug.call_args_list]
+            self.assertTrue(any('eia' in str(c).lower() for c in calls))

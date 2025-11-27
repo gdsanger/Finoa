@@ -128,6 +128,23 @@ class ExecutionService:
         now = datetime.now(timezone.utc)
         session_id = str(uuid.uuid4())
         
+        logger.debug(
+            "Creating trade proposal session",
+            extra={
+                "execution_data": {
+                    "session_id": session_id,
+                    "setup_id": setup.id,
+                    "epic": setup.epic,
+                    "setup_kind": setup.setup_kind.value if isinstance(setup.setup_kind, Enum) else str(setup.setup_kind),
+                    "direction": setup.direction,
+                    "reference_price": setup.reference_price,
+                    "ki_evaluation_id": ki_eval.id if ki_eval else None,
+                    "risk_allowed": risk_eval.allowed if risk_eval else None,
+                    "timestamp": now.isoformat(),
+                }
+            }
+        )
+        
         # Build the proposed order from setup and KI evaluation
         proposed_order = self._build_order_from_signals(setup, ki_eval)
         
@@ -169,6 +186,22 @@ class ExecutionService:
         # Store session
         self._sessions[session_id] = session
         
+        logger.debug(
+            "Trade proposal session created",
+            extra={
+                "execution_data": {
+                    "session_id": session_id,
+                    "setup_id": setup.id,
+                    "initial_state": initial_state.value,
+                    "proposed_size": float(proposed_order.size),
+                    "proposed_sl": float(proposed_order.stop_loss) if proposed_order.stop_loss else None,
+                    "proposed_tp": float(proposed_order.take_profit) if proposed_order.take_profit else None,
+                    "adjusted_size": float(adjusted_order.size) if adjusted_order else None,
+                    "risk_comment": risk_eval.reason if risk_eval else None,
+                }
+            }
+        )
+        
         return session
 
     def confirm_live_trade(self, session_id: str) -> ExecutedTrade:
@@ -188,8 +221,30 @@ class ExecutionService:
         """
         session = self._get_session(session_id)
         
+        logger.debug(
+            "Live trade confirmation started",
+            extra={
+                "execution_data": {
+                    "session_id": session_id,
+                    "setup_id": session.setup_id,
+                    "current_state": session.state.value,
+                }
+            }
+        )
+        
         # Validate state
         if session.state != ExecutionState.WAITING_FOR_USER:
+            logger.debug(
+                "Live trade confirmation failed: invalid state",
+                extra={
+                    "execution_data": {
+                        "session_id": session_id,
+                        "current_state": session.state.value,
+                        "expected_state": "WAITING_FOR_USER",
+                        "error": "INVALID_STATE",
+                    }
+                }
+            )
             raise ExecutionError(
                 f"Cannot execute live trade: session is in state {session.state.value}. "
                 f"Expected WAITING_FOR_USER.",
@@ -198,6 +253,15 @@ class ExecutionService:
         
         # Require broker service for live trades
         if self._broker is None:
+            logger.debug(
+                "Live trade confirmation failed: no broker",
+                extra={
+                    "execution_data": {
+                        "session_id": session_id,
+                        "error": "NO_BROKER",
+                    }
+                }
+            )
             raise ExecutionError(
                 "Broker service not configured for live trades.",
                 code="NO_BROKER",
@@ -209,12 +273,37 @@ class ExecutionService:
         # Get the effective order
         order = session.get_effective_order()
         
+        logger.debug(
+            "Placing order with broker",
+            extra={
+                "execution_data": {
+                    "session_id": session_id,
+                    "epic": order.epic,
+                    "direction": order.direction.value if hasattr(order.direction, 'value') else str(order.direction),
+                    "size": float(order.size),
+                    "stop_loss": float(order.stop_loss) if order.stop_loss else None,
+                    "take_profit": float(order.take_profit) if order.take_profit else None,
+                }
+            }
+        )
+        
         # Place the order with the broker
         try:
             result = self._broker.place_order(order)
         except BrokerError as e:
             # Revert state on error
             session.state = ExecutionState.WAITING_FOR_USER
+            logger.debug(
+                "Broker error during order placement",
+                extra={
+                    "execution_data": {
+                        "session_id": session_id,
+                        "error": "BROKER_ERROR",
+                        "error_message": str(e),
+                        "error_code": e.code if hasattr(e, 'code') else None,
+                    }
+                }
+            )
             raise ExecutionError(
                 f"Broker error: {str(e)}",
                 code=e.code if hasattr(e, 'code') else "BROKER_ERROR",
@@ -224,6 +313,17 @@ class ExecutionService:
         if not result.success:
             # Revert state on failure
             session.state = ExecutionState.WAITING_FOR_USER
+            logger.debug(
+                "Order rejected by broker",
+                extra={
+                    "execution_data": {
+                        "session_id": session_id,
+                        "error": "ORDER_REJECTED",
+                        "reason": result.reason,
+                        "deal_reference": result.deal_reference,
+                    }
+                }
+            )
             raise ExecutionError(
                 f"Order rejected: {result.reason}",
                 code="ORDER_REJECTED",
@@ -265,6 +365,25 @@ class ExecutionService:
         # Persist to Weaviate
         self._weaviate.store_trade(trade)
         
+        logger.debug(
+            "Live trade executed successfully",
+            extra={
+                "execution_data": {
+                    "session_id": session_id,
+                    "trade_id": trade_id,
+                    "setup_id": session.setup_id,
+                    "epic": order.epic,
+                    "direction": trade.direction.value if hasattr(trade.direction, 'value') else str(trade.direction),
+                    "size": float(order.size),
+                    "entry_price": float(entry_price),
+                    "stop_loss": float(order.stop_loss) if order.stop_loss else None,
+                    "take_profit": float(order.take_profit) if order.take_profit else None,
+                    "broker_deal_id": result.deal_id,
+                    "status": "OPEN",
+                }
+            }
+        )
+        
         return trade
 
     def confirm_shadow_trade(self, session_id: str) -> ShadowTrade:
@@ -285,8 +404,29 @@ class ExecutionService:
         """
         session = self._get_session(session_id)
         
+        logger.debug(
+            "Shadow trade confirmation started",
+            extra={
+                "execution_data": {
+                    "session_id": session_id,
+                    "setup_id": session.setup_id,
+                    "current_state": session.state.value,
+                }
+            }
+        )
+        
         # Validate state
         if not session.state.allows_user_action():
+            logger.debug(
+                "Shadow trade confirmation failed: invalid state",
+                extra={
+                    "execution_data": {
+                        "session_id": session_id,
+                        "current_state": session.state.value,
+                        "error": "INVALID_STATE",
+                    }
+                }
+            )
             raise ExecutionError(
                 f"Cannot create shadow trade: session is in state {session.state.value}. "
                 f"Expected WAITING_FOR_USER or SHADOW_ONLY.",
@@ -337,6 +477,26 @@ class ExecutionService:
         # Persist to Weaviate
         self._weaviate.store_shadow_trade(shadow_trade)
         
+        logger.debug(
+            "Shadow trade created successfully",
+            extra={
+                "execution_data": {
+                    "session_id": session_id,
+                    "trade_id": trade_id,
+                    "setup_id": session.setup_id,
+                    "epic": order.epic,
+                    "direction": shadow_trade.direction.value if hasattr(shadow_trade.direction, 'value') else str(shadow_trade.direction),
+                    "size": float(order.size),
+                    "entry_price": float(entry_price),
+                    "stop_loss": float(order.stop_loss) if order.stop_loss else None,
+                    "take_profit": float(order.take_profit) if order.take_profit else None,
+                    "skip_reason": skip_reason,
+                    "is_shadow": True,
+                    "status": "OPEN",
+                }
+            }
+        )
+        
         return shadow_trade
 
     def reject_trade(self, session_id: str) -> None:
@@ -353,8 +513,29 @@ class ExecutionService:
         """
         session = self._get_session(session_id)
         
+        logger.debug(
+            "Trade rejection started",
+            extra={
+                "execution_data": {
+                    "session_id": session_id,
+                    "setup_id": session.setup_id,
+                    "current_state": session.state.value,
+                }
+            }
+        )
+        
         # Validate state
         if not session.state.allows_user_action():
+            logger.debug(
+                "Trade rejection failed: invalid state",
+                extra={
+                    "execution_data": {
+                        "session_id": session_id,
+                        "current_state": session.state.value,
+                        "error": "INVALID_STATE",
+                    }
+                }
+            )
             raise ExecutionError(
                 f"Cannot reject trade: session is in state {session.state.value}. "
                 f"Expected WAITING_FOR_USER or SHADOW_ONLY.",
@@ -366,6 +547,17 @@ class ExecutionService:
         
         # Transition to DROPPED
         session.transition_to(ExecutionState.DROPPED)
+        
+        logger.debug(
+            "Trade rejected successfully",
+            extra={
+                "execution_data": {
+                    "session_id": session_id,
+                    "setup_id": session.setup_id,
+                    "final_state": "DROPPED",
+                }
+            }
+        )
 
     def get_session(self, session_id: str) -> Optional[ExecutionSession]:
         """

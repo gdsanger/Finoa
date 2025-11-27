@@ -4,6 +4,7 @@ Strategy Engine for Fiona.
 Analyzes market data and generates SetupCandidate objects for potential trades.
 Does NOT make trading decisions or place orders.
 """
+import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -19,6 +20,9 @@ from .models import (
     SetupKind,
 )
 from .providers import MarketStateProvider
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -93,6 +97,17 @@ class StrategyEngine:
         # Get current phase
         phase = self.market_state.get_phase(ts)
         
+        logger.debug(
+            "Strategy evaluation started",
+            extra={
+                "strategy_data": {
+                    "epic": epic,
+                    "timestamp": ts.isoformat(),
+                    "phase": phase.value,
+                }
+            }
+        )
+        
         # Evaluate breakout strategies based on phase
         if phase == SessionPhase.LONDON_CORE:
             breakout_candidates = self._evaluate_asia_breakout(epic, ts, phase)
@@ -115,6 +130,36 @@ class StrategyEngine:
         
         # Filter duplicates and invalid setups
         candidates = self._filter_candidates(candidates)
+        
+        # Log evaluation result
+        if candidates:
+            for candidate in candidates:
+                logger.debug(
+                    "Setup candidate generated",
+                    extra={
+                        "strategy_data": {
+                            "epic": epic,
+                            "timestamp": ts.isoformat(),
+                            "phase": phase.value,
+                            "setup_kind": candidate.setup_kind.value,
+                            "direction": candidate.direction,
+                            "reference_price": candidate.reference_price,
+                            "setup_id": candidate.id,
+                        }
+                    }
+                )
+        else:
+            logger.debug(
+                "No setup candidates generated",
+                extra={
+                    "strategy_data": {
+                        "epic": epic,
+                        "timestamp": ts.isoformat(),
+                        "phase": phase.value,
+                        "reason": f"Phase {phase.value} is not tradeable or no valid setups found",
+                    }
+                }
+            )
         
         return candidates
 
@@ -556,6 +601,19 @@ class StrategyEngine:
         # Get Asia range
         asia_range = self.market_state.get_asia_range(epic)
         if not asia_range:
+            logger.debug(
+                "Asia breakout evaluation: no range data",
+                extra={
+                    "strategy_data": {
+                        "epic": epic,
+                        "timestamp": ts.isoformat(),
+                        "phase": phase.value,
+                        "evaluation_type": "asia_breakout",
+                        "result": "no_setup",
+                        "reason": "Asia range data not available",
+                    }
+                }
+            )
             return candidates
         
         range_high, range_low = asia_range
@@ -563,15 +621,49 @@ class StrategyEngine:
         
         # Check range size constraints
         if not self._is_valid_range(range_height, self.config.breakout.asia_range):
+            ticks = range_height / self.config.tick_size if self.config.tick_size > 0 else 0
+            logger.debug(
+                "Asia breakout evaluation: invalid range size",
+                extra={
+                    "strategy_data": {
+                        "epic": epic,
+                        "timestamp": ts.isoformat(),
+                        "phase": phase.value,
+                        "evaluation_type": "asia_breakout",
+                        "result": "no_setup",
+                        "reason": "Range size out of valid bounds",
+                        "range_high": range_high,
+                        "range_low": range_low,
+                        "range_height": range_height,
+                        "range_ticks": ticks,
+                        "min_ticks": self.config.breakout.asia_range.min_range_ticks,
+                        "max_ticks": self.config.breakout.asia_range.max_range_ticks,
+                    }
+                }
+            )
             return candidates
         
         # Get recent candles
         candles = self.market_state.get_recent_candles(epic, '1m', 10)
         if not candles:
+            logger.debug(
+                "Asia breakout evaluation: no candle data",
+                extra={
+                    "strategy_data": {
+                        "epic": epic,
+                        "timestamp": ts.isoformat(),
+                        "phase": phase.value,
+                        "evaluation_type": "asia_breakout",
+                        "result": "no_setup",
+                        "reason": "No candle data available",
+                    }
+                }
+            )
             return candidates
         
         # Check for breakout
         latest_candle = candles[-1]
+        current_price = latest_candle.close
         
         # Long breakout: close above Asia high
         if latest_candle.close > range_high:
@@ -586,6 +678,42 @@ class StrategyEngine:
                     trigger_price=latest_candle.close,
                 )
                 candidates.append(candidate)
+                logger.debug(
+                    "Asia breakout evaluation: LONG setup detected",
+                    extra={
+                        "strategy_data": {
+                            "epic": epic,
+                            "timestamp": ts.isoformat(),
+                            "phase": phase.value,
+                            "evaluation_type": "asia_breakout",
+                            "result": "setup_found",
+                            "direction": "LONG",
+                            "current_price": current_price,
+                            "range_high": range_high,
+                            "range_low": range_low,
+                            "candle_body_size": latest_candle.body_size,
+                        }
+                    }
+                )
+            else:
+                logger.debug(
+                    "Asia breakout evaluation: price above high but candle invalid",
+                    extra={
+                        "strategy_data": {
+                            "epic": epic,
+                            "timestamp": ts.isoformat(),
+                            "phase": phase.value,
+                            "evaluation_type": "asia_breakout",
+                            "result": "no_setup",
+                            "reason": "Breakout candle body too small or wrong direction",
+                            "direction": "LONG",
+                            "current_price": current_price,
+                            "range_high": range_high,
+                            "candle_body_size": latest_candle.body_size,
+                            "min_body_fraction": self.config.breakout.asia_range.min_breakout_body_fraction,
+                        }
+                    }
+                )
         
         # Short breakout: close below Asia low
         if latest_candle.close < range_low:
@@ -600,6 +728,61 @@ class StrategyEngine:
                     trigger_price=latest_candle.close,
                 )
                 candidates.append(candidate)
+                logger.debug(
+                    "Asia breakout evaluation: SHORT setup detected",
+                    extra={
+                        "strategy_data": {
+                            "epic": epic,
+                            "timestamp": ts.isoformat(),
+                            "phase": phase.value,
+                            "evaluation_type": "asia_breakout",
+                            "result": "setup_found",
+                            "direction": "SHORT",
+                            "current_price": current_price,
+                            "range_high": range_high,
+                            "range_low": range_low,
+                            "candle_body_size": latest_candle.body_size,
+                        }
+                    }
+                )
+            else:
+                logger.debug(
+                    "Asia breakout evaluation: price below low but candle invalid",
+                    extra={
+                        "strategy_data": {
+                            "epic": epic,
+                            "timestamp": ts.isoformat(),
+                            "phase": phase.value,
+                            "evaluation_type": "asia_breakout",
+                            "result": "no_setup",
+                            "reason": "Breakout candle body too small or wrong direction",
+                            "direction": "SHORT",
+                            "current_price": current_price,
+                            "range_low": range_low,
+                            "candle_body_size": latest_candle.body_size,
+                            "min_body_fraction": self.config.breakout.asia_range.min_breakout_body_fraction,
+                        }
+                    }
+                )
+        
+        # Price within range
+        if range_low <= latest_candle.close <= range_high:
+            logger.debug(
+                "Asia breakout evaluation: price within range",
+                extra={
+                    "strategy_data": {
+                        "epic": epic,
+                        "timestamp": ts.isoformat(),
+                        "phase": phase.value,
+                        "evaluation_type": "asia_breakout",
+                        "result": "no_setup",
+                        "reason": "Price within range bounds",
+                        "current_price": current_price,
+                        "range_high": range_high,
+                        "range_low": range_low,
+                    }
+                }
+            )
         
         return candidates
 
@@ -625,6 +808,19 @@ class StrategyEngine:
         # Get pre-US range
         pre_us_range = self.market_state.get_pre_us_range(epic)
         if not pre_us_range:
+            logger.debug(
+                "US breakout evaluation: no range data",
+                extra={
+                    "strategy_data": {
+                        "epic": epic,
+                        "timestamp": ts.isoformat(),
+                        "phase": phase.value,
+                        "evaluation_type": "us_breakout",
+                        "result": "no_setup",
+                        "reason": "Pre-US range data not available",
+                    }
+                }
+            )
             return candidates
         
         range_high, range_low = pre_us_range
@@ -632,15 +828,49 @@ class StrategyEngine:
         
         # Check range size constraints
         if not self._is_valid_range(range_height, self.config.breakout.us_core):
+            ticks = range_height / self.config.tick_size if self.config.tick_size > 0 else 0
+            logger.debug(
+                "US breakout evaluation: invalid range size",
+                extra={
+                    "strategy_data": {
+                        "epic": epic,
+                        "timestamp": ts.isoformat(),
+                        "phase": phase.value,
+                        "evaluation_type": "us_breakout",
+                        "result": "no_setup",
+                        "reason": "Range size out of valid bounds",
+                        "range_high": range_high,
+                        "range_low": range_low,
+                        "range_height": range_height,
+                        "range_ticks": ticks,
+                        "min_ticks": self.config.breakout.us_core.min_range_ticks,
+                        "max_ticks": self.config.breakout.us_core.max_range_ticks,
+                    }
+                }
+            )
             return candidates
         
         # Get recent candles
         candles = self.market_state.get_recent_candles(epic, '1m', 10)
         if not candles:
+            logger.debug(
+                "US breakout evaluation: no candle data",
+                extra={
+                    "strategy_data": {
+                        "epic": epic,
+                        "timestamp": ts.isoformat(),
+                        "phase": phase.value,
+                        "evaluation_type": "us_breakout",
+                        "result": "no_setup",
+                        "reason": "No candle data available",
+                    }
+                }
+            )
             return candidates
         
         # Check for breakout
         latest_candle = candles[-1]
+        current_price = latest_candle.close
         
         # Long breakout: close above range high
         if latest_candle.close > range_high:
@@ -655,6 +885,42 @@ class StrategyEngine:
                     trigger_price=latest_candle.close,
                 )
                 candidates.append(candidate)
+                logger.debug(
+                    "US breakout evaluation: LONG setup detected",
+                    extra={
+                        "strategy_data": {
+                            "epic": epic,
+                            "timestamp": ts.isoformat(),
+                            "phase": phase.value,
+                            "evaluation_type": "us_breakout",
+                            "result": "setup_found",
+                            "direction": "LONG",
+                            "current_price": current_price,
+                            "range_high": range_high,
+                            "range_low": range_low,
+                            "candle_body_size": latest_candle.body_size,
+                        }
+                    }
+                )
+            else:
+                logger.debug(
+                    "US breakout evaluation: price above high but candle invalid",
+                    extra={
+                        "strategy_data": {
+                            "epic": epic,
+                            "timestamp": ts.isoformat(),
+                            "phase": phase.value,
+                            "evaluation_type": "us_breakout",
+                            "result": "no_setup",
+                            "reason": "Breakout candle body too small or wrong direction",
+                            "direction": "LONG",
+                            "current_price": current_price,
+                            "range_high": range_high,
+                            "candle_body_size": latest_candle.body_size,
+                            "min_body_fraction": self.config.breakout.us_core.min_breakout_body_fraction,
+                        }
+                    }
+                )
         
         # Short breakout: close below range low
         if latest_candle.close < range_low:
@@ -669,6 +935,61 @@ class StrategyEngine:
                     trigger_price=latest_candle.close,
                 )
                 candidates.append(candidate)
+                logger.debug(
+                    "US breakout evaluation: SHORT setup detected",
+                    extra={
+                        "strategy_data": {
+                            "epic": epic,
+                            "timestamp": ts.isoformat(),
+                            "phase": phase.value,
+                            "evaluation_type": "us_breakout",
+                            "result": "setup_found",
+                            "direction": "SHORT",
+                            "current_price": current_price,
+                            "range_high": range_high,
+                            "range_low": range_low,
+                            "candle_body_size": latest_candle.body_size,
+                        }
+                    }
+                )
+            else:
+                logger.debug(
+                    "US breakout evaluation: price below low but candle invalid",
+                    extra={
+                        "strategy_data": {
+                            "epic": epic,
+                            "timestamp": ts.isoformat(),
+                            "phase": phase.value,
+                            "evaluation_type": "us_breakout",
+                            "result": "no_setup",
+                            "reason": "Breakout candle body too small or wrong direction",
+                            "direction": "SHORT",
+                            "current_price": current_price,
+                            "range_low": range_low,
+                            "candle_body_size": latest_candle.body_size,
+                            "min_body_fraction": self.config.breakout.us_core.min_breakout_body_fraction,
+                        }
+                    }
+                )
+        
+        # Price within range
+        if range_low <= latest_candle.close <= range_high:
+            logger.debug(
+                "US breakout evaluation: price within range",
+                extra={
+                    "strategy_data": {
+                        "epic": epic,
+                        "timestamp": ts.isoformat(),
+                        "phase": phase.value,
+                        "evaluation_type": "us_breakout",
+                        "result": "no_setup",
+                        "reason": "Price within range bounds",
+                        "current_price": current_price,
+                        "range_high": range_high,
+                        "range_low": range_low,
+                    }
+                }
+            )
         
         return candidates
 
@@ -694,6 +1015,19 @@ class StrategyEngine:
         # Get EIA timestamp
         eia_timestamp = self.market_state.get_eia_timestamp()
         if not eia_timestamp:
+            logger.debug(
+                "EIA evaluation: no EIA timestamp",
+                extra={
+                    "strategy_data": {
+                        "epic": epic,
+                        "timestamp": ts.isoformat(),
+                        "phase": phase.value,
+                        "evaluation_type": "eia",
+                        "result": "no_setup",
+                        "reason": "EIA timestamp not configured",
+                    }
+                }
+            )
             return candidates
         
         # Get candles since EIA release
@@ -705,6 +1039,21 @@ class StrategyEngine:
             self.config.eia.impulse_window_minutes + 5
         )
         if not candles or len(candles) < self.config.eia.impulse_window_minutes:
+            logger.debug(
+                "EIA evaluation: insufficient candle data",
+                extra={
+                    "strategy_data": {
+                        "epic": epic,
+                        "timestamp": ts.isoformat(),
+                        "phase": phase.value,
+                        "evaluation_type": "eia",
+                        "result": "no_setup",
+                        "reason": "Insufficient candle data for EIA analysis",
+                        "candles_available": len(candles) if candles else 0,
+                        "candles_required": self.config.eia.impulse_window_minutes,
+                    }
+                }
+            )
             return candidates
         
         # Analyze impulse from the candles
@@ -712,9 +1061,42 @@ class StrategyEngine:
         impulse_direction, impulse_high, impulse_low = self._analyze_impulse(impulse_candles)
         
         if not impulse_direction:
+            logger.debug(
+                "EIA evaluation: no clear impulse detected",
+                extra={
+                    "strategy_data": {
+                        "epic": epic,
+                        "timestamp": ts.isoformat(),
+                        "phase": phase.value,
+                        "evaluation_type": "eia",
+                        "result": "no_setup",
+                        "reason": "No clear impulse movement detected after EIA",
+                        "eia_timestamp": eia_timestamp.isoformat(),
+                        "impulse_high": impulse_high,
+                        "impulse_low": impulse_low,
+                    }
+                }
+            )
             return candidates
         
         impulse_range = impulse_high - impulse_low
+        
+        logger.debug(
+            "EIA evaluation: impulse analyzed",
+            extra={
+                "strategy_data": {
+                    "epic": epic,
+                    "timestamp": ts.isoformat(),
+                    "phase": phase.value,
+                    "evaluation_type": "eia",
+                    "eia_timestamp": eia_timestamp.isoformat(),
+                    "impulse_direction": impulse_direction,
+                    "impulse_high": impulse_high,
+                    "impulse_low": impulse_low,
+                    "impulse_range": impulse_range,
+                }
+            }
+        )
         
         # Check for EIA Reversion
         reversion_candidate = self._check_eia_reversion(
@@ -730,6 +1112,35 @@ class StrategyEngine:
         )
         if reversion_candidate:
             candidates.append(reversion_candidate)
+            logger.debug(
+                "EIA evaluation: reversion setup detected",
+                extra={
+                    "strategy_data": {
+                        "epic": epic,
+                        "timestamp": ts.isoformat(),
+                        "phase": phase.value,
+                        "evaluation_type": "eia_reversion",
+                        "result": "setup_found",
+                        "direction": reversion_candidate.direction,
+                        "impulse_direction": impulse_direction,
+                    }
+                }
+            )
+        else:
+            logger.debug(
+                "EIA evaluation: no reversion pattern",
+                extra={
+                    "strategy_data": {
+                        "epic": epic,
+                        "timestamp": ts.isoformat(),
+                        "phase": phase.value,
+                        "evaluation_type": "eia_reversion",
+                        "result": "no_setup",
+                        "reason": "No significant reversion detected",
+                        "impulse_direction": impulse_direction,
+                    }
+                }
+            )
         
         # Check for EIA Trend Day
         trendday_candidate = self._check_eia_trendday(
@@ -744,6 +1155,35 @@ class StrategyEngine:
         )
         if trendday_candidate:
             candidates.append(trendday_candidate)
+            logger.debug(
+                "EIA evaluation: trend day setup detected",
+                extra={
+                    "strategy_data": {
+                        "epic": epic,
+                        "timestamp": ts.isoformat(),
+                        "phase": phase.value,
+                        "evaluation_type": "eia_trendday",
+                        "result": "setup_found",
+                        "direction": trendday_candidate.direction,
+                        "impulse_direction": impulse_direction,
+                    }
+                }
+            )
+        else:
+            logger.debug(
+                "EIA evaluation: no trend day pattern",
+                extra={
+                    "strategy_data": {
+                        "epic": epic,
+                        "timestamp": ts.isoformat(),
+                        "phase": phase.value,
+                        "evaluation_type": "eia_trendday",
+                        "result": "no_setup",
+                        "reason": "No trend continuation pattern detected",
+                        "impulse_direction": impulse_direction,
+                    }
+                }
+            )
         
         return candidates
 

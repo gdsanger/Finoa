@@ -875,3 +875,157 @@ class RiskEngineIntegrationTest(TestCase):
         self.assertIn("Weekend", result.reason)
         # All violations should be tracked
         self.assertGreater(len(result.violations), 1)
+
+
+class RiskEngineDebugLoggingTest(TestCase):
+    """Tests for Risk Engine debug logging."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.config = RiskConfig()
+        self.engine = RiskEngine(self.config)
+        
+        self.account = AccountState(
+            account_id="TEST123",
+            account_name="Test Account",
+            balance=Decimal("10000.00"),
+            available=Decimal("8000.00"),
+            equity=Decimal("10000.00"),
+            margin_used=Decimal("0.00"),
+            margin_available=Decimal("10000.00"),
+            currency="EUR",
+        )
+        
+        self.setup = SetupCandidate(
+            id="setup-123",
+            created_at=datetime.now(timezone.utc),
+            epic="CC.D.CL.UNC.IP",
+            setup_kind=SetupKind.BREAKOUT,
+            phase=SessionPhase.LONDON_CORE,
+            reference_price=75.50,
+            direction="LONG",
+            breakout=BreakoutContext(
+                range_high=75.50,
+                range_low=74.50,
+                range_height=1.00,
+                trigger_price=75.55,
+                direction="LONG",
+            ),
+        )
+        
+        self.order = OrderRequest(
+            epic="CC.D.CL.UNC.IP",
+            direction=OrderDirection.BUY,
+            size=Decimal("1.0"),
+            order_type=OrderType.MARKET,
+            stop_loss=Decimal("75.40"),
+            take_profit=Decimal("76.50"),
+        )
+
+    def test_evaluate_logs_debug_on_allowed(self):
+        """Test that debug logging is called when trade is allowed."""
+        from unittest.mock import patch
+        
+        now = datetime(2025, 1, 15, 10, 0, tzinfo=timezone.utc)
+        
+        with patch('core.services.risk.risk_engine.logger') as mock_logger:
+            result = self.engine.evaluate(
+                account=self.account,
+                positions=[],
+                setup=self.setup,
+                order=self.order,
+                now=now,
+            )
+            
+            # Should have debug calls
+            self.assertTrue(mock_logger.debug.called)
+            
+            # Check that evaluation result is logged
+            calls = [str(c) for c in mock_logger.debug.call_args_list]
+            self.assertTrue(any('risk' in str(c).lower() for c in calls))
+
+    def test_evaluate_logs_debug_on_denied(self):
+        """Test that debug logging is called when trade is denied."""
+        from unittest.mock import patch
+        
+        now = datetime(2025, 1, 18, 10, 0, tzinfo=timezone.utc)  # Saturday
+        
+        with patch('core.services.risk.risk_engine.logger') as mock_logger:
+            result = self.engine.evaluate(
+                account=self.account,
+                positions=[],
+                setup=self.setup,
+                order=self.order,
+                now=now,
+            )
+            
+            # Should have debug calls
+            self.assertTrue(mock_logger.debug.called)
+            
+            # Trade should be denied
+            self.assertFalse(result.allowed)
+            
+            # Check that denial is logged
+            calls = [str(c) for c in mock_logger.debug.call_args_list]
+            self.assertTrue(any('denied' in str(c).lower() or 'risk' in str(c).lower() for c in calls))
+
+    def test_evaluate_logs_all_violations(self):
+        """Test that all violations are logged."""
+        from unittest.mock import patch
+        
+        now = datetime(2025, 1, 18, 10, 0, tzinfo=timezone.utc)  # Saturday
+        
+        order_no_sl = OrderRequest(
+            epic="CC.D.CL.UNC.IP",
+            direction=OrderDirection.BUY,
+            size=Decimal("1.0"),
+            order_type=OrderType.MARKET,
+            stop_loss=None,  # Missing SL
+            take_profit=Decimal("76.50"),
+        )
+        
+        with patch('core.services.risk.risk_engine.logger') as mock_logger:
+            result = self.engine.evaluate(
+                account=self.account,
+                positions=[],
+                setup=self.setup,
+                order=order_no_sl,
+                now=now,
+                daily_pnl=Decimal("-500"),
+            )
+            
+            # Should have multiple debug calls for multiple violations
+            self.assertTrue(mock_logger.debug.called)
+            self.assertGreater(mock_logger.debug.call_count, 1)
+
+    def test_evaluate_logs_adjusted_order(self):
+        """Test that position size adjustment is logged."""
+        from unittest.mock import patch
+        
+        now = datetime(2025, 1, 15, 10, 0, tzinfo=timezone.utc)
+        
+        # Large order that needs adjustment
+        large_order = OrderRequest(
+            epic="CC.D.CL.UNC.IP",
+            direction=OrderDirection.BUY,
+            size=Decimal("2.0"),
+            order_type=OrderType.MARKET,
+            stop_loss=Decimal("74.50"),  # 100 ticks
+            take_profit=Decimal("77.00"),
+        )
+        
+        with patch('core.services.risk.risk_engine.logger') as mock_logger:
+            result = self.engine.evaluate(
+                account=self.account,
+                positions=[],
+                setup=self.setup,
+                order=large_order,
+                now=now,
+            )
+            
+            # Should have debug calls
+            self.assertTrue(mock_logger.debug.called)
+            
+            # Check that adjustment is logged
+            calls = [str(c) for c in mock_logger.debug.call_args_list]
+            self.assertTrue(any('adjusted' in str(c).lower() or 'reduced' in str(c).lower() for c in calls))
