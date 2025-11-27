@@ -1086,8 +1086,6 @@ class AssetPriceStatus(models.Model):
         Returns:
             AssetPriceStatus instance
         """
-        from decimal import Decimal
-        
         if isinstance(asset, int):
             asset_id = asset
         else:
