@@ -252,6 +252,58 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         """
         return self._candle_counts.get(epic, 0)
     
+    def _get_range_metrics(self, high: float, low: float) -> tuple[float, float, int]:
+        """
+        Calculate range metrics for logging and persistence.
+        
+        Args:
+            high: Range high price.
+            low: Range low price.
+            
+        Returns:
+            Tuple of (range_height, tick_size, height_ticks)
+        """
+        range_height = high - low
+        tick_size = 0.01  # Default
+        if self._current_asset:
+            tick_size = float(self._current_asset.tick_size)
+        
+        height_ticks = int(range_height / tick_size) if tick_size > 0 else 0
+        return range_height, tick_size, height_ticks
+    
+    def _get_asset_name(self) -> str:
+        """Get the current asset name or 'N/A' if no asset is set."""
+        return self._current_asset.symbol if self._current_asset else 'N/A'
+    
+    def _log_range_build(
+        self,
+        phase: str,
+        epic: str,
+        high: float,
+        low: float,
+        height_ticks: int,
+        tick_size: float,
+        candle_count: int,
+    ) -> None:
+        """
+        Log range build details (Acceptance Criteria #1).
+        
+        Args:
+            phase: Phase name (e.g., 'ASIA_RANGE')
+            epic: Market identifier
+            high: Range high price
+            low: Range low price
+            height_ticks: Range height in ticks
+            tick_size: Tick size used
+            candle_count: Number of candles in range
+        """
+        asset_name = self._get_asset_name()
+        logger.info(
+            f"Range built: asset={asset_name}, phase={phase}, epic={epic}, "
+            f"high={high:.4f}, low={low:.4f}, ticks={height_ticks}, "
+            f"tick_size={tick_size}, candles={candle_count}"
+        )
+    
     def set_session_times(self, session_times: SessionTimesConfig) -> None:
         """
         Update the session time configuration.
@@ -391,12 +443,16 @@ class IGMarketStateProvider(BaseMarketStateProvider):
             # Update cache
             self._candle_cache[cache_key] = candles[-50:]  # Keep last 50
             
-            # Track candle count
-            self._candle_counts[epic] = self._candle_counts.get(epic, 0) + 1
+            # Track candle count - increment by actual number of candles returned
+            self._candle_counts[epic] = self._candle_counts.get(epic, 0) + len(candles)
             
             # Log candle fetch details (Acceptance Criteria #1)
-            first_ts = candles[0].timestamp.isoformat() if candles else 'N/A'
-            last_ts = candles[-1].timestamp.isoformat() if candles else 'N/A'
+            if len(candles) > 0:
+                first_ts = candles[0].timestamp.isoformat()
+                last_ts = candles[-1].timestamp.isoformat()
+            else:
+                first_ts = 'N/A'
+                last_ts = 'N/A'
             logger.info(
                 f"Candle fetch: epic={epic}, timeframe={timeframe}, "
                 f"count={len(candles)}, first={first_ts}, last={last_ts}"
@@ -508,21 +564,9 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         """
         self._asia_range_cache[epic] = (high, low)
         
-        # Calculate range metrics
-        range_height = high - low
-        tick_size = 0.01  # Default
-        if self._current_asset:
-            tick_size = float(self._current_asset.tick_size)
-        
-        height_ticks = int(range_height / tick_size) if tick_size > 0 else 0
-        
-        # Detailed logging (Acceptance Criteria #1)
-        asset_name = self._current_asset.symbol if self._current_asset else 'N/A'
-        logger.info(
-            f"Range built: asset={asset_name}, phase=ASIA_RANGE, epic={epic}, "
-            f"high={high:.4f}, low={low:.4f}, ticks={height_ticks}, "
-            f"tick_size={tick_size}, candles={candle_count}"
-        )
+        # Calculate range metrics and log
+        _, tick_size, height_ticks = self._get_range_metrics(high, low)
+        self._log_range_build('ASIA_RANGE', epic, high, low, height_ticks, tick_size, candle_count)
         
         # Persist to database if asset is set
         self._persist_range(
@@ -583,21 +627,9 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         """
         self._pre_us_range_cache[epic] = (high, low)
         
-        # Calculate range metrics
-        range_height = high - low
-        tick_size = 0.01  # Default
-        if self._current_asset:
-            tick_size = float(self._current_asset.tick_size)
-        
-        height_ticks = int(range_height / tick_size) if tick_size > 0 else 0
-        
-        # Detailed logging (Acceptance Criteria #1)
-        asset_name = self._current_asset.symbol if self._current_asset else 'N/A'
-        logger.info(
-            f"Range built: asset={asset_name}, phase=PRE_US_RANGE, epic={epic}, "
-            f"high={high:.4f}, low={low:.4f}, ticks={height_ticks}, "
-            f"tick_size={tick_size}, candles={candle_count}"
-        )
+        # Calculate range metrics and log
+        _, tick_size, height_ticks = self._get_range_metrics(high, low)
+        self._log_range_build('PRE_US_RANGE', epic, high, low, height_ticks, tick_size, candle_count)
         
         # Persist to database if asset is set
         self._persist_range(
@@ -658,21 +690,9 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         """
         self._london_core_range_cache[epic] = (high, low)
         
-        # Calculate range metrics
-        range_height = high - low
-        tick_size = 0.01  # Default
-        if self._current_asset:
-            tick_size = float(self._current_asset.tick_size)
-        
-        height_ticks = int(range_height / tick_size) if tick_size > 0 else 0
-        
-        # Detailed logging (Acceptance Criteria #1)
-        asset_name = self._current_asset.symbol if self._current_asset else 'N/A'
-        logger.info(
-            f"Range built: asset={asset_name}, phase=LONDON_CORE, epic={epic}, "
-            f"high={high:.4f}, low={low:.4f}, ticks={height_ticks}, "
-            f"tick_size={tick_size}, candles={candle_count}"
-        )
+        # Calculate range metrics and log
+        _, tick_size, height_ticks = self._get_range_metrics(high, low)
+        self._log_range_build('LONDON_CORE', epic, high, low, height_ticks, tick_size, candle_count)
         
         # Persist to database if asset is set
         self._persist_range(

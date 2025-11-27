@@ -655,7 +655,11 @@ class Command(BaseCommand):
         if not is_range_build:
             return
         
-        # Get high/low from price (daily high/low updated by broker)
+        # Get high/low from price object.
+        # Note: IG's price object provides session-level high/low that gets updated
+        # throughout the trading day. During range-building phases, this represents
+        # the current high/low since market open. The ranges are captured incrementally
+        # as the worker runs, with each update potentially recording a new high/low.
         if current_price.high is None or current_price.low is None:
             logger.debug(f"No high/low data for {epic}, skipping range build")
             return
