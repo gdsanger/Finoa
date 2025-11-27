@@ -1861,6 +1861,66 @@ class BreakoutRangeAPITest(TestCase):
         self.assertTrue(data['success'])
         self.assertEqual(data['range_type'], 'us_core_trading')
         self.assertEqual(data['data']['range_type'], 'US Core Trading')
+    
+    def test_api_breakout_range_diagnostics_uses_asset_specific_price(self):
+        """Test that breakout range diagnostics uses asset-specific price when available.
+        
+        This tests the fix for the issue where the "Aktueller Preis" tile in the 
+        Breakout Range Diagnose card was always showing the same price regardless
+        of which asset was selected.
+        """
+        from trading.models import AssetPriceStatus
+        
+        now = timezone.now()
+        
+        # Create worker status with one price (e.g., for WTI)
+        WorkerStatus.objects.create(
+            last_run_at=now,
+            phase='LONDON_CORE',
+            epic='CC.D.CL.UNC.IP',  # WTI
+            bid_price=Decimal('75.50'),
+            ask_price=Decimal('75.55'),
+            setup_count=0,
+            worker_interval=60,
+        )
+        
+        # Create an asset with a different price status
+        asset = TradingAsset.objects.create(
+            name='Gold',
+            symbol='GOLD',
+            epic='CC.D.GOLD.UNC.IP',
+            tick_size=Decimal('0.10'),
+            is_active=True,
+        )
+        
+        # Create asset-specific price for Gold with significantly different price
+        AssetPriceStatus.update_price(
+            asset=asset,
+            bid_price=Decimal('2050.00'),
+            ask_price=Decimal('2050.50'),
+        )
+        
+        # Now query breakout range diagnostics for this specific asset
+        response = self.client.get(f'/fiona/api/debug/breakout-range/?asset_id={asset.id}')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        
+        # The current price in diagnostics should be the asset-specific price (Gold)
+        # not the worker status price (WTI)
+        current_market = data['data'].get('current_market', {})
+        current_price = current_market.get('price')
+        
+        # The expected price is the midpoint of Gold's bid/ask: (2050.00 + 2050.50) / 2 = 2050.25
+        if current_price is not None:
+            self.assertAlmostEqual(float(current_price), 2050.25, places=2,
+                msg="Expected Gold price (~2050.25), but got a different value")
+        
+        # Also verify we're not getting the WTI price (75.525)
+        if current_price is not None:
+            self.assertNotAlmostEqual(float(current_price), 75.525, places=1,
+                msg="Price should be Gold's price, not WTI's price from worker status")
 
 
 # =============================================================================
