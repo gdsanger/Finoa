@@ -1020,6 +1020,103 @@ class WorkerStatus(models.Model):
         )
 
 
+class AssetPriceStatus(models.Model):
+    """
+    Stores the current price status for each trading asset.
+    
+    One record per asset, updated by the worker on each cycle.
+    This allows multi-asset price tracking for the Price vs Range panel.
+    """
+    
+    # Relationship to asset (one-to-one)
+    asset = models.OneToOneField(
+        TradingAsset,
+        on_delete=models.CASCADE,
+        related_name='price_status',
+        help_text='Asset this price status belongs to'
+    )
+    
+    # Price information
+    bid_price = models.DecimalField(
+        max_digits=12,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        help_text='Current bid price'
+    )
+    ask_price = models.DecimalField(
+        max_digits=12,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        help_text='Current ask price'
+    )
+    spread = models.DecimalField(
+        max_digits=12,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        help_text='Current spread'
+    )
+    
+    # Timestamp
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        help_text='Last update timestamp'
+    )
+    
+    class Meta:
+        verbose_name = 'Asset Price Status'
+        verbose_name_plural = 'Asset Price Statuses'
+    
+    def __str__(self):
+        return f"{self.asset.symbol}: {self.bid_price}/{self.ask_price}"
+    
+    @classmethod
+    def update_price(cls, asset, bid_price=None, ask_price=None, spread=None):
+        """
+        Update or create the price status for an asset.
+        
+        Args:
+            asset: TradingAsset instance or asset ID
+            bid_price: Current bid price
+            ask_price: Current ask price
+            spread: Current spread
+            
+        Returns:
+            AssetPriceStatus instance
+        """
+        if isinstance(asset, int):
+            asset_id = asset
+        else:
+            asset_id = asset.id
+        
+        price_status, created = cls.objects.update_or_create(
+            asset_id=asset_id,
+            defaults={
+                'bid_price': Decimal(str(bid_price)) if bid_price is not None else None,
+                'ask_price': Decimal(str(ask_price)) if ask_price is not None else None,
+                'spread': Decimal(str(spread)) if spread is not None else None,
+            }
+        )
+        return price_status
+    
+    @classmethod
+    def get_for_asset(cls, asset):
+        """
+        Get the price status for an asset.
+        
+        Args:
+            asset: TradingAsset instance or asset ID
+            
+        Returns:
+            AssetPriceStatus instance or None
+        """
+        if isinstance(asset, int):
+            return cls.objects.filter(asset_id=asset).first()
+        return cls.objects.filter(asset=asset).first()
+
+
 class BreakoutRange(models.Model):
     """
     Persistent storage for breakout range snapshots per asset and per phase.

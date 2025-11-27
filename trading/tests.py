@@ -3069,10 +3069,38 @@ class PriceRangeStatusServiceTest(TestCase):
         self.assertEqual(status.asset, 'OIL')
         self.assertEqual(status.phase, 'ASIA_RANGE')
     
+    def test_compute_price_range_status_no_price(self):
+        """Test status when range exists but no price data available."""
+        from trading.services import compute_price_range_status
+        from trading.models import BreakoutRange
+        
+        # Create range data but no price status
+        now = timezone.now()
+        BreakoutRange.objects.create(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time=now - timedelta(hours=8),
+            end_time=now,
+            high=Decimal('75.50'),
+            low=Decimal('74.50'),
+            height_ticks=100,
+        )
+        
+        status = compute_price_range_status(self.asset, 'ASIA_RANGE')
+        
+        self.assertEqual(status.status_code, 'NO_PRICE')
+        self.assertEqual(status.status_text, 'NO PRICE DATA')
+        # Range data should still be populated
+        self.assertEqual(status.range_high, Decimal('75.50'))
+        self.assertEqual(status.range_low, Decimal('74.50'))
+        # But price data should be None
+        self.assertIsNone(status.current_bid)
+        self.assertIsNone(status.current_ask)
+    
     def test_compute_price_range_status_inside_range(self):
         """Test status when price is inside range."""
         from trading.services import compute_price_range_status
-        from trading.models import BreakoutRange
+        from trading.models import BreakoutRange, AssetPriceStatus
         
         # Create range data
         now = timezone.now()
@@ -3087,11 +3115,9 @@ class PriceRangeStatusServiceTest(TestCase):
             height_points=Decimal('1.00'),
         )
         
-        # Create worker status with price inside range
-        WorkerStatus.objects.create(
-            last_run_at=now,
-            phase='LONDON_CORE',
-            epic='CC.D.CL.UNC.IP',
+        # Create asset price status with price inside range
+        AssetPriceStatus.objects.create(
+            asset=self.asset,
             bid_price=Decimal('75.00'),
             ask_price=Decimal('75.05'),
         )
@@ -3106,7 +3132,7 @@ class PriceRangeStatusServiceTest(TestCase):
     def test_compute_price_range_status_near_breakout_long(self):
         """Test status when price is near breakout (long side)."""
         from trading.services import compute_price_range_status
-        from trading.models import BreakoutRange
+        from trading.models import BreakoutRange, AssetPriceStatus
         
         now = timezone.now()
         BreakoutRange.objects.create(
@@ -3120,10 +3146,8 @@ class PriceRangeStatusServiceTest(TestCase):
         )
         
         # Price very close to range high (within min_breakout_distance)
-        WorkerStatus.objects.create(
-            last_run_at=now,
-            phase='LONDON_CORE',
-            epic='CC.D.CL.UNC.IP',
+        AssetPriceStatus.objects.create(
+            asset=self.asset,
             bid_price=Decimal('75.49'),  # 1 tick from high
             ask_price=Decimal('75.50'),
         )
@@ -3135,7 +3159,7 @@ class PriceRangeStatusServiceTest(TestCase):
     def test_compute_price_range_status_breakout_long(self):
         """Test status when price has broken out long."""
         from trading.services import compute_price_range_status
-        from trading.models import BreakoutRange
+        from trading.models import BreakoutRange, AssetPriceStatus
         
         now = timezone.now()
         BreakoutRange.objects.create(
@@ -3149,10 +3173,8 @@ class PriceRangeStatusServiceTest(TestCase):
         )
         
         # Price clearly above range high + min_breakout_distance
-        WorkerStatus.objects.create(
-            last_run_at=now,
-            phase='LONDON_CORE',
-            epic='CC.D.CL.UNC.IP',
+        AssetPriceStatus.objects.create(
+            asset=self.asset,
             bid_price=Decimal('75.60'),  # 10 ticks above high
             ask_price=Decimal('75.65'),
         )
