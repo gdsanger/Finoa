@@ -14,7 +14,7 @@ import logging
 import signal
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 from typing import Optional
 
@@ -797,8 +797,6 @@ class Command(BaseCommand):
             range_built_phase: Phase for which a range was built (e.g., 'asia', 'london', 'pre_us', 'us_core')
         """
         try:
-            from datetime import timedelta
-            
             # Use 1-hour windows for diagnostics aggregation
             window_start = now.replace(minute=0, second=0, microsecond=0)
             window_end = window_start + timedelta(hours=1)
@@ -811,7 +809,8 @@ class Command(BaseCommand):
             )
             
             # Update current phase and trading mode
-            diagnostics.current_phase = phase.value if hasattr(phase, 'value') else str(phase)
+            # Phase is expected to be a SessionPhase enum, extract value
+            diagnostics.current_phase = phase.value
             diagnostics.trading_mode = asset.trading_mode
             diagnostics.last_cycle_at = now
             
@@ -820,15 +819,16 @@ class Command(BaseCommand):
             diagnostics.setups_generated_total += setups_found
             
             # Update range built counters if applicable
-            if range_built_phase:
-                if range_built_phase == 'asia':
-                    diagnostics.ranges_built_asia += 1
-                elif range_built_phase == 'london':
-                    diagnostics.ranges_built_london += 1
-                elif range_built_phase == 'pre_us':
-                    diagnostics.ranges_built_pre_us += 1
-                elif range_built_phase == 'us_core':
-                    diagnostics.ranges_built_us_core += 1
+            # Map phase names to field names
+            range_field_map = {
+                'asia': 'ranges_built_asia',
+                'london': 'ranges_built_london',
+                'pre_us': 'ranges_built_pre_us',
+                'us_core': 'ranges_built_us_core',
+            }
+            if range_built_phase and range_built_phase in range_field_map:
+                field_name = range_field_map[range_built_phase]
+                setattr(diagnostics, field_name, getattr(diagnostics, field_name) + 1)
             
             diagnostics.save()
             
