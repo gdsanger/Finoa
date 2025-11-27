@@ -877,6 +877,201 @@
         font-size: 0.875rem;
         text-align: center;
         padding: 1rem;
+    }
+    
+    /* =========================================================
+     * Price vs Range - Live Status Card Styles
+     * ========================================================= */
+    .price-range-status-card {
+        background-color: var(--fiona-card-dark);
+        border: 1px solid var(--fiona-border);
+        border-radius: 12px;
+        padding: 1rem 1.25rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    .price-range-status-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.75rem;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    
+    .price-range-status-header h5 {
+        margin: 0;
+        color: var(--fiona-text-light);
+        font-size: 0.875rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .price-range-phase-tabs {
+        display: flex;
+        gap: 0.25rem;
+    }
+    
+    .phase-tab-btn {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.7rem;
+        border-radius: 4px;
+        background-color: rgba(0, 0, 0, 0.3);
+        border: 1px solid var(--fiona-border);
+        color: var(--fiona-text-muted);
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .phase-tab-btn:hover {
+        background-color: rgba(0, 0, 0, 0.5);
+        color: var(--fiona-text-light);
+    }
+    
+    .phase-tab-btn.active {
+        background-color: #2563eb;
+        border-color: #2563eb;
+        color: white;
+    }
+    
+    /* Price Range Content */
+    .price-range-content {
+        padding: 0.5rem 0;
+    }
+    
+    .price-range-status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 1rem;
+    }
+    
+    .price-range-status-badge.status-inside_range {
+        background-color: rgba(40, 167, 69, 0.2);
+        color: var(--signal-long);
+        border: 1px solid var(--signal-long);
+    }
+    
+    .price-range-status-badge.status-near_breakout_long,
+    .price-range-status-badge.status-near_breakout_short {
+        background-color: rgba(255, 193, 7, 0.2);
+        color: var(--confidence-medium);
+        border: 1px solid var(--confidence-medium);
+    }
+    
+    .price-range-status-badge.status-breakout_long,
+    .price-range-status-badge.status-breakout_short {
+        background-color: rgba(220, 53, 69, 0.2);
+        color: var(--signal-short);
+        border: 1px solid var(--signal-short);
+    }
+    
+    .price-range-status-badge.status-no_range {
+        background-color: rgba(108, 117, 125, 0.2);
+        color: var(--fiona-text-muted);
+        border: 1px solid var(--fiona-border);
+    }
+    
+    /* Two-column grid for range data vs live metrics */
+    .price-range-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.5rem;
+    }
+    
+    .price-range-column {
+        background-color: rgba(0, 0, 0, 0.2);
+        border-radius: 8px;
+        padding: 0.75rem;
+    }
+    
+    .column-label {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--fiona-text-muted);
+        margin-bottom: 0.5rem;
+        padding-bottom: 0.25rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .data-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.35rem 0;
+        font-size: 0.85rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    
+    .data-row:last-child {
+        border-bottom: none;
+    }
+    
+    .data-label {
+        color: var(--fiona-text-muted);
+    }
+    
+    .data-value {
+        font-weight: 600;
+        font-family: 'Roboto Mono', monospace;
+        color: var(--fiona-text-light);
+    }
+    
+    .data-value.price-value {
+        color: #17a2b8;
+    }
+    
+    .data-value.distance-above {
+        color: var(--signal-long);
+    }
+    
+    .data-value.distance-below {
+        color: var(--signal-short);
+    }
+    
+    .data-value.phase-value {
+        color: #6c757d;
+        font-size: 0.75rem;
+    }
+    
+    /* Fallback/Error state */
+    .price-range-fallback {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        padding: 1.5rem;
+        color: var(--fiona-text-muted);
+        font-size: 0.85rem;
+    }
+    
+    .price-range-fallback i {
+        font-size: 1.1rem;
+    }
+    
+    /* Responsive for Price Range Card */
+    @media (max-width: 768px) {
+        .price-range-grid {
+            grid-template-columns: 1fr;
+            gap: 1rem;
+        }
+        
+        .price-range-status-header {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        
+        .price-range-phase-tabs {
+            flex-wrap: wrap;
+        }
+    }
+    
     .countdown-value.imminent {
         color: var(--confidence-medium);
     }
@@ -1158,6 +1353,42 @@
                 <div class="range-diagnostic-message" id="range-diagnostic-message-section">
                     <div class="label">Diagnose</div>
                     <div class="message" id="range-diagnostic-message">--</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Price vs Range - Live Status Panel -->
+        <div class="price-range-status-card" id="price-range-status">
+            <div class="price-range-status-header">
+                <h5><i class="bi bi-crosshair"></i> Price vs Range – Live Status</h5>
+                <div class="d-flex align-items-center gap-2">
+                    <!-- Asset Selector (synced with range diagnostics) -->
+                    <select id="price-range-asset-selector" class="form-select form-select-sm" style="width: auto; min-width: 120px; background-color: rgba(0, 0, 0, 0.3); border: 1px solid var(--fiona-border); color: var(--fiona-text-light); font-size: 0.75rem; padding: 0.25rem 0.5rem;" onchange="selectPriceRangeAsset(this.value)">
+                        {% for asset in active_assets %}
+                        <option value="{{ asset.id }}">{{ asset.symbol }}</option>
+                        {% empty %}
+                        <option value="">Keine Assets</option>
+                        {% endfor %}
+                    </select>
+                    <!-- Phase Tabs -->
+                    <div class="price-range-phase-tabs">
+                        <button class="phase-tab-btn active" data-phase="ASIA_RANGE" onclick="selectPriceRangePhase('ASIA_RANGE')">Asia</button>
+                        <button class="phase-tab-btn" data-phase="LONDON_CORE" onclick="selectPriceRangePhase('LONDON_CORE')">London</button>
+                        <button class="phase-tab-btn" data-phase="PRE_US_RANGE" onclick="selectPriceRangePhase('PRE_US_RANGE')">Pre-US</button>
+                        <button class="phase-tab-btn" data-phase="US_CORE_TRADING" onclick="selectPriceRangePhase('US_CORE_TRADING')">US Core</button>
+                    </div>
+                    <button class="refresh-btn" id="refresh-price-range-btn" onclick="refreshPriceRangeStatus()" title="Aktualisieren">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
+            </div>
+            <div id="price-range-status-content"
+                 hx-get="{% url 'htmx_price_range_status' %}"
+                 hx-trigger="load"
+                 hx-swap="innerHTML">
+                <div class="price-range-fallback">
+                    <i class="bi bi-hourglass-split"></i>
+                    <span>Lade Status...</span>
                 </div>
             </div>
         </div>
@@ -2201,6 +2432,106 @@
             clearInterval(rangeRefreshInterval);
             rangeRefreshInterval = null;
         }
+        if (priceRangeRefreshInterval) {
+            clearInterval(priceRangeRefreshInterval);
+            priceRangeRefreshInterval = null;
+        }
+    };
+    
+    // ============================================================================
+    // Price vs Range - Live Status
+    // ============================================================================
+    
+    let priceRangeRefreshInterval = null;
+    const PRICE_RANGE_REFRESH_INTERVAL = 30000; // 30 seconds
+    let currentPriceRangeAssetId = null;
+    let currentPriceRangePhase = 'ASIA_RANGE';
+    
+    // Initialize selected asset from the dropdown
+    function initializePriceRangeAssetSelector() {
+        const selector = document.getElementById('price-range-asset-selector');
+        if (selector && selector.options.length > 0) {
+            currentPriceRangeAssetId = selector.value;
+        }
+    }
+    
+    function selectPriceRangeAsset(assetId) {
+        currentPriceRangeAssetId = assetId;
+        // Sync with range diagnostics selector
+        const rangeDiagSelector = document.getElementById('range-asset-selector');
+        if (rangeDiagSelector) {
+            rangeDiagSelector.value = assetId;
+        }
+        // Refresh status
+        refreshPriceRangeStatus();
+    }
+    
+    function selectPriceRangePhase(phase) {
+        currentPriceRangePhase = phase;
+        
+        // Update button states
+        document.querySelectorAll('.phase-tab-btn').forEach(btn => {
+            if (btn.dataset.phase === phase) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+        
+        // Refresh status with new phase
+        refreshPriceRangeStatus();
+    }
+    
+    function setPriceRangeRefreshButtonLoading(loading) {
+        const btn = document.getElementById('refresh-price-range-btn');
+        if (!btn) return;
+        
+        if (loading) {
+            btn.classList.add('spinning');
+            btn.disabled = true;
+        } else {
+            btn.classList.remove('spinning');
+            btn.disabled = false;
+        }
+    }
+    
+    function refreshPriceRangeStatus() {
+        setPriceRangeRefreshButtonLoading(true);
+        
+        const contentEl = document.getElementById('price-range-status-content');
+        if (!contentEl) {
+            setPriceRangeRefreshButtonLoading(false);
+            return;
+        }
+        
+        // Build URL with current asset and phase
+        let url = '/fiona/htmx/price-range-status/?phase=' + currentPriceRangePhase;
+        if (currentPriceRangeAssetId) {
+            url += '&asset_id=' + currentPriceRangeAssetId;
+        }
+        
+        // Use HTMX to load the partial
+        htmx.ajax('GET', url, {
+            target: '#price-range-status-content',
+            swap: 'innerHTML'
+        }).then(function() {
+            setPriceRangeRefreshButtonLoading(false);
+        }).catch(function(error) {
+            console.error('Price range status error:', error);
+            setPriceRangeRefreshButtonLoading(false);
+            contentEl.innerHTML = '<div class="price-range-fallback"><i class="bi bi-exclamation-triangle"></i><span>Verbindungsfehler</span></div>';
+        });
+    }
+    
+    // Update startAutoRefresh to include price range status
+    const originalStartAutoRefresh2 = startAutoRefresh;
+    startAutoRefresh = function() {
+        originalStartAutoRefresh2();
+        // Initialize price range asset selector
+        initializePriceRangeAssetSelector();
+        // Also refresh price range status
+        refreshPriceRangeStatus();
+        priceRangeRefreshInterval = setInterval(refreshPriceRangeStatus, PRICE_RANGE_REFRESH_INTERVAL);
     };
     
     // ============================================================================

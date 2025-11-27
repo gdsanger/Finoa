@@ -1,0 +1,87 @@
+{# Price vs Range - Live Status Panel (HTMX Partial) #}
+{# This partial is loaded via HTMX when asset/phase changes #}
+
+{% if error %}
+<div class="price-range-fallback">
+    <i class="bi bi-exclamation-circle"></i>
+    <span>{{ error }}</span>
+</div>
+{% elif status %}
+<div class="price-range-content">
+    {# Status Badge #}
+    <div class="price-range-status-badge status-{{ status.status_code|lower }}">
+        {% if status.status_code == 'INSIDE_RANGE' %}
+            <i class="bi bi-check-circle-fill"></i>
+        {% elif status.status_code == 'NEAR_BREAKOUT_LONG' or status.status_code == 'NEAR_BREAKOUT_SHORT' %}
+            <i class="bi bi-exclamation-triangle-fill"></i>
+        {% elif status.status_code == 'BREAKOUT_LONG' or status.status_code == 'BREAKOUT_SHORT' %}
+            <i class="bi bi-lightning-charge-fill"></i>
+        {% else %}
+            <i class="bi bi-question-circle"></i>
+        {% endif %}
+        <span>{{ status.status_text }}</span>
+    </div>
+    
+    {# Two-Column Layout #}
+    <div class="price-range-grid">
+        {# Left Column - Range Data #}
+        <div class="price-range-column">
+            <div class="column-label">Range-Daten</div>
+            <div class="data-row">
+                <span class="data-label">Range High</span>
+                <span class="data-value">{% if status.range_high %}{{ status.range_high }}{% else %}--{% endif %}</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Range Low</span>
+                <span class="data-value">{% if status.range_low %}{{ status.range_low }}{% else %}--{% endif %}</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Range Height (Ticks)</span>
+                <span class="data-value">{% if status.range_ticks is not None %}{{ status.range_ticks }}{% else %}--{% endif %}</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Tick Size</span>
+                <span class="data-value">{% if status.tick_size %}{{ status.tick_size }}{% else %}--{% endif %}</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Min Breakout Dist (Ticks)</span>
+                <span class="data-value">{% if status.min_breakout_distance_ticks is not None %}{{ status.min_breakout_distance_ticks }}{% else %}--{% endif %}</span>
+            </div>
+        </div>
+        
+        {# Right Column - Live Price Metrics #}
+        <div class="price-range-column">
+            <div class="column-label">Live-Preis-Metriken</div>
+            <div class="data-row">
+                <span class="data-label">Current Bid</span>
+                <span class="data-value price-value">{% if status.current_bid %}{{ status.current_bid }}{% else %}--{% endif %}</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Current Ask</span>
+                <span class="data-value price-value">{% if status.current_ask %}{{ status.current_ask }}{% else %}--{% endif %}</span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Distance to High (Ticks)</span>
+                <span class="data-value {% if status.distance_to_high_ticks is not None and status.distance_to_high_ticks <= 0 %}distance-above{% endif %}">
+                    {% if status.distance_to_high_ticks is not None %}{{ status.distance_to_high_ticks }}{% else %}--{% endif %}
+                </span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Distance to Low (Ticks)</span>
+                <span class="data-value {% if status.distance_to_low_ticks is not None and status.distance_to_low_ticks <= 0 %}distance-below{% endif %}">
+                    {% if status.distance_to_low_ticks is not None %}{{ status.distance_to_low_ticks }}{% else %}--{% endif %}
+                </span>
+            </div>
+            <div class="data-row">
+                <span class="data-label">Aktuelle Phase (Worker)</span>
+                <span class="data-value phase-value">{% if worker_phase %}{{ worker_phase }}{% else %}--{% endif %}</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="price-range-fallback">
+    <i class="bi bi-info-circle"></i>
+    <span>No range data available for selected asset/phase</span>
+</div>
+{% endif %}

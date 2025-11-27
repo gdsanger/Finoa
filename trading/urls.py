@@ -43,6 +43,10 @@ urlpatterns = [
     # Session Phase API
     path('api/assets/<int:asset_id>/phases/', views.api_phase_configs, name='api_phase_configs'),
     
+    # Price vs Range - Live Status API & HTMX
+    path('api/price-range-status/', views.api_price_range_status, name='api_price_range_status'),
+    path('htmx/price-range-status/', views.htmx_price_range_status, name='htmx_price_range_status'),
+    
     # API Endpoints
     path('api/signals/', views.api_signals, name='api_signals'),
     path('api/signals/since/<str:since>/', views.api_signals_since, name='api_signals_since'),
@@ -52,3 +56,4 @@ urlpatterns = [
     path('api/assets/', views.api_active_assets, name='api_active_assets'),
     path('api/debug/breakout-range/', views.api_breakout_range_diagnostics, name='api_breakout_range_diagnostics'),
 ]
+

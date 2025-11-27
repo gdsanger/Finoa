@@ -3035,3 +3035,230 @@ class PhaseConfigAPITest(TestCase):
         # Should only include enabled phase configs
         self.assertEqual(len(asset_data['session_phase_configs']), 1)
         self.assertEqual(asset_data['session_phase_configs'][0]['phase'], 'US_CORE_TRADING')
+
+
+# ============================================================================
+# Price vs Range - Live Status Tests
+# ============================================================================
+
+class PriceRangeStatusServiceTest(TestCase):
+    """Tests for the Price vs Range - Live Status service."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.asset = TradingAsset.objects.create(
+            name='Crude Oil',
+            symbol='OIL',
+            epic='CC.D.CL.UNC.IP',
+            category='commodity',
+            tick_size=Decimal('0.01'),
+            is_active=True,
+        )
+        AssetBreakoutConfig.objects.create(
+            asset=self.asset,
+            min_breakout_distance_ticks=2,
+        )
+    
+    def test_compute_price_range_status_no_range(self):
+        """Test status computation when no range data exists."""
+        from trading.services import compute_price_range_status
+        
+        status = compute_price_range_status(self.asset, 'ASIA_RANGE')
+        
+        self.assertEqual(status.status_code, 'NO_RANGE')
+        self.assertEqual(status.asset, 'OIL')
+        self.assertEqual(status.phase, 'ASIA_RANGE')
+    
+    def test_compute_price_range_status_inside_range(self):
+        """Test status when price is inside range."""
+        from trading.services import compute_price_range_status
+        from trading.models import BreakoutRange
+        
+        # Create range data
+        now = timezone.now()
+        BreakoutRange.objects.create(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time=now - timedelta(hours=8),
+            end_time=now,
+            high=Decimal('75.50'),
+            low=Decimal('74.50'),
+            height_ticks=100,
+            height_points=Decimal('1.00'),
+        )
+        
+        # Create worker status with price inside range
+        WorkerStatus.objects.create(
+            last_run_at=now,
+            phase='LONDON_CORE',
+            epic='CC.D.CL.UNC.IP',
+            bid_price=Decimal('75.00'),
+            ask_price=Decimal('75.05'),
+        )
+        
+        status = compute_price_range_status(self.asset, 'ASIA_RANGE')
+        
+        self.assertEqual(status.status_code, 'INSIDE_RANGE')
+        self.assertEqual(status.range_high, Decimal('75.50'))
+        self.assertEqual(status.range_low, Decimal('74.50'))
+        self.assertEqual(status.current_bid, Decimal('75.00'))
+    
+    def test_compute_price_range_status_near_breakout_long(self):
+        """Test status when price is near breakout (long side)."""
+        from trading.services import compute_price_range_status
+        from trading.models import BreakoutRange
+        
+        now = timezone.now()
+        BreakoutRange.objects.create(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time=now - timedelta(hours=8),
+            end_time=now,
+            high=Decimal('75.50'),
+            low=Decimal('74.50'),
+            height_ticks=100,
+        )
+        
+        # Price very close to range high (within min_breakout_distance)
+        WorkerStatus.objects.create(
+            last_run_at=now,
+            phase='LONDON_CORE',
+            epic='CC.D.CL.UNC.IP',
+            bid_price=Decimal('75.49'),  # 1 tick from high
+            ask_price=Decimal('75.50'),
+        )
+        
+        status = compute_price_range_status(self.asset, 'ASIA_RANGE')
+        
+        self.assertEqual(status.status_code, 'NEAR_BREAKOUT_LONG')
+    
+    def test_compute_price_range_status_breakout_long(self):
+        """Test status when price has broken out long."""
+        from trading.services import compute_price_range_status
+        from trading.models import BreakoutRange
+        
+        now = timezone.now()
+        BreakoutRange.objects.create(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time=now - timedelta(hours=8),
+            end_time=now,
+            high=Decimal('75.50'),
+            low=Decimal('74.50'),
+            height_ticks=100,
+        )
+        
+        # Price clearly above range high + min_breakout_distance
+        WorkerStatus.objects.create(
+            last_run_at=now,
+            phase='LONDON_CORE',
+            epic='CC.D.CL.UNC.IP',
+            bid_price=Decimal('75.60'),  # 10 ticks above high
+            ask_price=Decimal('75.65'),
+        )
+        
+        status = compute_price_range_status(self.asset, 'ASIA_RANGE')
+        
+        self.assertEqual(status.status_code, 'BREAKOUT_LONG')
+    
+    def test_price_range_status_to_dict(self):
+        """Test PriceRangeStatus serialization to dict."""
+        from trading.services import PriceRangeStatus
+        
+        status = PriceRangeStatus(
+            asset='OIL',
+            phase='ASIA_RANGE',
+            range_high=Decimal('75.50'),
+            range_low=Decimal('74.50'),
+            range_ticks=100,
+            tick_size=Decimal('0.01'),
+            current_bid=Decimal('75.00'),
+            current_ask=Decimal('75.05'),
+            distance_to_high_ticks=50,
+            distance_to_low_ticks=55,
+            min_breakout_distance_ticks=2,
+            status_code='INSIDE_RANGE',
+            status_text='INSIDE RANGE',
+        )
+        
+        data = status.to_dict()
+        
+        self.assertEqual(data['asset'], 'OIL')
+        self.assertEqual(data['phase'], 'ASIA_RANGE')
+        self.assertEqual(data['range_high'], '75.50')
+        self.assertEqual(data['range_low'], '74.50')
+        self.assertEqual(data['status_code'], 'INSIDE_RANGE')
+        self.assertEqual(data['badge_color'], 'green')
+
+
+class PriceRangeStatusAPITest(TestCase):
+    """Tests for Price vs Range - Live Status API endpoints."""
+    
+    def setUp(self):
+        """Set up test data and authenticated client."""
+        self.user = User.objects.create_user(
+            username='testuser',
+            password='testpass123'
+        )
+        self.client.login(username='testuser', password='testpass123')
+        
+        self.asset = TradingAsset.objects.create(
+            name='Crude Oil',
+            symbol='OIL',
+            epic='CC.D.CL.UNC.IP',
+            category='commodity',
+            tick_size=Decimal('0.01'),
+            is_active=True,
+        )
+    
+    def test_api_price_range_status_requires_asset_id(self):
+        """Test that asset_id is required."""
+        response = self.client.get('/fiona/api/price-range-status/?phase=ASIA_RANGE')
+        self.assertEqual(response.status_code, 400)
+        
+        data = response.json()
+        self.assertFalse(data['success'])
+        self.assertIn('asset_id', data['error'])
+    
+    def test_api_price_range_status_requires_phase(self):
+        """Test that phase is required."""
+        response = self.client.get(f'/fiona/api/price-range-status/?asset_id={self.asset.id}')
+        self.assertEqual(response.status_code, 400)
+        
+        data = response.json()
+        self.assertFalse(data['success'])
+        self.assertIn('phase', data['error'])
+    
+    def test_api_price_range_status_validates_phase(self):
+        """Test that invalid phase is rejected."""
+        response = self.client.get(f'/fiona/api/price-range-status/?asset_id={self.asset.id}&phase=INVALID_PHASE')
+        self.assertEqual(response.status_code, 400)
+        
+        data = response.json()
+        self.assertFalse(data['success'])
+        self.assertIn('Invalid phase', data['error'])
+    
+    def test_api_price_range_status_success(self):
+        """Test successful price range status response."""
+        response = self.client.get(f'/fiona/api/price-range-status/?asset_id={self.asset.id}&phase=ASIA_RANGE')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertIn('data', data)
+        self.assertEqual(data['data']['asset'], 'OIL')
+        self.assertEqual(data['data']['phase'], 'ASIA_RANGE')
+        self.assertIn('status_code', data['data'])
+    
+    def test_htmx_price_range_status_returns_html(self):
+        """Test that HTMX endpoint returns HTML partial."""
+        response = self.client.get(f'/fiona/htmx/price-range-status/?asset_id={self.asset.id}&phase=ASIA_RANGE')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('text/html', response['Content-Type'])
+    
+    def test_htmx_price_range_status_no_asset(self):
+        """Test HTMX endpoint handles missing asset."""
+        response = self.client.get('/fiona/htmx/price-range-status/?phase=ASIA_RANGE')
+        self.assertEqual(response.status_code, 200)
+        # Should show error message in HTML
+        self.assertIn(b'Kein Asset', response.content)
