@@ -9,7 +9,7 @@ from django.core.paginator import Paginator
 from django.core.exceptions import ImproperlyConfigured
 from django.utils import timezone
 
-from .models import Signal, Trade, WorkerStatus, TradingAsset, AssetDiagnostics
+from .models import Signal, Trade, WorkerStatus, TradingAsset, AssetDiagnostics, AssetPriceStatus
 
 from core.services.broker import create_ig_broker_service, BrokerError, AuthenticationError
 
@@ -1142,12 +1142,22 @@ def api_breakout_range_diagnostics(request):
         
         service = BreakoutRangeDiagnosticService(provider, config)
         
-        # Get current price from worker status
+        # Get current price from asset-specific price status (for multi-asset support)
+        # Fall back to global worker status only if no asset-specific price is available
         current_price = None
-        if status and status.bid_price and status.ask_price:
-            current_price = float((status.bid_price + status.ask_price) / 2)
-        elif status and status.bid_price:
-            current_price = float(status.bid_price)
+        if asset:
+            price_status = AssetPriceStatus.get_for_asset(asset)
+            if price_status and price_status.bid_price and price_status.ask_price:
+                current_price = float((price_status.bid_price + price_status.ask_price) / 2)
+            elif price_status and price_status.bid_price:
+                current_price = float(price_status.bid_price)
+        
+        # Fall back to worker status if no asset-specific price
+        if current_price is None:
+            if status and status.bid_price and status.ask_price:
+                current_price = float((status.bid_price + status.ask_price) / 2)
+            elif status and status.bid_price:
+                current_price = float(status.bid_price)
         
         # Get diagnostics based on range type
         ts = timezone.now()
