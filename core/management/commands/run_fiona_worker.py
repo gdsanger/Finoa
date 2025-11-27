@@ -14,7 +14,7 @@ import logging
 import signal
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 from typing import Optional
 
@@ -29,7 +29,7 @@ from core.services.broker import (
     create_ig_broker_service,
     SessionTimesConfig,
 )
-from trading.models import WorkerStatus
+from trading.models import WorkerStatus, AssetDiagnostics
 from core.services.strategy import (
     StrategyEngine,
     StrategyConfig,
@@ -565,7 +565,7 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.WARNING(f"     Could not get price: {e}"))
             
             # 5. Build and persist range if in a range-building phase
-            self._build_range_for_phase(asset, epic, phase, phase_configs_by_phase, current_price, now)
+            range_built_phase = self._build_range_for_phase(asset, epic, phase, phase_configs_by_phase, current_price, now)
             
             # 6. Skip if not in tradeable phase - check using is_trading_phase flag
             # Use pre-fetched phase configs to avoid additional DB query
@@ -585,6 +585,15 @@ class Command(BaseCommand):
             
             if not is_tradeable:
                 self.stdout.write("     → Phase not tradeable, skipping")
+                # Still update diagnostics for non-tradeable phases
+                self._update_asset_diagnostics(
+                    asset=asset,
+                    now=now,
+                    phase=phase,
+                    setups_found=0,
+                    candles_evaluated=1,  # At least one cycle was run
+                    range_built_phase=range_built_phase,
+                )
                 return 0
             
             # 7. Run Strategy Engine
@@ -594,7 +603,26 @@ class Command(BaseCommand):
             except Exception as e:
                 self.stdout.write(self.style.ERROR(f"     Strategy error: {e}"))
                 logger.exception(f"Strategy evaluation failed for {epic}")
+                # Update diagnostics even on strategy error
+                self._update_asset_diagnostics(
+                    asset=asset,
+                    now=now,
+                    phase=phase,
+                    setups_found=0,
+                    candles_evaluated=1,
+                    range_built_phase=range_built_phase,
+                )
                 return 0
+            
+            # Update diagnostics with the results
+            self._update_asset_diagnostics(
+                asset=asset,
+                now=now,
+                phase=phase,
+                setups_found=len(setups),
+                candles_evaluated=1,
+                range_built_phase=range_built_phase,
+            )
             
             if not setups:
                 return 0
@@ -617,7 +645,7 @@ class Command(BaseCommand):
         phase_configs: dict,
         current_price,
         now: datetime
-    ) -> None:
+    ) -> str:
         """
         Build and persist range data for the current phase.
         
@@ -634,9 +662,12 @@ class Command(BaseCommand):
             phase_configs: Dict of phase configs by phase name
             current_price: Current SymbolPrice (or None)
             now: Current timestamp
+            
+        Returns:
+            str: Phase name for which range was built ('asia', 'london', 'pre_us'), or None if no range built
         """
         if current_price is None:
-            return
+            return None
         
         # Get phase config to check if this is a range-building phase
         phase_config = phase_configs.get(phase.value)
@@ -653,7 +684,7 @@ class Command(BaseCommand):
             ]
         
         if not is_range_build:
-            return
+            return None
         
         # Get high/low from price object.
         # Note: IG's price object provides session-level high/low that gets updated
@@ -662,7 +693,7 @@ class Command(BaseCommand):
         # as the worker runs, with each update potentially recording a new high/low.
         if current_price.high is None or current_price.low is None:
             logger.debug(f"No high/low data for {epic}, skipping range build")
-            return
+            return None
         
         high = float(current_price.high)
         low = float(current_price.low)
@@ -685,6 +716,7 @@ class Command(BaseCommand):
                 candle_count=candle_count,
                 atr=atr,
             )
+            return 'asia'
         elif phase == SessionPhase.LONDON_CORE:
             self.market_state_provider.set_london_core_range(
                 epic=epic,
@@ -695,6 +727,7 @@ class Command(BaseCommand):
                 candle_count=candle_count,
                 atr=atr,
             )
+            return 'london'
         elif phase == SessionPhase.PRE_US_RANGE:
             self.market_state_provider.set_pre_us_range(
                 epic=epic,
@@ -705,6 +738,9 @@ class Command(BaseCommand):
                 candle_count=candle_count,
                 atr=atr,
             )
+            return 'pre_us'
+        
+        return None
     
     def _update_worker_status(
         self,
@@ -736,6 +772,68 @@ class Command(BaseCommand):
             )
         except Exception as e:
             logger.warning(f"Failed to update worker status: {e}")
+
+    def _update_asset_diagnostics(
+        self,
+        asset,
+        now: datetime,
+        phase,
+        setups_found: int = 0,
+        candles_evaluated: int = 0,
+        range_built_phase: str = None,
+    ) -> None:
+        """
+        Update or create AssetDiagnostics record for the current time window.
+        
+        This method creates diagnostic records that can be queried by the
+        Trading Diagnostics UI to understand why (not) trading is happening.
+        
+        Args:
+            asset: TradingAsset instance
+            now: Current timestamp
+            phase: Current session phase
+            setups_found: Number of setups generated
+            candles_evaluated: Number of candles evaluated
+            range_built_phase: Phase for which a range was built (e.g., 'asia', 'london', 'pre_us', 'us_core')
+        """
+        try:
+            # Use 1-hour windows for diagnostics aggregation
+            window_start = now.replace(minute=0, second=0, microsecond=0)
+            window_end = window_start + timedelta(hours=1)
+            
+            # Get or create diagnostics record for this window
+            diagnostics = AssetDiagnostics.get_or_create_for_window(
+                asset=asset,
+                window_start=window_start,
+                window_end=window_end,
+            )
+            
+            # Update current phase and trading mode
+            # Phase is expected to be a SessionPhase enum, extract value
+            diagnostics.current_phase = phase.value
+            diagnostics.trading_mode = asset.trading_mode
+            diagnostics.last_cycle_at = now
+            
+            # Update counters
+            diagnostics.candles_evaluated += candles_evaluated
+            diagnostics.setups_generated_total += setups_found
+            
+            # Update range built counters if applicable
+            # Map phase names to field names
+            range_field_map = {
+                'asia': 'ranges_built_asia',
+                'london': 'ranges_built_london',
+                'pre_us': 'ranges_built_pre_us',
+                'us_core': 'ranges_built_us_core',
+            }
+            if range_built_phase and range_built_phase in range_field_map:
+                field_name = range_field_map[range_built_phase]
+                setattr(diagnostics, field_name, getattr(diagnostics, field_name) + 1)
+            
+            diagnostics.save()
+            
+        except Exception as e:
+            logger.warning(f"Failed to update asset diagnostics for {asset.symbol}: {e}")
 
     def _process_setup(self, setup, shadow_only: bool, dry_run: bool, now: datetime, trading_asset=None) -> None:
         """Process a single setup through risk and execution.

@@ -720,3 +720,165 @@ class SessionPhaseConfigIntegrationTest(TestCase):
         self.assertEqual(session_times.us_core_trading_start, 15)
         self.assertEqual(session_times.us_core_trading_end, 22)
         self.assertTrue(session_times.us_core_trading_enabled)
+
+
+class WorkerAssetDiagnosticsTest(TestCase):
+    """Tests for worker creating AssetDiagnostics records."""
+    
+    def setUp(self):
+        """Set up test fixtures."""
+        from trading.models import TradingAsset, AssetSessionPhaseConfig
+        
+        # Create a test asset
+        self.asset = TradingAsset.objects.create(
+            name="Test Oil",
+            symbol="OIL",
+            epic="CC.D.CL.UNC.IP",
+            category="commodity",
+            tick_size="0.01",
+            is_active=True,
+            trading_mode='STRICT',
+        )
+        
+        # Create session phase configs for the asset
+        AssetSessionPhaseConfig.objects.create(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time_utc='00:00',
+            end_time_utc='08:00',
+            is_range_build_phase=True,
+            is_trading_phase=False,
+            enabled=True,
+        )
+        AssetSessionPhaseConfig.objects.create(
+            asset=self.asset,
+            phase='US_CORE_TRADING',
+            start_time_utc='15:00',
+            end_time_utc='22:00',
+            is_range_build_phase=False,
+            is_trading_phase=True,
+            enabled=True,
+        )
+    
+    def test_update_asset_diagnostics_creates_record(self):
+        """Test that _update_asset_diagnostics creates a diagnostics record."""
+        from trading.models import AssetDiagnostics
+        from core.management.commands.run_fiona_worker import Command
+        
+        # Create command instance
+        cmd = Command()
+        
+        # Call _update_asset_diagnostics
+        now = datetime(2024, 1, 15, 16, 30, 0, tzinfo=timezone.utc)
+        cmd._update_asset_diagnostics(
+            asset=self.asset,
+            now=now,
+            phase=SessionPhase.US_CORE_TRADING,
+            setups_found=2,
+            candles_evaluated=1,
+            range_built_phase=None,
+        )
+        
+        # Verify diagnostics record was created
+        diagnostics = AssetDiagnostics.objects.filter(asset=self.asset).first()
+        self.assertIsNotNone(diagnostics)
+        self.assertEqual(diagnostics.setups_generated_total, 2)
+        self.assertEqual(diagnostics.candles_evaluated, 1)
+        self.assertEqual(diagnostics.current_phase, 'US_CORE_TRADING')
+        self.assertEqual(diagnostics.trading_mode, 'STRICT')
+        self.assertIsNotNone(diagnostics.last_cycle_at)
+    
+    def test_update_asset_diagnostics_aggregates_data(self):
+        """Test that _update_asset_diagnostics aggregates data within same window."""
+        from trading.models import AssetDiagnostics
+        from core.management.commands.run_fiona_worker import Command
+        
+        # Create command instance
+        cmd = Command()
+        
+        # Call twice within the same hour window
+        now1 = datetime(2024, 1, 15, 16, 0, 0, tzinfo=timezone.utc)
+        cmd._update_asset_diagnostics(
+            asset=self.asset,
+            now=now1,
+            phase=SessionPhase.US_CORE_TRADING,
+            setups_found=1,
+            candles_evaluated=1,
+            range_built_phase=None,
+        )
+        
+        now2 = datetime(2024, 1, 15, 16, 30, 0, tzinfo=timezone.utc)
+        cmd._update_asset_diagnostics(
+            asset=self.asset,
+            now=now2,
+            phase=SessionPhase.US_CORE_TRADING,
+            setups_found=2,
+            candles_evaluated=1,
+            range_built_phase=None,
+        )
+        
+        # Should have only one record (same window)
+        diagnostics_count = AssetDiagnostics.objects.filter(asset=self.asset).count()
+        self.assertEqual(diagnostics_count, 1)
+        
+        # Values should be aggregated
+        diagnostics = AssetDiagnostics.objects.filter(asset=self.asset).first()
+        self.assertEqual(diagnostics.setups_generated_total, 3)  # 1 + 2
+        self.assertEqual(diagnostics.candles_evaluated, 2)  # 1 + 1
+    
+    def test_update_asset_diagnostics_tracks_range_built(self):
+        """Test that _update_asset_diagnostics tracks range built phases."""
+        from trading.models import AssetDiagnostics
+        from core.management.commands.run_fiona_worker import Command
+        
+        # Create command instance
+        cmd = Command()
+        
+        # Update with asia range built
+        now = datetime(2024, 1, 15, 6, 0, 0, tzinfo=timezone.utc)
+        cmd._update_asset_diagnostics(
+            asset=self.asset,
+            now=now,
+            phase=SessionPhase.ASIA_RANGE,
+            setups_found=0,
+            candles_evaluated=1,
+            range_built_phase='asia',
+        )
+        
+        diagnostics = AssetDiagnostics.objects.filter(asset=self.asset).first()
+        self.assertEqual(diagnostics.ranges_built_asia, 1)
+        self.assertEqual(diagnostics.ranges_built_london, 0)
+    
+    def test_diagnostics_queryable_for_period(self):
+        """Test that diagnostics can be queried for a time period."""
+        from trading.models import AssetDiagnostics
+        from core.management.commands.run_fiona_worker import Command
+        
+        # Create command instance
+        cmd = Command()
+        
+        # Create diagnostics at different times (4 different hours = 4 different windows)
+        for hour in [14, 15, 16, 17]:
+            now = datetime(2024, 1, 15, hour, 30, 0, tzinfo=timezone.utc)
+            cmd._update_asset_diagnostics(
+                asset=self.asset,
+                now=now,
+                phase=SessionPhase.US_CORE_TRADING,
+                setups_found=1,
+                candles_evaluated=1,
+                range_built_phase=None,
+            )
+        
+        # Query for a window that overlaps only with hours 15 and 16 (not 14 and 17)
+        # Window 15:00-16:00 has window_end=16:00, window_start=15:00
+        # Window 16:00-17:00 has window_end=17:00, window_start=16:00
+        # Query: window_end >= 15:01, window_start <= 16:59 (excludes 14:00-15:00 and 17:00-18:00)
+        start = datetime(2024, 1, 15, 15, 1, 0, tzinfo=timezone.utc)
+        end = datetime(2024, 1, 15, 16, 59, 0, tzinfo=timezone.utc)
+        
+        aggregated = AssetDiagnostics.get_aggregated_for_period(self.asset, start, end)
+        
+        # Should have 2 records in window (15:00-16:00 and 16:00-17:00)
+        self.assertEqual(aggregated['record_count'], 2)
+        self.assertEqual(aggregated['counters']['setups']['generated_total'], 2)
+        self.assertEqual(aggregated['counters']['candles_evaluated'], 2)
