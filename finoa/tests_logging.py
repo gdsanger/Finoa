@@ -176,3 +176,77 @@ class LoggingIntegrationTests(TestCase):
         # Note: Due to logging configuration, the file might not be written
         # immediately or at all if the logger is not using the file handler.
         # This test primarily verifies that no errors occur.
+
+
+class TradingLayerLoggingTests(TestCase):
+    """Tests for trading layer logging configuration."""
+    
+    def test_configure_logging_has_strategy_logger(self):
+        """Test that strategy engine logger is configured."""
+        from finoa.logging_config import configure_logging
+        
+        config = configure_logging()
+        
+        self.assertIn('core.services.strategy', config['loggers'])
+        self.assertIn('core.services.strategy.strategy_engine', config['loggers'])
+    
+    def test_configure_logging_has_risk_logger(self):
+        """Test that risk engine logger is configured."""
+        from finoa.logging_config import configure_logging
+        
+        config = configure_logging()
+        
+        self.assertIn('core.services.risk', config['loggers'])
+        self.assertIn('core.services.risk.risk_engine', config['loggers'])
+    
+    def test_configure_logging_has_execution_logger(self):
+        """Test that execution service logger is configured."""
+        from finoa.logging_config import configure_logging
+        
+        config = configure_logging()
+        
+        self.assertIn('core.services.execution', config['loggers'])
+        self.assertIn('core.services.execution.execution_service', config['loggers'])
+    
+    def test_trading_loggers_use_both_handlers(self):
+        """Test that trading layer loggers use both console and file handlers."""
+        from finoa.logging_config import configure_logging
+        
+        config = configure_logging()
+        
+        trading_loggers = [
+            'core.services.strategy',
+            'core.services.strategy.strategy_engine',
+            'core.services.risk',
+            'core.services.risk.risk_engine',
+            'core.services.execution',
+            'core.services.execution.execution_service',
+        ]
+        
+        for logger_name in trading_loggers:
+            self.assertIn('console', config['loggers'][logger_name]['handlers'])
+            self.assertIn('file', config['loggers'][logger_name]['handlers'])
+    
+    def test_strategy_engine_logger_exists(self):
+        """Test that strategy engine logger can be created."""
+        logger = logging.getLogger('core.services.strategy.strategy_engine')
+        
+        # Should be able to log without errors
+        logger.debug('Test strategy debug message')
+        logger.info('Test strategy info message')
+    
+    def test_risk_engine_logger_exists(self):
+        """Test that risk engine logger can be created."""
+        logger = logging.getLogger('core.services.risk.risk_engine')
+        
+        # Should be able to log without errors
+        logger.debug('Test risk debug message')
+        logger.info('Test risk info message')
+    
+    def test_execution_service_logger_exists(self):
+        """Test that execution service logger can be created."""
+        logger = logging.getLogger('core.services.execution.execution_service')
+        
+        # Should be able to log without errors
+        logger.debug('Test execution debug message')
+        logger.info('Test execution info message')
