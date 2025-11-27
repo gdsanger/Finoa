@@ -1073,8 +1073,17 @@
             <div class="range-diagnostics-header">
                 <h5><i class="bi bi-arrows-expand"></i> Breakout Range Diagnose</h5>
                 <div class="d-flex align-items-center gap-2">
+                    <!-- Asset Selector -->
+                    <select id="range-asset-selector" class="form-select form-select-sm" style="width: auto; min-width: 120px; background-color: rgba(0, 0, 0, 0.3); border: 1px solid var(--fiona-border); color: var(--fiona-text-light); font-size: 0.75rem; padding: 0.25rem 0.5rem;" onchange="selectRangeAsset(this.value)">
+                        {% for asset in active_assets %}
+                        <option value="{{ asset.id }}" data-epic="{{ asset.epic }}">{{ asset.symbol }}</option>
+                        {% empty %}
+                        <option value="">Keine Assets</option>
+                        {% endfor %}
+                    </select>
                     <div class="range-type-selector">
                         <button class="range-type-btn active" data-range-type="asia" onclick="selectRangeType('asia')">Asia Range</button>
+                        <button class="range-type-btn" data-range-type="london_core" onclick="selectRangeType('london_core')">London Core</button>
                         <button class="range-type-btn" data-range-type="pre_us" onclick="selectRangeType('pre_us')">Pre-US Range</button>
                     </div>
                     <button class="refresh-btn" id="refresh-range-btn" onclick="refreshRangeDiagnostics()" title="Aktualisieren">
@@ -1898,6 +1907,21 @@
     let rangeRefreshInterval = null;
     const RANGE_REFRESH_INTERVAL = 30000; // 30 seconds
     let currentRangeType = 'asia';
+    let currentRangeAssetId = null;
+    
+    // Initialize selected asset from the dropdown
+    function initializeRangeAssetSelector() {
+        const selector = document.getElementById('range-asset-selector');
+        if (selector && selector.options.length > 0) {
+            currentRangeAssetId = selector.value;
+        }
+    }
+    
+    function selectRangeAsset(assetId) {
+        currentRangeAssetId = assetId;
+        // Refresh diagnostics with new asset
+        refreshRangeDiagnostics();
+    }
     
     function selectRangeType(rangeType) {
         currentRangeType = rangeType;
@@ -2129,7 +2153,13 @@
         setRangeRefreshButtonLoading(true);
         resetRangeDiagnosticsGrid();
         
-        fetch('/fiona/api/debug/breakout-range/?range_type=' + currentRangeType, {
+        // Build the API URL with asset_id if available
+        let url = '/fiona/api/debug/breakout-range/?range_type=' + currentRangeType;
+        if (currentRangeAssetId) {
+            url += '&asset_id=' + currentRangeAssetId;
+        }
+        
+        fetch(url, {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
@@ -2156,6 +2186,8 @@
     const originalStartAutoRefresh = startAutoRefresh;
     startAutoRefresh = function() {
         originalStartAutoRefresh();
+        // Initialize asset selector
+        initializeRangeAssetSelector();
         // Also refresh range diagnostics
         refreshRangeDiagnostics();
         rangeRefreshInterval = setInterval(refreshRangeDiagnostics, RANGE_REFRESH_INTERVAL);
