@@ -1959,3 +1959,228 @@ def api_breakout_distance_chart_by_id(request, asset_id):
             'success': False,
             'error': 'Fehler beim Laden der Chart-Daten',
         }, status=500)
+
+
+# ============================================================================
+# Breakout Distance Chart v1 API Endpoints
+# ============================================================================
+
+@login_required
+def api_chart_candles(request, asset_code):
+    """
+    GET /api/chart/{asset}/candles - Return 5-minute candlestick data.
+    
+    Path parameters:
+        asset_code: Asset symbol (e.g., 'OIL', 'NAS100')
+    
+    Query parameters:
+        tf: Timeframe (default: '5m', currently only 5m supported)
+        hours: Time window (1, 3, 6, 8, 12, 24) - default: 1
+    
+    Returns JSON with:
+        - asset: Asset symbol
+        - timeframe: Candle timeframe
+        - hours: Time window requested
+        - candle_count: Number of candles
+        - candles: Array of OHLC data with unix timestamps
+    """
+    from .services.chart_service import get_asset_by_symbol, get_candles_for_asset, SUPPORTED_TIME_WINDOWS
+    
+    # Get query parameters
+    timeframe = request.GET.get('tf', '5m')
+    try:
+        hours = int(request.GET.get('hours', 1))
+    except (ValueError, TypeError):
+        hours = 1
+    
+    # Validate hours
+    if hours not in SUPPORTED_TIME_WINDOWS:
+        return JsonResponse({
+            'success': False,
+            'error': f'Invalid hours value. Must be one of: {SUPPORTED_TIME_WINDOWS}',
+        }, status=400)
+    
+    # Get asset
+    asset = get_asset_by_symbol(asset_code)
+    if not asset:
+        return JsonResponse({
+            'success': False,
+            'error': f"Asset '{asset_code}' not found or not active.",
+        }, status=404)
+    
+    try:
+        # Get candle data
+        result = get_candles_for_asset(asset, hours=hours, timeframe=timeframe)
+        
+        if result.error:
+            return JsonResponse({
+                'success': False,
+                'error': result.error,
+            })
+        
+        return JsonResponse({
+            'success': True,
+            **result.to_dict(),
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting chart candles: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': 'Fehler beim Laden der Kerzen-Daten',
+        }, status=500)
+
+
+@login_required
+def api_chart_breakout_context(request, asset_code):
+    """
+    GET /api/chart/{asset}/breakout-context - Return breakout context data.
+    
+    Path parameters:
+        asset_code: Asset symbol (e.g., 'OIL', 'NAS100')
+    
+    Returns JSON with:
+        - phase: Current session phase
+        - reference_phase: Reference range phase
+        - range_high/low: Current reference range boundaries
+        - breakout_long_level/short_level: Breakout trigger levels
+        - current_price: Current market price
+        - distance_to_high/low_ticks: Distance to range boundaries
+        - is_above/below/inside_range: Position flags
+    """
+    from .services.chart_service import get_asset_by_symbol, get_breakout_context_for_asset
+    
+    # Get asset
+    asset = get_asset_by_symbol(asset_code)
+    if not asset:
+        return JsonResponse({
+            'success': False,
+            'error': f"Asset '{asset_code}' not found or not active.",
+        }, status=404)
+    
+    try:
+        # Get breakout context
+        context = get_breakout_context_for_asset(asset)
+        
+        return JsonResponse({
+            'success': True,
+            **context.to_dict(),
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting breakout context: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': 'Fehler beim Laden des Breakout-Kontexts',
+        }, status=500)
+
+
+@login_required
+def api_chart_session_ranges(request, asset_code):
+    """
+    GET /api/chart/{asset}/session-ranges - Return session range data.
+    
+    Path parameters:
+        asset_code: Asset symbol (e.g., 'OIL', 'NAS100')
+    
+    Query parameters:
+        hours: Time window for range lookup (default: 24)
+    
+    Returns JSON with:
+        - asset: Asset symbol
+        - hours: Time window
+        - ranges: Dict of session ranges with high/low/timestamps
+          - ASIA_RANGE
+          - LONDON_CORE
+          - PRE_US_RANGE
+          - US_CORE_TRADING
+    """
+    from .services.chart_service import get_asset_by_symbol, get_session_ranges_for_asset, SUPPORTED_TIME_WINDOWS
+    
+    # Get query parameters
+    try:
+        hours = int(request.GET.get('hours', 24))
+    except (ValueError, TypeError):
+        hours = 24
+    
+    # Get asset
+    asset = get_asset_by_symbol(asset_code)
+    if not asset:
+        return JsonResponse({
+            'success': False,
+            'error': f"Asset '{asset_code}' not found or not active.",
+        }, status=404)
+    
+    try:
+        # Get session ranges
+        result = get_session_ranges_for_asset(asset, hours=hours)
+        
+        if result.error:
+            return JsonResponse({
+                'success': False,
+                'error': result.error,
+            })
+        
+        return JsonResponse({
+            'success': True,
+            **result.to_dict(),
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting session ranges: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': 'Fehler beim Laden der Session-Ranges',
+        }, status=500)
+
+
+@login_required
+def breakout_distance_chart_view(request):
+    """
+    Breakout Distance Chart View - Interactive chart with Lightweight Charts.
+    
+    Displays:
+    - 5-minute candlestick data from IG
+    - Session ranges (Asia, London, US Core) with toggle switches
+    - Breakout levels as price lines
+    - Info panel with current phase, range, and tick distances
+    
+    Query parameters:
+        asset: Asset symbol (default: first active asset)
+        hours: Time window (1, 3, 6, 8, 12, 24) - default: 6
+    """
+    from .services.chart_service import SUPPORTED_TIME_WINDOWS
+    
+    # Get active assets for the selector
+    active_assets = TradingAsset.objects.filter(is_active=True).order_by('name')
+    
+    # Get selected asset from query params or default to first
+    selected_asset_code = request.GET.get('asset')
+    selected_asset = None
+    
+    if selected_asset_code:
+        try:
+            selected_asset = TradingAsset.objects.get(symbol__iexact=selected_asset_code, is_active=True)
+        except TradingAsset.DoesNotExist:
+            pass
+    
+    if not selected_asset and active_assets.exists():
+        selected_asset = active_assets.first()
+    
+    # Get hours from query params
+    try:
+        selected_hours = int(request.GET.get('hours', 6))
+    except (ValueError, TypeError):
+        selected_hours = 6
+    
+    if selected_hours not in SUPPORTED_TIME_WINDOWS:
+        selected_hours = 6
+    
+    context = {
+        'active_assets': active_assets,
+        'selected_asset': selected_asset,
+        'selected_hours': selected_hours,
+        'time_windows': SUPPORTED_TIME_WINDOWS,
+    }
+    
+    return render(request, 'trading/breakout_distance_chart.html', context)

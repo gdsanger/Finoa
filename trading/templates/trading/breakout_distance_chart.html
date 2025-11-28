@@ -1,0 +1,876 @@
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block title %}Fiona - Breakout Distance Chart{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Breakout Distance Chart Styles */
+    :root {
+        --fiona-bg-dark: #1a1d21;
+        --fiona-card-dark: #2d3239;
+        --fiona-card-header: #3a4149;
+        --fiona-text-light: #e9ecef;
+        --fiona-text-muted: #8b949e;
+        --fiona-border: #484f58;
+        --range-asia: rgba(255, 193, 7, 0.3);
+        --range-london: rgba(59, 130, 246, 0.3);
+        --range-us: rgba(34, 197, 94, 0.3);
+        --breakout-long: #22c55e;
+        --breakout-short: #ef4444;
+    }
+
+    .chart-dashboard {
+        background-color: var(--fiona-bg-dark);
+        min-height: 100vh;
+        color: var(--fiona-text-light);
+        padding: 1rem;
+    }
+
+    .chart-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid var(--fiona-border);
+        flex-wrap: wrap;
+        gap: 0.75rem;
+    }
+
+    .chart-header h1 {
+        color: var(--fiona-text-light);
+        margin: 0;
+        font-size: 1.5rem;
+    }
+
+    .chart-controls {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .control-group {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .control-label {
+        color: var(--fiona-text-muted);
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .control-select {
+        background-color: var(--fiona-card-dark);
+        border: 1px solid var(--fiona-border);
+        color: var(--fiona-text-light);
+        padding: 0.4rem 0.75rem;
+        border-radius: 6px;
+        font-size: 0.9rem;
+        min-width: 100px;
+    }
+
+    .control-select:focus {
+        outline: none;
+        border-color: #3b82f6;
+    }
+
+    .time-window-btns {
+        display: flex;
+        gap: 0.25rem;
+    }
+
+    .time-btn {
+        background-color: var(--fiona-card-dark);
+        border: 1px solid var(--fiona-border);
+        color: var(--fiona-text-muted);
+        padding: 0.35rem 0.6rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .time-btn:hover {
+        background-color: var(--fiona-card-header);
+        color: var(--fiona-text-light);
+    }
+
+    .time-btn.active {
+        background-color: #3b82f6;
+        border-color: #3b82f6;
+        color: white;
+    }
+
+    /* Chart Container */
+    .chart-container {
+        display: grid;
+        grid-template-columns: 1fr 300px;
+        gap: 1rem;
+        height: calc(100vh - 180px);
+        min-height: 500px;
+    }
+
+    @media (max-width: 992px) {
+        .chart-container {
+            grid-template-columns: 1fr;
+            height: auto;
+        }
+    }
+
+    .chart-panel {
+        background-color: var(--fiona-card-dark);
+        border: 1px solid var(--fiona-border);
+        border-radius: 8px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .chart-area {
+        flex: 1;
+        min-height: 400px;
+        position: relative;
+    }
+
+    #candlestick-chart {
+        width: 100%;
+        height: 100%;
+    }
+
+    /* Range Toggle Switches */
+    .range-toggles {
+        display: flex;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
+        background-color: var(--fiona-card-header);
+        border-top: 1px solid var(--fiona-border);
+        flex-wrap: wrap;
+    }
+
+    .range-toggle {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .range-toggle input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        accent-color: #3b82f6;
+    }
+
+    .range-toggle label {
+        font-size: 0.8rem;
+        color: var(--fiona-text-light);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+    }
+
+    .range-color-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+    }
+
+    .range-color-dot.asia { background-color: #ffc107; }
+    .range-color-dot.london { background-color: #3b82f6; }
+    .range-color-dot.us { background-color: #22c55e; }
+
+    /* Info Panel */
+    .info-panel {
+        background-color: var(--fiona-card-dark);
+        border: 1px solid var(--fiona-border);
+        border-radius: 8px;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .info-panel-header {
+        padding: 0.75rem 1rem;
+        background-color: var(--fiona-card-header);
+        border-bottom: 1px solid var(--fiona-border);
+    }
+
+    .info-panel-header h3 {
+        margin: 0;
+        font-size: 0.875rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--fiona-text-light);
+    }
+
+    .info-panel-content {
+        flex: 1;
+        padding: 1rem;
+        overflow-y: auto;
+    }
+
+    .info-section {
+        margin-bottom: 1.25rem;
+    }
+
+    .info-section:last-child {
+        margin-bottom: 0;
+    }
+
+    .info-section-title {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--fiona-text-muted);
+        margin-bottom: 0.5rem;
+        padding-bottom: 0.25rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .info-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.35rem 0;
+        font-size: 0.85rem;
+    }
+
+    .info-label {
+        color: var(--fiona-text-muted);
+    }
+
+    .info-value {
+        font-weight: 600;
+        font-family: 'Roboto Mono', monospace;
+        color: var(--fiona-text-light);
+    }
+
+    .info-value.price-high {
+        color: var(--breakout-long);
+    }
+
+    .info-value.price-low {
+        color: var(--breakout-short);
+    }
+
+    .info-value.phase {
+        color: #3b82f6;
+    }
+
+    /* Status Badge */
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.25rem 0.6rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .status-badge.inside {
+        background-color: rgba(34, 197, 94, 0.2);
+        color: var(--breakout-long);
+        border: 1px solid var(--breakout-long);
+    }
+
+    .status-badge.above {
+        background-color: rgba(34, 197, 94, 0.2);
+        color: var(--breakout-long);
+        border: 1px solid var(--breakout-long);
+    }
+
+    .status-badge.below {
+        background-color: rgba(239, 68, 68, 0.2);
+        color: var(--breakout-short);
+        border: 1px solid var(--breakout-short);
+    }
+
+    /* Loading State */
+    .chart-loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: var(--fiona-text-muted);
+    }
+
+    .chart-loading i {
+        font-size: 2rem;
+        animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+
+    .chart-error {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: var(--fiona-text-muted);
+        text-align: center;
+        padding: 2rem;
+    }
+
+    .chart-error i {
+        font-size: 2.5rem;
+        margin-bottom: 1rem;
+        color: #ef4444;
+    }
+
+    /* Back Link */
+    .back-link {
+        color: var(--fiona-text-muted);
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        font-size: 0.85rem;
+        transition: color 0.2s;
+    }
+
+    .back-link:hover {
+        color: var(--fiona-text-light);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="chart-dashboard">
+    <div class="container-fluid">
+        <!-- Header -->
+        <div class="chart-header">
+            <div>
+                <a href="{% url 'signal_dashboard' %}" class="back-link">
+                    <i class="bi bi-arrow-left"></i> Zurück zum Dashboard
+                </a>
+                <h1><i class="bi bi-graph-up"></i> Breakout Distance Chart</h1>
+            </div>
+            <div class="chart-controls">
+                <!-- Asset Selector -->
+                <div class="control-group">
+                    <span class="control-label">Asset</span>
+                    <select id="asset-selector" class="control-select" onchange="changeAsset(this.value)">
+                        {% for asset in active_assets %}
+                        <option value="{{ asset.symbol }}" {% if selected_asset and asset.id == selected_asset.id %}selected{% endif %}>
+                            {{ asset.symbol }} - {{ asset.name }}
+                        </option>
+                        {% empty %}
+                        <option value="">Keine Assets</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Time Window -->
+                <div class="control-group">
+                    <span class="control-label">Zeitfenster</span>
+                    <div class="time-window-btns">
+                        {% for hours in time_windows %}
+                        <button class="time-btn {% if hours == selected_hours %}active{% endif %}"
+                                data-hours="{{ hours }}"
+                                onclick="changeTimeWindow({{ hours }})">
+                            {{ hours }}h
+                        </button>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Refresh Button -->
+                <button class="btn btn-sm btn-outline-light" onclick="refreshChart()" title="Aktualisieren">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="chart-container">
+            <!-- Chart Panel -->
+            <div class="chart-panel">
+                <div class="chart-area">
+                    <div id="candlestick-chart">
+                        <div class="chart-loading">
+                            <i class="bi bi-hourglass-split"></i>
+                        </div>
+                    </div>
+                </div>
+                <!-- Range Toggle Switches -->
+                <div class="range-toggles">
+                    <div class="range-toggle">
+                        <input type="checkbox" id="toggle-asia" checked onchange="toggleRange('asia', this.checked)">
+                        <label for="toggle-asia">
+                            <span class="range-color-dot asia"></span>
+                            Asia Range
+                        </label>
+                    </div>
+                    <div class="range-toggle">
+                        <input type="checkbox" id="toggle-london" checked onchange="toggleRange('london', this.checked)">
+                        <label for="toggle-london">
+                            <span class="range-color-dot london"></span>
+                            London Range
+                        </label>
+                    </div>
+                    <div class="range-toggle">
+                        <input type="checkbox" id="toggle-us" checked onchange="toggleRange('us', this.checked)">
+                        <label for="toggle-us">
+                            <span class="range-color-dot us"></span>
+                            US Core Range
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Info Panel -->
+            <div class="info-panel">
+                <div class="info-panel-header">
+                    <h3><i class="bi bi-info-circle"></i> Breakout Info</h3>
+                </div>
+                <div class="info-panel-content">
+                    <!-- Asset Info -->
+                    <div class="info-section">
+                        <div class="info-section-title">Asset</div>
+                        <div class="info-row">
+                            <span class="info-label">Symbol</span>
+                            <span class="info-value" id="info-asset">{% if selected_asset %}{{ selected_asset.symbol }}{% else %}--{% endif %}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Phase</span>
+                            <span class="info-value phase" id="info-phase">--</span>
+                        </div>
+                    </div>
+
+                    <!-- Range Info -->
+                    <div class="info-section">
+                        <div class="info-section-title">Referenz-Range</div>
+                        <div class="info-row">
+                            <span class="info-label">Range Typ</span>
+                            <span class="info-value" id="info-reference-phase">--</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">High</span>
+                            <span class="info-value price-high" id="info-range-high">--</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Low</span>
+                            <span class="info-value price-low" id="info-range-low">--</span>
+                        </div>
+                    </div>
+
+                    <!-- Breakout Levels -->
+                    <div class="info-section">
+                        <div class="info-section-title">Breakout Levels</div>
+                        <div class="info-row">
+                            <span class="info-label">Long Trigger</span>
+                            <span class="info-value price-high" id="info-breakout-long">--</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Short Trigger</span>
+                            <span class="info-value price-low" id="info-breakout-short">--</span>
+                        </div>
+                    </div>
+
+                    <!-- Current Price -->
+                    <div class="info-section">
+                        <div class="info-section-title">Preis-Position</div>
+                        <div class="info-row">
+                            <span class="info-label">Aktueller Preis</span>
+                            <span class="info-value" id="info-current-price">--</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Status</span>
+                            <span id="info-status">
+                                <span class="status-badge inside">
+                                    <i class="bi bi-arrows-collapse"></i> Innerhalb
+                                </span>
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Tick Distances -->
+                    <div class="info-section">
+                        <div class="info-section-title">Distanzen</div>
+                        <div class="info-row">
+                            <span class="info-label">Zu High</span>
+                            <span class="info-value" id="info-distance-high">-- Ticks</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Zu Low</span>
+                            <span class="info-value" id="info-distance-low">-- Ticks</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Tick Size</span>
+                            <span class="info-value" id="info-tick-size">{% if selected_asset %}{{ selected_asset.tick_size }}{% else %}--{% endif %}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'core/js/lightweight-charts.standalone.production.js' %}"></script>
+<script>
+    // Chart state
+    let chart = null;
+    let candlestickSeries = null;
+    let priceLines = {};
+    let rangeMarkers = {};
+
+    // Current settings
+    let currentAsset = '{{ selected_asset.symbol|default:"" }}';
+    let currentHours = {{ selected_hours }};
+    let rangeVisibility = {
+        asia: true,
+        london: true,
+        us: true
+    };
+
+    // Colors
+    const colors = {
+        asia: { fill: 'rgba(255, 193, 7, 0.15)', line: '#ffc107' },
+        london: { fill: 'rgba(59, 130, 246, 0.15)', line: '#3b82f6' },
+        us: { fill: 'rgba(34, 197, 94, 0.15)', line: '#22c55e' },
+        breakoutLong: '#22c55e',
+        breakoutShort: '#ef4444',
+        rangeHigh: '#fbbf24',
+        rangeLow: '#fb923c',
+    };
+
+    // Initialize chart
+    function initChart() {
+        const container = document.getElementById('candlestick-chart');
+        container.innerHTML = '';
+
+        chart = LightweightCharts.createChart(container, {
+            width: container.offsetWidth,
+            height: container.offsetHeight,
+            layout: {
+                background: { type: 'solid', color: '#2d3239' },
+                textColor: '#e9ecef',
+            },
+            grid: {
+                vertLines: { color: 'rgba(255, 255, 255, 0.1)' },
+                horzLines: { color: 'rgba(255, 255, 255, 0.1)' },
+            },
+            crosshair: {
+                mode: LightweightCharts.CrosshairMode.Normal,
+            },
+            rightPriceScale: {
+                borderColor: '#484f58',
+            },
+            timeScale: {
+                borderColor: '#484f58',
+                timeVisible: true,
+                secondsVisible: false,
+            },
+        });
+
+        // Create candlestick series
+        candlestickSeries = chart.addCandlestickSeries({
+            upColor: '#22c55e',
+            downColor: '#ef4444',
+            borderUpColor: '#22c55e',
+            borderDownColor: '#ef4444',
+            wickUpColor: '#22c55e',
+            wickDownColor: '#ef4444',
+        });
+
+        // Handle resize
+        window.addEventListener('resize', () => {
+            if (chart) {
+                chart.resize(container.offsetWidth, container.offsetHeight);
+            }
+        });
+
+        // Load data
+        loadChartData();
+    }
+
+    // Load chart data
+    async function loadChartData() {
+        if (!currentAsset) {
+            showError('Kein Asset ausgewählt');
+            return;
+        }
+
+        showLoading();
+
+        try {
+            // Load candles, breakout context, and session ranges in parallel
+            const [candlesRes, contextRes, rangesRes] = await Promise.all([
+                fetch(`/fiona/api/chart/${currentAsset}/candles?hours=${currentHours}&tf=5m`),
+                fetch(`/fiona/api/chart/${currentAsset}/breakout-context`),
+                fetch(`/fiona/api/chart/${currentAsset}/session-ranges?hours=${currentHours}`),
+            ]);
+
+            const candlesData = await candlesRes.json();
+            const contextData = await contextRes.json();
+            const rangesData = await rangesRes.json();
+
+            if (candlesData.success && candlesData.candles && candlesData.candles.length > 0) {
+                // Set candle data
+                candlestickSeries.setData(candlesData.candles);
+                
+                // Fit content with some margin
+                chart.timeScale().fitContent();
+            } else {
+                showError(candlesData.error || 'Keine Kerzen-Daten verfügbar');
+                return;
+            }
+
+            // Update info panel
+            if (contextData.success) {
+                updateInfoPanel(contextData);
+            }
+
+            // Draw range lines
+            if (rangesData.success && rangesData.ranges) {
+                drawSessionRanges(rangesData.ranges, contextData);
+            }
+
+            // Draw breakout context lines
+            if (contextData.success) {
+                drawBreakoutContext(contextData);
+            }
+
+        } catch (error) {
+            console.error('Error loading chart data:', error);
+            showError('Fehler beim Laden der Chart-Daten');
+        }
+    }
+
+    // Draw session ranges as horizontal lines
+    function drawSessionRanges(ranges, context) {
+        // Remove existing range lines
+        for (const key in priceLines) {
+            if (key.startsWith('range_')) {
+                try {
+                    candlestickSeries.removePriceLine(priceLines[key]);
+                } catch (e) {}
+                delete priceLines[key];
+            }
+        }
+
+        const phaseMapping = {
+            'ASIA_RANGE': 'asia',
+            'LONDON_CORE': 'london',
+            'PRE_US_RANGE': 'us',
+            'US_CORE_TRADING': 'us',
+        };
+
+        for (const [phase, rangeData] of Object.entries(ranges)) {
+            const rangeKey = phaseMapping[phase];
+            if (!rangeKey || !rangeVisibility[rangeKey]) continue;
+            if (!rangeData.is_valid || !rangeData.high || !rangeData.low) continue;
+
+            const color = colors[rangeKey];
+
+            // Draw high line
+            priceLines[`range_${phase}_high`] = candlestickSeries.createPriceLine({
+                price: rangeData.high,
+                color: color.line,
+                lineWidth: 1,
+                lineStyle: LightweightCharts.LineStyle.Dashed,
+                axisLabelVisible: true,
+                title: `${rangeData.phase_display} High`,
+            });
+
+            // Draw low line
+            priceLines[`range_${phase}_low`] = candlestickSeries.createPriceLine({
+                price: rangeData.low,
+                color: color.line,
+                lineWidth: 1,
+                lineStyle: LightweightCharts.LineStyle.Dashed,
+                axisLabelVisible: true,
+                title: `${rangeData.phase_display} Low`,
+            });
+        }
+    }
+
+    // Draw breakout context (current trading levels)
+    function drawBreakoutContext(context) {
+        // Remove existing breakout lines
+        for (const key of ['breakout_long', 'breakout_short', 'range_high', 'range_low']) {
+            if (priceLines[key]) {
+                try {
+                    candlestickSeries.removePriceLine(priceLines[key]);
+                } catch (e) {}
+                delete priceLines[key];
+            }
+        }
+
+        // Only draw if we have valid range data
+        if (!context.range_high || !context.range_low) return;
+
+        // Draw range boundaries (solid lines)
+        priceLines['range_high'] = candlestickSeries.createPriceLine({
+            price: context.range_high,
+            color: colors.rangeHigh,
+            lineWidth: 2,
+            lineStyle: LightweightCharts.LineStyle.Solid,
+            axisLabelVisible: true,
+            title: 'Range High',
+        });
+
+        priceLines['range_low'] = candlestickSeries.createPriceLine({
+            price: context.range_low,
+            color: colors.rangeLow,
+            lineWidth: 2,
+            lineStyle: LightweightCharts.LineStyle.Solid,
+            axisLabelVisible: true,
+            title: 'Range Low',
+        });
+
+        // Draw breakout levels (dashed lines)
+        if (context.breakout_long_level) {
+            priceLines['breakout_long'] = candlestickSeries.createPriceLine({
+                price: context.breakout_long_level,
+                color: colors.breakoutLong,
+                lineWidth: 1,
+                lineStyle: LightweightCharts.LineStyle.Dotted,
+                axisLabelVisible: true,
+                title: 'Breakout Long',
+            });
+        }
+
+        if (context.breakout_short_level) {
+            priceLines['breakout_short'] = candlestickSeries.createPriceLine({
+                price: context.breakout_short_level,
+                color: colors.breakoutShort,
+                lineWidth: 1,
+                lineStyle: LightweightCharts.LineStyle.Dotted,
+                axisLabelVisible: true,
+                title: 'Breakout Short',
+            });
+        }
+    }
+
+    // Update info panel
+    function updateInfoPanel(context) {
+        document.getElementById('info-asset').textContent = currentAsset;
+        document.getElementById('info-phase').textContent = formatPhase(context.phase);
+        document.getElementById('info-reference-phase').textContent = formatPhase(context.reference_phase || '--');
+        
+        document.getElementById('info-range-high').textContent = context.range_high ? context.range_high.toFixed(2) : '--';
+        document.getElementById('info-range-low').textContent = context.range_low ? context.range_low.toFixed(2) : '--';
+        
+        document.getElementById('info-breakout-long').textContent = context.breakout_long_level ? context.breakout_long_level.toFixed(2) : '--';
+        document.getElementById('info-breakout-short').textContent = context.breakout_short_level ? context.breakout_short_level.toFixed(2) : '--';
+        
+        document.getElementById('info-current-price').textContent = context.current_price ? context.current_price.toFixed(2) : '--';
+        document.getElementById('info-tick-size').textContent = context.tick_size || '--';
+        
+        // Update distances
+        if (context.distance_to_high_ticks !== null) {
+            document.getElementById('info-distance-high').textContent = context.distance_to_high_ticks + ' Ticks';
+        } else {
+            document.getElementById('info-distance-high').textContent = '-- Ticks';
+        }
+        
+        if (context.distance_to_low_ticks !== null) {
+            document.getElementById('info-distance-low').textContent = context.distance_to_low_ticks + ' Ticks';
+        } else {
+            document.getElementById('info-distance-low').textContent = '-- Ticks';
+        }
+        
+        // Update status badge
+        const statusEl = document.getElementById('info-status');
+        if (context.is_above_range) {
+            statusEl.innerHTML = '<span class="status-badge above"><i class="bi bi-arrow-up-circle"></i> Oberhalb (Long)</span>';
+        } else if (context.is_below_range) {
+            statusEl.innerHTML = '<span class="status-badge below"><i class="bi bi-arrow-down-circle"></i> Unterhalb (Short)</span>';
+        } else {
+            statusEl.innerHTML = '<span class="status-badge inside"><i class="bi bi-arrows-collapse"></i> Innerhalb</span>';
+        }
+    }
+
+    // Format phase name
+    function formatPhase(phase) {
+        const phaseNames = {
+            'ASIA_RANGE': 'Asia Range',
+            'LONDON_CORE': 'London Core',
+            'PRE_US_RANGE': 'Pre-US Range',
+            'US_CORE_TRADING': 'US Core Trading',
+            'OTHER': 'Other',
+        };
+        return phaseNames[phase] || phase || '--';
+    }
+
+    // Show loading state
+    function showLoading() {
+        const container = document.getElementById('candlestick-chart');
+        container.innerHTML = '<div class="chart-loading"><i class="bi bi-hourglass-split"></i></div>';
+    }
+
+    // Show error state
+    function showError(message) {
+        const container = document.getElementById('candlestick-chart');
+        container.innerHTML = `
+            <div class="chart-error">
+                <i class="bi bi-exclamation-triangle"></i>
+                <p>${escapeHtml(message)}</p>
+                <button class="btn btn-sm btn-outline-light" onclick="refreshChart()">
+                    <i class="bi bi-arrow-clockwise"></i> Erneut versuchen
+                </button>
+            </div>
+        `;
+    }
+
+    // Escape HTML
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // Change asset
+    function changeAsset(symbol) {
+        currentAsset = symbol;
+        if (chart) {
+            loadChartData();
+        } else {
+            initChart();
+        }
+    }
+
+    // Change time window
+    function changeTimeWindow(hours) {
+        currentHours = hours;
+        
+        // Update button states
+        document.querySelectorAll('.time-btn').forEach(btn => {
+            if (parseInt(btn.dataset.hours) === hours) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+        
+        loadChartData();
+    }
+
+    // Toggle range visibility
+    function toggleRange(rangeType, visible) {
+        rangeVisibility[rangeType] = visible;
+        loadChartData();
+    }
+
+    // Refresh chart
+    function refreshChart() {
+        loadChartData();
+    }
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        initChart();
+    });
+</script>
+{% endblock %}
