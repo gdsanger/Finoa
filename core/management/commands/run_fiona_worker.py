@@ -80,6 +80,7 @@ class Command(BaseCommand):
         self.execution_service: Optional[ExecutionService] = None
         self.weaviate_service: Optional[WeaviateService] = None
         self.shutdown_handler: Optional[GracefulShutdown] = None
+        self._last_price_snapshot_cleanup: Optional[datetime] = None
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -483,14 +484,27 @@ class Command(BaseCommand):
             worker_interval=worker_interval,
         )
         
-        # Clean up old price snapshots to keep database lean
+        # Clean up old price snapshots periodically (once per hour) to keep database lean
         # Retain 2 hours of data (enough for the 60-minute chart display)
-        try:
-            deleted = PriceSnapshot.cleanup_old_snapshots(hours=2)
-            if deleted > 0:
-                logger.debug(f"Cleaned up {deleted} old price snapshots")
-        except Exception as e:
-            logger.warning(f"Failed to clean up old price snapshots: {e}")
+        self._maybe_cleanup_old_price_snapshots(now)
+    
+    def _maybe_cleanup_old_price_snapshots(self, now: datetime) -> None:
+        """
+        Clean up old price snapshots if an hour has passed since last cleanup.
+        
+        This avoids running cleanup on every cycle which could be inefficient
+        as the number of assets grows.
+        """
+        # Run cleanup at most once per hour
+        if (self._last_price_snapshot_cleanup is None or
+                (now - self._last_price_snapshot_cleanup) >= timedelta(hours=1)):
+            try:
+                deleted = PriceSnapshot.cleanup_old_snapshots(hours=2)
+                self._last_price_snapshot_cleanup = now
+                if deleted > 0:
+                    logger.debug(f"Cleaned up {deleted} old price snapshots")
+            except Exception as e:
+                logger.warning(f"Failed to clean up old price snapshots: {e}")
     
     def _run_asset_cycle(
         self,
@@ -605,15 +619,19 @@ class Command(BaseCommand):
                 )
                 
                 # Record price snapshot for Breakout Distance Chart
-                # Calculate mid price from bid/ask
+                # Calculate mid price from bid/ask (price.bid and price.ask are already Decimal)
                 if price.bid is not None and price.ask is not None:
-                    price_mid = (Decimal(str(price.bid)) + Decimal(str(price.ask))) / 2
-                    PriceSnapshot.record_snapshot(
-                        asset=asset,
-                        price_mid=price_mid,
-                        price_bid=price.bid,
-                        price_ask=price.ask,
-                    )
+                    try:
+                        price_mid = (price.bid + price.ask) / 2
+                        PriceSnapshot.record_snapshot(
+                            asset=asset,
+                            price_mid=price_mid,
+                            price_bid=price.bid,
+                            price_ask=price.ask,
+                        )
+                    except Exception as snapshot_error:
+                        # Don't let price snapshot failures break the trading workflow
+                        logger.warning(f"Failed to record price snapshot for {epic}: {snapshot_error}")
             except Exception as e:
                 self.stdout.write(self.style.WARNING(f"     Could not get price: {e}"))
             
