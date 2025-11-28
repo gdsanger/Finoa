@@ -10,6 +10,13 @@ from django.core.exceptions import ImproperlyConfigured
 from django.utils import timezone
 
 from .models import Signal, Trade, WorkerStatus, TradingAsset, AssetDiagnostics, AssetPriceStatus
+from .services.chart_service import (
+    get_asset_by_symbol,
+    get_candles_for_asset,
+    get_breakout_context_for_asset,
+    get_session_ranges_for_asset,
+    SUPPORTED_TIME_WINDOWS,
+)
 
 from core.services.broker import create_ig_broker_service, BrokerError, AuthenticationError
 
@@ -1984,8 +1991,6 @@ def api_chart_candles(request, asset_code):
         - candle_count: Number of candles
         - candles: Array of OHLC data with unix timestamps
     """
-    from .services.chart_service import get_asset_by_symbol, get_candles_for_asset, SUPPORTED_TIME_WINDOWS
-    
     # Get query parameters
     timeframe = request.GET.get('tf', '5m')
     try:
@@ -2048,8 +2053,6 @@ def api_chart_breakout_context(request, asset_code):
         - distance_to_high/low_ticks: Distance to range boundaries
         - is_above/below/inside_range: Position flags
     """
-    from .services.chart_service import get_asset_by_symbol, get_breakout_context_for_asset
-    
     # Get asset
     asset = get_asset_by_symbol(asset_code)
     if not asset:
@@ -2095,8 +2098,6 @@ def api_chart_session_ranges(request, asset_code):
           - PRE_US_RANGE
           - US_CORE_TRADING
     """
-    from .services.chart_service import get_asset_by_symbol, get_session_ranges_for_asset, SUPPORTED_TIME_WINDOWS
-    
     # Get query parameters
     try:
         hours = int(request.GET.get('hours', 24))
@@ -2149,8 +2150,6 @@ def breakout_distance_chart_view(request):
         asset: Asset symbol (default: first active asset)
         hours: Time window (1, 3, 6, 8, 12, 24) - default: 6
     """
-    from .services.chart_service import SUPPORTED_TIME_WINDOWS
-    
     # Get active assets for the selector
     active_assets = TradingAsset.objects.filter(is_active=True).order_by('name')
     

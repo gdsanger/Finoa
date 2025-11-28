@@ -6,6 +6,7 @@ Provides data for the interactive Breakout Distance Chart including:
 - Session ranges with phase-offset visualization
 - Breakout context (current range, breakout levels, distances)
 """
+import random
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -18,6 +19,12 @@ from ..models import TradingAsset, BreakoutRange, PriceSnapshot, AssetPriceStatu
 
 # Supported time windows in hours
 SUPPORTED_TIME_WINDOWS = [1, 3, 6, 8, 12, 24]
+
+# Default tick size fallback
+DEFAULT_TICK_SIZE = Decimal('0.01')
+
+# Default base price for simulation (oil price)
+DEFAULT_SIMULATION_BASE_PRICE = 75.0
 
 # Session phase definitions with time boundaries (UTC hours)
 SESSION_DEFINITIONS = {
@@ -275,11 +282,9 @@ def _generate_simulated_candles(
     Uses the current price (if available) or a base price, then generates
     random-walk candles to show realistic chart behavior.
     """
-    import random
-
     # Try to get current price from price status
-    base_price = 75.0  # Default fallback for oil
-    tick_size = float(asset.tick_size) if asset.tick_size else 0.01
+    base_price = DEFAULT_SIMULATION_BASE_PRICE
+    tick_size = float(asset.tick_size) if asset.tick_size else float(DEFAULT_TICK_SIZE)
 
     try:
         price_status = AssetPriceStatus.get_for_asset(asset)
