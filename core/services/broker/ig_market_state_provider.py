@@ -521,8 +521,10 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         """
         Get the Asia session range (high, low).
         
-        Note: This uses cached values that should be updated
-        after Asia session ends.
+        First checks the in-memory cache, then falls back to loading
+        from the database (BreakoutRange) if the cache is empty.
+        This ensures ranges are available even after worker restarts
+        or when trading in phases that follow the Asia range building phase.
         
         Args:
             epic: Market identifier.
@@ -530,7 +532,24 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         Returns:
             Tuple of (high, low) or None if not available.
         """
-        return self._asia_range_cache.get(epic)
+        # Check cache first
+        cached = self._asia_range_cache.get(epic)
+        if cached is not None:
+            return cached
+        
+        # Fall back to database if asset is set
+        if self._current_asset and self._current_asset.epic == epic:
+            range_data = self._load_range_from_db(self._current_asset, 'ASIA_RANGE')
+            if range_data is not None:
+                # Cache the loaded data for subsequent calls
+                self._asia_range_cache[epic] = range_data
+                logger.debug(
+                    f"Loaded Asia range from database for {epic}: "
+                    f"high={range_data[0]:.4f}, low={range_data[1]:.4f}"
+                )
+            return range_data
+        
+        return None
 
     def set_asia_range(
         self,
@@ -584,8 +603,10 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         """
         Get the pre-US session range (high, low).
         
-        Note: This uses cached values that should be updated
-        before US core session.
+        First checks the in-memory cache, then falls back to loading
+        from the database (BreakoutRange) if the cache is empty.
+        This ensures ranges are available even after worker restarts
+        or when trading in phases that follow the pre-US range building phase.
         
         Args:
             epic: Market identifier.
@@ -593,7 +614,24 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         Returns:
             Tuple of (high, low) or None if not available.
         """
-        return self._pre_us_range_cache.get(epic)
+        # Check cache first
+        cached = self._pre_us_range_cache.get(epic)
+        if cached is not None:
+            return cached
+        
+        # Fall back to database if asset is set
+        if self._current_asset and self._current_asset.epic == epic:
+            range_data = self._load_range_from_db(self._current_asset, 'PRE_US_RANGE')
+            if range_data is not None:
+                # Cache the loaded data for subsequent calls
+                self._pre_us_range_cache[epic] = range_data
+                logger.debug(
+                    f"Loaded Pre-US range from database for {epic}: "
+                    f"high={range_data[0]:.4f}, low={range_data[1]:.4f}"
+                )
+            return range_data
+        
+        return None
 
     def set_pre_us_range(
         self,
@@ -770,6 +808,55 @@ class IGMarketStateProvider(BaseMarketStateProvider):
             
         except Exception as e:
             logger.warning(f"Failed to persist range for {phase}: {e}")
+
+    def _load_range_from_db(
+        self,
+        asset: 'TradingAsset',
+        phase: str,
+    ) -> Optional[tuple[float, float]]:
+        """
+        Load the most recent range for an asset and phase from the database.
+        
+        This is used as a fallback when the in-memory cache is empty,
+        ensuring ranges are available even after worker restarts.
+        
+        Args:
+            asset: TradingAsset instance.
+            phase: Phase identifier (e.g., 'ASIA_RANGE', 'PRE_US_RANGE').
+            
+        Returns:
+            Tuple of (high, low) or None if no range found.
+        """
+        try:
+            from trading.models import BreakoutRange
+            from datetime import timedelta
+            
+            now = datetime.now(timezone.utc)
+            
+            # Only load ranges from today (within the last 24 hours) to avoid stale data
+            since = now - timedelta(hours=24)
+            
+            latest_range = BreakoutRange.objects.filter(
+                asset=asset,
+                phase=phase,
+                end_time__gte=since,
+                is_valid=True,
+            ).order_by('-end_time').first()
+            
+            if latest_range:
+                logger.info(
+                    f"Range loaded from database: asset={asset.symbol}, phase={phase}, "
+                    f"high={float(latest_range.high):.4f}, low={float(latest_range.low):.4f}, "
+                    f"end_time={latest_range.end_time.isoformat()}"
+                )
+                return (float(latest_range.high), float(latest_range.low))
+            
+            logger.debug(f"No valid range found in database for {asset.symbol} {phase}")
+            return None
+            
+        except Exception as e:
+            logger.warning(f"Failed to load range from database for {phase}: {e}")
+            return None
 
     def get_atr(
         self,
