@@ -97,6 +97,14 @@ class StrategyEngine:
         # Get current phase
         phase = self.market_state.get_phase(ts)
         
+        # Get current price data for comprehensive logging
+        candles = self.market_state.get_recent_candles(epic, '1m', 1)
+        current_price = candles[-1].close if candles else None
+        
+        # Get range data for comprehensive logging
+        asia_range = self.market_state.get_asia_range(epic)
+        pre_us_range = self.market_state.get_pre_us_range(epic)
+        
         logger.debug(
             "Strategy evaluation started",
             extra={
@@ -104,9 +112,50 @@ class StrategyEngine:
                     "epic": epic,
                     "timestamp": ts.isoformat(),
                     "phase": phase.value,
+                    "current_price": current_price,
+                    "asia_range_high": asia_range[0] if asia_range else None,
+                    "asia_range_low": asia_range[1] if asia_range else None,
+                    "pre_us_range_high": pre_us_range[0] if pre_us_range else None,
+                    "pre_us_range_low": pre_us_range[1] if pre_us_range else None,
                 }
             }
         )
+        
+        # Define tradeable phases for logging
+        tradeable_phases = [
+            SessionPhase.LONDON_CORE,
+            SessionPhase.US_CORE_TRADING,
+            SessionPhase.US_CORE,
+            SessionPhase.EIA_POST,
+        ]
+        is_tradeable_phase = phase in tradeable_phases
+        
+        # Log if phase is not tradeable with detailed market data
+        if not is_tradeable_phase:
+            # Still log the price position relative to ranges for analysis
+            price_analysis = self._analyze_price_position(
+                current_price, asia_range, pre_us_range
+            )
+            logger.debug(
+                "Phase is not tradeable - no breakout evaluation performed",
+                extra={
+                    "strategy_data": {
+                        "epic": epic,
+                        "timestamp": ts.isoformat(),
+                        "phase": phase.value,
+                        "is_tradeable_phase": False,
+                        "tradeable_phases": [p.value for p in tradeable_phases],
+                        "current_price": current_price,
+                        "asia_range_high": asia_range[0] if asia_range else None,
+                        "asia_range_low": asia_range[1] if asia_range else None,
+                        "pre_us_range_high": pre_us_range[0] if pre_us_range else None,
+                        "pre_us_range_low": pre_us_range[1] if pre_us_range else None,
+                        "price_analysis": price_analysis,
+                        "reason": f"Phase {phase.value} is not in tradeable phases. "
+                                  f"No breakout evaluation performed.",
+                    }
+                }
+            )
         
         # Evaluate breakout strategies based on phase
         if phase == SessionPhase.LONDON_CORE:
@@ -149,6 +198,16 @@ class StrategyEngine:
                     }
                 )
         else:
+            # Provide detailed reason for no setups
+            if is_tradeable_phase:
+                reason = f"Phase {phase.value} is tradeable but no valid setups found"
+            else:
+                reason = f"Phase {phase.value} is not a tradeable phase"
+            
+            price_analysis = self._analyze_price_position(
+                current_price, asia_range, pre_us_range
+            )
+            
             logger.debug(
                 "No setup candidates generated",
                 extra={
@@ -156,12 +215,63 @@ class StrategyEngine:
                         "epic": epic,
                         "timestamp": ts.isoformat(),
                         "phase": phase.value,
-                        "reason": f"Phase {phase.value} is not tradeable or no valid setups found",
+                        "is_tradeable_phase": is_tradeable_phase,
+                        "current_price": current_price,
+                        "asia_range_high": asia_range[0] if asia_range else None,
+                        "asia_range_low": asia_range[1] if asia_range else None,
+                        "pre_us_range_high": pre_us_range[0] if pre_us_range else None,
+                        "pre_us_range_low": pre_us_range[1] if pre_us_range else None,
+                        "price_analysis": price_analysis,
+                        "reason": reason,
                     }
                 }
             )
         
         return candidates
+    
+    def _analyze_price_position(
+        self,
+        current_price: Optional[float],
+        asia_range: Optional[tuple[float, float]],
+        pre_us_range: Optional[tuple[float, float]],
+    ) -> dict:
+        """
+        Analyze current price position relative to ranges.
+        
+        Returns a dictionary with analysis of where price is relative to ranges,
+        useful for debugging why setups may not be generated.
+        """
+        analysis = {
+            "has_price": current_price is not None,
+            "has_asia_range": asia_range is not None,
+            "has_pre_us_range": pre_us_range is not None,
+        }
+        
+        if current_price is not None and asia_range is not None:
+            asia_high, asia_low = asia_range
+            if current_price > asia_high:
+                analysis["asia_position"] = "above_high"
+                analysis["asia_breakout_potential"] = "LONG"
+            elif current_price < asia_low:
+                analysis["asia_position"] = "below_low"
+                analysis["asia_breakout_potential"] = "SHORT"
+            else:
+                analysis["asia_position"] = "within_range"
+                analysis["asia_breakout_potential"] = None
+        
+        if current_price is not None and pre_us_range is not None:
+            pre_us_high, pre_us_low = pre_us_range
+            if current_price > pre_us_high:
+                analysis["pre_us_position"] = "above_high"
+                analysis["pre_us_breakout_potential"] = "LONG"
+            elif current_price < pre_us_low:
+                analysis["pre_us_position"] = "below_low"
+                analysis["pre_us_breakout_potential"] = "SHORT"
+            else:
+                analysis["pre_us_position"] = "within_range"
+                analysis["pre_us_breakout_potential"] = None
+        
+        return analysis
 
     def evaluate_with_diagnostics(self, epic: str, ts: datetime) -> EvaluationResult:
         """
