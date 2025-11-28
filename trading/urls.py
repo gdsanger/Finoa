@@ -38,6 +38,10 @@ urlpatterns = [
     path('api/assets/<int:asset_id>/breakout-ranges/', views.api_breakout_range_history, name='api_breakout_range_history'),
     path('api/assets/<int:asset_id>/breakout-ranges/latest/', views.api_breakout_range_latest, name='api_breakout_range_latest'),
     
+    # Breakout Distance Chart API
+    path('api/assets/<str:asset_code>/diagnostics/breakout-distance-chart', views.api_breakout_distance_chart, name='api_breakout_distance_chart'),
+    path('api/assets/<int:asset_id>/diagnostics/breakout-distance-chart/', views.api_breakout_distance_chart_by_id, name='api_breakout_distance_chart_by_id'),
+    
     # Trading Diagnostics API
     path('api/trading/diagnostics/', views.api_diagnostics, name='api_trading_diagnostics'),
     # Session Phase API

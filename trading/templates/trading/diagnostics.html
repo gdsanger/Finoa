@@ -364,6 +364,215 @@
             align-items: flex-start;
         }
     }
+    
+    /* =========================================================
+     * Breakout Distance Chart Styles
+     * ========================================================= */
+    .breakout-chart-card {
+        background-color: var(--diag-card-dark);
+        border: 1px solid var(--diag-border);
+        border-radius: 12px;
+        margin-bottom: 1.5rem;
+        overflow: hidden;
+    }
+    
+    .breakout-chart-header {
+        background-color: var(--diag-card-header);
+        padding: 0.75rem 1rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        border-bottom: 1px solid var(--diag-border);
+    }
+    
+    .breakout-chart-header h5 {
+        margin: 0;
+        color: var(--diag-text-light);
+        font-size: 0.875rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .breakout-chart-controls {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+    
+    .breakout-chart-body {
+        padding: 1rem;
+        position: relative;
+    }
+    
+    .breakout-chart-container {
+        position: relative;
+        width: 100%;
+        height: 250px;
+        background-color: rgba(0, 0, 0, 0.2);
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    
+    .breakout-chart-canvas {
+        width: 100%;
+        height: 100%;
+    }
+    
+    .trend-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        position: absolute;
+        top: 0.5rem;
+        right: 0.5rem;
+        z-index: 10;
+    }
+    
+    .trend-badge.trend-up {
+        background-color: rgba(40, 167, 69, 0.2);
+        color: var(--status-success);
+        border: 1px solid var(--status-success);
+    }
+    
+    .trend-badge.trend-down {
+        background-color: rgba(220, 53, 69, 0.2);
+        color: var(--status-danger);
+        border: 1px solid var(--status-danger);
+    }
+    
+    .trend-badge.trend-sideways {
+        background-color: rgba(108, 117, 125, 0.2);
+        color: var(--diag-text-muted);
+        border: 1px solid var(--diag-border);
+    }
+    
+    .chart-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        margin-top: 0.75rem;
+        font-size: 0.75rem;
+        color: var(--diag-text-muted);
+    }
+    
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+    
+    .legend-color {
+        width: 12px;
+        height: 3px;
+        border-radius: 1px;
+    }
+    
+    .legend-color.range-band {
+        background-color: rgba(37, 99, 235, 0.3);
+        height: 8px;
+    }
+    
+    .legend-color.breakout-long {
+        background-color: var(--status-success);
+    }
+    
+    .legend-color.breakout-short {
+        background-color: var(--status-danger);
+    }
+    
+    .legend-color.price-line {
+        background-color: #17a2b8;
+    }
+    
+    .breakout-chart-error {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        height: 250px;
+        color: var(--diag-text-muted);
+        font-size: 0.85rem;
+    }
+    
+    .breakout-chart-loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        height: 250px;
+        color: var(--diag-text-muted);
+        font-size: 0.85rem;
+    }
+    
+    .breakout-chart-info {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 0.75rem;
+        margin-top: 1rem;
+        padding-top: 0.75rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .chart-info-item {
+        text-align: center;
+        padding: 0.5rem;
+        background-color: rgba(0, 0, 0, 0.15);
+        border-radius: 6px;
+    }
+    
+    .chart-info-value {
+        font-size: 0.9rem;
+        font-weight: 700;
+        font-family: 'Roboto Mono', monospace;
+        color: var(--diag-text-light);
+    }
+    
+    .chart-info-label {
+        font-size: 0.65rem;
+        color: var(--diag-text-muted);
+        text-transform: uppercase;
+        margin-top: 0.15rem;
+    }
+    
+    .phase-tab-btn {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.7rem;
+        border-radius: 4px;
+        background-color: rgba(0, 0, 0, 0.3);
+        border: 1px solid var(--diag-border);
+        color: var(--diag-text-muted);
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .phase-tab-btn:hover {
+        background-color: rgba(0, 0, 0, 0.5);
+        color: var(--diag-text-light);
+    }
+    
+    .phase-tab-btn.active {
+        background-color: #2563eb;
+        border-color: #2563eb;
+        color: white;
+    }
+    
+    @media (max-width: 576px) {
+        .breakout-chart-container {
+            height: 200px;
+        }
+        
+        .breakout-chart-controls {
+            width: 100%;
+            justify-content: space-between;
+        }
+    }
 </style>
 {% endblock %}
 
@@ -398,6 +607,41 @@
         
         <!-- Asset Diagnostics Cards -->
         {% if asset_diagnostics %}
+        
+        <!-- Breakout Distance Chart Card -->
+        <div class="breakout-chart-card" id="breakout-distance-chart-card">
+            <div class="breakout-chart-header">
+                <h5><i class="bi bi-graph-up"></i> Breakout Distance Chart</h5>
+                <div class="breakout-chart-controls">
+                    <!-- Asset Selector -->
+                    <select id="chart-asset-selector" class="form-select form-select-sm" 
+                            style="width: auto; min-width: 120px; background-color: rgba(0, 0, 0, 0.3); border: 1px solid var(--diag-border); color: var(--diag-text-light); font-size: 0.75rem; padding: 0.25rem 0.5rem;"
+                            onchange="selectChartAsset(this.value)">
+                        {% for diag in asset_diagnostics %}
+                        <option value="{{ diag.asset.id }}">{{ diag.asset.symbol }}</option>
+                        {% endfor %}
+                    </select>
+                    <!-- Phase Tabs -->
+                    <div class="d-flex gap-1">
+                        <button class="phase-tab-btn active" data-phase="LONDON_CORE" onclick="selectChartPhase('LONDON_CORE')">London</button>
+                        <button class="phase-tab-btn" data-phase="PRE_US_RANGE" onclick="selectChartPhase('PRE_US_RANGE')">Pre-US</button>
+                        <button class="phase-tab-btn" data-phase="US_CORE_TRADING" onclick="selectChartPhase('US_CORE_TRADING')">US Core</button>
+                    </div>
+                    <button class="refresh-btn" id="refresh-chart-btn" onclick="refreshBreakoutDistanceChart()" title="Aktualisieren">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="breakout-chart-body">
+                <div id="breakout-chart-content">
+                    <div class="breakout-chart-loading">
+                        <i class="bi bi-hourglass-split"></i>
+                        <span>Lade Chart...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
         {% for diag in asset_diagnostics %}
         <div class="asset-card">
             <div class="asset-card-header">
@@ -610,6 +854,395 @@
         } else {
             startAutoRefresh();
         }
+    });
+    
+    // ============================================================================
+    // Breakout Distance Chart
+    // ============================================================================
+    
+    let chartRefreshInterval = null;
+    const CHART_REFRESH_INTERVAL = 30000;
+    let currentChartAssetId = null;
+    let currentChartPhase = 'LONDON_CORE';
+    
+    // Initialize chart on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        initializeBreakoutDistanceChart();
+    });
+    
+    function initializeBreakoutDistanceChart() {
+        const selector = document.getElementById('chart-asset-selector');
+        if (selector && selector.options.length > 0) {
+            currentChartAssetId = selector.value;
+            refreshBreakoutDistanceChart();
+            
+            // Set up auto-refresh for chart
+            chartRefreshInterval = setInterval(refreshBreakoutDistanceChart, CHART_REFRESH_INTERVAL);
+        }
+    }
+    
+    function selectChartAsset(assetId) {
+        currentChartAssetId = assetId;
+        refreshBreakoutDistanceChart();
+    }
+    
+    function selectChartPhase(phase) {
+        currentChartPhase = phase;
+        
+        // Update button states
+        document.querySelectorAll('.breakout-chart-controls .phase-tab-btn').forEach(btn => {
+            if (btn.dataset.phase === phase) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+        
+        refreshBreakoutDistanceChart();
+    }
+    
+    function setChartRefreshButtonLoading(loading) {
+        const btn = document.getElementById('refresh-chart-btn');
+        if (!btn) return;
+        
+        if (loading) {
+            btn.classList.add('spinning');
+            btn.disabled = true;
+        } else {
+            btn.classList.remove('spinning');
+            btn.disabled = false;
+        }
+    }
+    
+    function refreshBreakoutDistanceChart() {
+        if (!currentChartAssetId) return;
+        
+        setChartRefreshButtonLoading(true);
+        
+        const url = `/fiona/api/assets/${currentChartAssetId}/diagnostics/breakout-distance-chart/?phase=${currentChartPhase}`;
+        
+        fetch(url, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        })
+        .then(response => response.json())
+        .then(data => {
+            setChartRefreshButtonLoading(false);
+            renderBreakoutDistanceChart(data);
+        })
+        .catch(error => {
+            console.error('Error loading breakout distance chart:', error);
+            setChartRefreshButtonLoading(false);
+            renderChartError('Verbindungsfehler');
+        });
+    }
+    
+    function renderChartError(message) {
+        const content = document.getElementById('breakout-chart-content');
+        if (content) {
+            content.innerHTML = `
+                <div class="breakout-chart-error">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <span>${escapeHtml(message)}</span>
+                </div>
+            `;
+        }
+    }
+    
+    function escapeHtml(text) {
+        if (!text || typeof text !== 'string') return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    function renderBreakoutDistanceChart(data) {
+        const content = document.getElementById('breakout-chart-content');
+        if (!content) return;
+        
+        // Check for errors
+        if (!data.success || data.error) {
+            renderChartError(data.error || 'Keine Daten verfügbar');
+            return;
+        }
+        
+        const range = data.range || {};
+        const prices = data.prices || [];
+        
+        // Build trend badge HTML
+        let trendBadgeClass = 'trend-sideways';
+        let trendIcon = 'bi-arrow-right';
+        let trendText = 'Sideways (60 min)';
+        
+        if (data.trend === 'up') {
+            trendBadgeClass = 'trend-up';
+            trendIcon = 'bi-arrow-up';
+            trendText = 'Uptrend (60 min)';
+        } else if (data.trend === 'down') {
+            trendBadgeClass = 'trend-down';
+            trendIcon = 'bi-arrow-down';
+            trendText = 'Downtrend (60 min)';
+        }
+        
+        // Format prices for display
+        const formatPrice = (val) => {
+            if (val === null || val === undefined) return '--';
+            return parseFloat(val).toFixed(2);
+        };
+        
+        // Get current price (last price in array)
+        const currentPrice = prices.length > 0 ? prices[prices.length - 1].price : null;
+        
+        // Calculate distance to breakout levels with safe tick_size
+        const tickSize = (range.tick_size && range.tick_size > 0) ? range.tick_size : 0.01;
+        let distanceToLong = null;
+        let distanceToShort = null;
+        
+        if (currentPrice && range.breakout_long_level) {
+            distanceToLong = ((range.breakout_long_level - currentPrice) / tickSize).toFixed(0);
+        }
+        if (currentPrice && range.breakout_short_level) {
+            distanceToShort = ((currentPrice - range.breakout_short_level) / tickSize).toFixed(0);
+        }
+        
+        content.innerHTML = `
+            <div class="breakout-chart-container">
+                <span class="trend-badge ${trendBadgeClass}">
+                    <i class="bi ${trendIcon}"></i> ${trendText}
+                </span>
+                <canvas id="breakout-chart-canvas" class="breakout-chart-canvas"></canvas>
+            </div>
+            <div class="chart-legend">
+                <div class="legend-item">
+                    <span class="legend-color range-band"></span>
+                    <span>Range (${escapeHtml(data.reference_phase || '--')})</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-color breakout-long"></span>
+                    <span>Long Breakout</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-color breakout-short"></span>
+                    <span>Short Breakout</span>
+                </div>
+                <div class="legend-item">
+                    <span class="legend-color price-line"></span>
+                    <span>Preisverlauf (60 min)</span>
+                </div>
+            </div>
+            <div class="breakout-chart-info">
+                <div class="chart-info-item">
+                    <div class="chart-info-value">${formatPrice(range.high)}</div>
+                    <div class="chart-info-label">Range High</div>
+                </div>
+                <div class="chart-info-item">
+                    <div class="chart-info-value">${formatPrice(range.low)}</div>
+                    <div class="chart-info-label">Range Low</div>
+                </div>
+                <div class="chart-info-item">
+                    <div class="chart-info-value" style="color: #28a745;">${formatPrice(range.breakout_long_level)}</div>
+                    <div class="chart-info-label">Long Level</div>
+                </div>
+                <div class="chart-info-item">
+                    <div class="chart-info-value" style="color: #dc3545;">${formatPrice(range.breakout_short_level)}</div>
+                    <div class="chart-info-label">Short Level</div>
+                </div>
+                <div class="chart-info-item">
+                    <div class="chart-info-value" style="color: #17a2b8;">${formatPrice(currentPrice)}</div>
+                    <div class="chart-info-label">Aktueller Preis</div>
+                </div>
+                <div class="chart-info-item">
+                    <div class="chart-info-value" style="color: #28a745;">${distanceToLong !== null ? distanceToLong + ' T' : '--'}</div>
+                    <div class="chart-info-label">Dist. Long</div>
+                </div>
+                <div class="chart-info-item">
+                    <div class="chart-info-value" style="color: #dc3545;">${distanceToShort !== null ? distanceToShort + ' T' : '--'}</div>
+                    <div class="chart-info-label">Dist. Short</div>
+                </div>
+            </div>
+        `;
+        
+        // Draw the chart
+        setTimeout(function() {
+            drawBreakoutChart(data);
+        }, 50);
+    }
+    
+    function drawBreakoutChart(data) {
+        const canvas = document.getElementById('breakout-chart-canvas');
+        if (!canvas) return;
+        
+        const ctx = canvas.getContext('2d');
+        const range = data.range || {};
+        const prices = data.prices || [];
+        
+        // Get actual canvas dimensions
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width * window.devicePixelRatio;
+        canvas.height = rect.height * window.devicePixelRatio;
+        ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+        
+        const width = rect.width;
+        const height = rect.height;
+        const padding = { top: 20, right: 15, bottom: 25, left: 50 };
+        
+        const chartWidth = width - padding.left - padding.right;
+        const chartHeight = height - padding.top - padding.bottom;
+        
+        // Calculate price range for Y-axis (avoiding spread operator for large arrays)
+        const priceValues = prices.map(p => p.price).filter(p => p !== null && p !== undefined);
+        let minPrice = Math.min(
+            range.low || Infinity,
+            range.breakout_short_level || Infinity,
+            priceValues.length > 0 ? Math.min.apply(null, priceValues) : Infinity
+        );
+        let maxPrice = Math.max(
+            range.high || -Infinity,
+            range.breakout_long_level || -Infinity,
+            priceValues.length > 0 ? Math.max.apply(null, priceValues) : -Infinity
+        );
+        
+        // Add some padding to price range
+        const priceRange = maxPrice - minPrice;
+        const pricePadding = priceRange * 0.1;
+        minPrice -= pricePadding;
+        maxPrice += pricePadding;
+        
+        // Y-axis scale function
+        const yScale = (price) => {
+            return padding.top + chartHeight - ((price - minPrice) / (maxPrice - minPrice)) * chartHeight;
+        };
+        
+        // X-axis scale function (based on time)
+        const xScale = (index) => {
+            if (prices.length <= 1) return padding.left + chartWidth / 2;
+            return padding.left + (index / (prices.length - 1)) * chartWidth;
+        };
+        
+        // Clear canvas
+        ctx.clearRect(0, 0, width, height);
+        
+        // Draw range band (semi-transparent blue)
+        if (range.high && range.low) {
+            ctx.fillStyle = 'rgba(37, 99, 235, 0.15)';
+            ctx.fillRect(
+                padding.left,
+                yScale(range.high),
+                chartWidth,
+                yScale(range.low) - yScale(range.high)
+            );
+            
+            // Range high line
+            ctx.strokeStyle = 'rgba(37, 99, 235, 0.5)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            ctx.moveTo(padding.left, yScale(range.high));
+            ctx.lineTo(padding.left + chartWidth, yScale(range.high));
+            ctx.stroke();
+            
+            // Range low line
+            ctx.beginPath();
+            ctx.moveTo(padding.left, yScale(range.low));
+            ctx.lineTo(padding.left + chartWidth, yScale(range.low));
+            ctx.stroke();
+        }
+        
+        // Draw breakout levels (dashed lines)
+        ctx.setLineDash([5, 3]);
+        
+        // Breakout long level (green)
+        if (range.breakout_long_level) {
+            ctx.strokeStyle = '#28a745';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(padding.left, yScale(range.breakout_long_level));
+            ctx.lineTo(padding.left + chartWidth, yScale(range.breakout_long_level));
+            ctx.stroke();
+        }
+        
+        // Breakout short level (red)
+        if (range.breakout_short_level) {
+            ctx.strokeStyle = '#dc3545';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(padding.left, yScale(range.breakout_short_level));
+            ctx.lineTo(padding.left + chartWidth, yScale(range.breakout_short_level));
+            ctx.stroke();
+        }
+        
+        // Draw price line
+        ctx.setLineDash([]);
+        if (prices.length > 1) {
+            ctx.strokeStyle = '#17a2b8';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(xScale(0), yScale(prices[0].price));
+            
+            for (let i = 1; i < prices.length; i++) {
+                ctx.lineTo(xScale(i), yScale(prices[i].price));
+            }
+            ctx.stroke();
+            
+            // Draw current price point (last point)
+            const lastPrice = prices[prices.length - 1].price;
+            ctx.fillStyle = '#17a2b8';
+            ctx.beginPath();
+            ctx.arc(xScale(prices.length - 1), yScale(lastPrice), 5, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            // Draw white border around current price point
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(xScale(prices.length - 1), yScale(lastPrice), 5, 0, 2 * Math.PI);
+            ctx.stroke();
+        }
+        
+        // Draw Y-axis labels
+        ctx.fillStyle = '#8b949e';
+        ctx.font = '10px Roboto Mono, monospace';
+        ctx.textAlign = 'right';
+        
+        const numYLabels = 5;
+        for (let i = 0; i <= numYLabels; i++) {
+            const price = minPrice + (i / numYLabels) * (maxPrice - minPrice);
+            const y = yScale(price);
+            ctx.fillText(price.toFixed(2), padding.left - 5, y + 3);
+            
+            // Draw grid line
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            ctx.moveTo(padding.left, y);
+            ctx.lineTo(padding.left + chartWidth, y);
+            ctx.stroke();
+        }
+        
+        // Draw X-axis time labels
+        ctx.textAlign = 'center';
+        if (prices.length > 0) {
+            const numXLabels = Math.min(6, prices.length);
+            for (let i = 0; i < numXLabels; i++) {
+                const index = Math.floor((i / (numXLabels - 1)) * (prices.length - 1));
+                const x = xScale(index);
+                const ts = new Date(prices[index].ts);
+                const timeStr = ts.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+                ctx.fillText(timeStr, x, height - 5);
+            }
+        }
+    }
+    
+    // Handle window resize
+    let resizeTimeout;
+    window.addEventListener('resize', function() {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(function() {
+            refreshBreakoutDistanceChart();
+        }, 250);
     });
 </script>
 {% endblock %}
