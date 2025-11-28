@@ -1,6 +1,7 @@
 from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.utils import timezone
+from datetime import timedelta
 from decimal import Decimal
 import uuid
 
@@ -2220,7 +2221,7 @@ class PriceSnapshot(models.Model):
         Returns:
             QuerySet of PriceSnapshot instances ordered by timestamp ascending
         """
-        cutoff = timezone.now() - timezone.timedelta(minutes=minutes)
+        cutoff = timezone.now() - timedelta(minutes=minutes)
         
         if isinstance(asset, int):
             qs = cls.objects.filter(asset_id=asset, timestamp__gte=cutoff)
@@ -2240,7 +2241,7 @@ class PriceSnapshot(models.Model):
         Returns:
             Number of deleted records
         """
-        cutoff = timezone.now() - timezone.timedelta(hours=hours)
+        cutoff = timezone.now() - timedelta(hours=hours)
         deleted_count, _ = cls.objects.filter(timestamp__lt=cutoff).delete()
         return deleted_count
     

@@ -38,6 +38,9 @@ DEFAULT_TREND_THRESHOLD_TICKS = 15
 # Price history window in minutes
 PRICE_HISTORY_MINUTES = 60
 
+# Default tick size fallback
+DEFAULT_TICK_SIZE = Decimal('0.01')
+
 
 @dataclass
 class BreakoutDistanceChartData:
@@ -116,9 +119,15 @@ def compute_trend(prices: List[Dict[str, Any]], tick_size: Decimal, threshold_ti
     if not prices or len(prices) < 2:
         return "sideways"
     
-    # Get first and last prices
-    price_start = Decimal(str(prices[0].get('price', 0)))
-    price_end = Decimal(str(prices[-1].get('price', 0)))
+    # Get first and last prices, skip if missing
+    first_price = prices[0].get('price')
+    last_price = prices[-1].get('price')
+    
+    if first_price is None or last_price is None:
+        return "sideways"
+    
+    price_start = Decimal(str(first_price))
+    price_end = Decimal(str(last_price))
     
     # Calculate change in price and ticks
     price_change = price_end - price_start
@@ -185,7 +194,7 @@ def get_breakout_distance_chart_data(
     result.min_breakout_ticks = min_breakout_ticks
     
     # Calculate breakout levels
-    tick_size = asset.tick_size if asset.tick_size and asset.tick_size > 0 else Decimal('0.01')
+    tick_size = asset.tick_size if asset.tick_size and asset.tick_size > 0 else DEFAULT_TICK_SIZE
     breakout_distance = Decimal(min_breakout_ticks) * tick_size
     
     result.breakout_long_level = result.range_high + breakout_distance

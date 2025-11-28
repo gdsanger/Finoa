@@ -995,15 +995,16 @@
         // Get current price (last price in array)
         const currentPrice = prices.length > 0 ? prices[prices.length - 1].price : null;
         
-        // Calculate distance to breakout levels
+        // Calculate distance to breakout levels with safe tick_size
+        const tickSize = (range.tick_size && range.tick_size > 0) ? range.tick_size : 0.01;
         let distanceToLong = null;
         let distanceToShort = null;
         
         if (currentPrice && range.breakout_long_level) {
-            distanceToLong = ((range.breakout_long_level - currentPrice) / (range.tick_size || 0.01)).toFixed(0);
+            distanceToLong = ((range.breakout_long_level - currentPrice) / tickSize).toFixed(0);
         }
         if (currentPrice && range.breakout_short_level) {
-            distanceToShort = ((currentPrice - range.breakout_short_level) / (range.tick_size || 0.01)).toFixed(0);
+            distanceToShort = ((currentPrice - range.breakout_short_level) / tickSize).toFixed(0);
         }
         
         content.innerHTML = `
@@ -1090,16 +1091,17 @@
         const chartWidth = width - padding.left - padding.right;
         const chartHeight = height - padding.top - padding.bottom;
         
-        // Calculate price range for Y-axis
+        // Calculate price range for Y-axis (avoiding spread operator for large arrays)
+        const priceValues = prices.map(p => p.price).filter(p => p !== null && p !== undefined);
         let minPrice = Math.min(
             range.low || Infinity,
             range.breakout_short_level || Infinity,
-            ...prices.map(p => p.price)
+            priceValues.length > 0 ? Math.min.apply(null, priceValues) : Infinity
         );
         let maxPrice = Math.max(
             range.high || -Infinity,
             range.breakout_long_level || -Infinity,
-            ...prices.map(p => p.price)
+            priceValues.length > 0 ? Math.max.apply(null, priceValues) : -Infinity
         );
         
         // Add some padding to price range

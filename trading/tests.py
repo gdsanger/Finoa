@@ -3687,7 +3687,7 @@ class BreakoutDistanceChartAPITest(TestCase):
     def test_api_asset_not_found(self):
         """Test handling of non-existent asset."""
         response = self.client.get('/fiona/api/assets/NONEXISTENT/diagnostics/breakout-distance-chart?phase=LONDON_CORE')
-        self.assertEqual(response.status_code, 200)  # Returns 200 with error in body
+        self.assertEqual(response.status_code, 404)  # Returns 404 for not found
         
         data = response.json()
         self.assertFalse(data['success'])

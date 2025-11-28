@@ -1877,10 +1877,16 @@ def api_breakout_distance_chart(request, asset_code):
         
         # Check for errors in chart data
         if chart_data.error:
+            # Return 404 for "not found" errors, 200 for data availability issues
+            if 'not found' in chart_data.error.lower():
+                return JsonResponse({
+                    'success': False,
+                    'error': chart_data.error,
+                }, status=404)
             return JsonResponse({
                 'success': False,
                 'error': chart_data.error,
-            }, status=200)  # Return 200 but with error in body
+            })
         
         return JsonResponse({
             'success': True,
@@ -1936,10 +1942,11 @@ def api_breakout_distance_chart_by_id(request, asset_id):
         
         # Check for errors in chart data
         if chart_data.error:
+            # Data availability issues return 200 with error message
             return JsonResponse({
                 'success': False,
                 'error': chart_data.error,
-            }, status=200)
+            })
         
         return JsonResponse({
             'success': True,
