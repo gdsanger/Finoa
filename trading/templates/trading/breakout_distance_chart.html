@@ -523,6 +523,7 @@
     let candlestickSeries = null;
     let priceLines = {};
     let rangeMarkers = {};
+    let resizeListenerAdded = false;
 
     // Current settings
     let currentAsset = '{{ selected_asset.symbol|default:"" }}';
@@ -544,8 +545,26 @@
         rangeLow: '#fb923c',
     };
 
-    // Initialize chart
+    // Initialize chart (called once on page load)
     function initChart() {
+        const container = document.getElementById('candlestick-chart');
+        
+        // Handle resize (only add once)
+        if (!resizeListenerAdded) {
+            window.addEventListener('resize', () => {
+                if (chart) {
+                    chart.resize(container.offsetWidth, container.offsetHeight);
+                }
+            });
+            resizeListenerAdded = true;
+        }
+
+        // Load data (this will create the chart after data is fetched)
+        loadChartData();
+    }
+
+    // Create chart and series
+    function createChartAndSeries() {
         const container = document.getElementById('candlestick-chart');
         container.innerHTML = '';
 
@@ -583,15 +602,8 @@
             wickDownColor: '#ef4444',
         });
 
-        // Handle resize
-        window.addEventListener('resize', () => {
-            if (chart) {
-                chart.resize(container.offsetWidth, container.offsetHeight);
-            }
-        });
-
-        // Load data
-        loadChartData();
+        // Reset price lines since we're creating a new chart
+        priceLines = {};
     }
 
     // Load chart data
@@ -616,6 +628,9 @@
             const rangesData = await rangesRes.json();
 
             if (candlesData.success && candlesData.candles && candlesData.candles.length > 0) {
+                // Recreate chart after loading overlay destroyed it
+                createChartAndSeries();
+                
                 // Set candle data
                 candlestickSeries.setData(candlesData.candles);
                 
