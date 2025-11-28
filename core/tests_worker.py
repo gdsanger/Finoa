@@ -366,6 +366,223 @@ class IGMarketStateProviderTest(TestCase):
         self.assertTrue(any('US Core Trading 15:00 - 22:00' in log for log in cm.output))
 
 
+class IGMarketStateProviderDbFallbackTest(TestCase):
+    """Tests for IGMarketStateProvider database fallback for ranges."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        from trading.models import TradingAsset
+        
+        self.mock_broker = MagicMock(spec=IgBrokerService)
+        
+        # Mock symbol price
+        self.mock_price = SymbolPrice(
+            epic="CC.D.CL.UNC.IP",
+            market_name="WTI Crude",
+            bid=Decimal("75.50"),
+            ask=Decimal("75.55"),
+            spread=Decimal("0.05"),
+            high=Decimal("76.00"),
+            low=Decimal("74.00"),
+        )
+        self.mock_broker.get_symbol_price.return_value = self.mock_price
+        
+        # Create a test asset
+        self.asset = TradingAsset.objects.create(
+            name="Test Oil",
+            symbol="OIL",
+            epic="CC.D.CL.UNC.IP",
+            category="commodity",
+            tick_size="0.01",
+            is_active=True,
+        )
+
+    def test_asia_range_falls_back_to_database(self):
+        """Test that get_asia_range falls back to database when cache is empty."""
+        from trading.models import BreakoutRange
+        from datetime import timedelta
+        
+        provider = IGMarketStateProvider(broker_service=self.mock_broker)
+        
+        # Associate asset with provider
+        provider.set_current_asset(self.asset)
+        
+        # Initially, cache should be empty
+        # Without DB fallback, this would return None
+        self.assertIsNone(provider._asia_range_cache.get("CC.D.CL.UNC.IP"))
+        
+        # Create a range in the database
+        now = datetime.now(timezone.utc)
+        BreakoutRange.objects.create(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time=now - timedelta(hours=6),
+            end_time=now - timedelta(hours=2),
+            high=Decimal("75.50"),
+            low=Decimal("74.50"),
+            height_ticks=100,
+            height_points=Decimal("1.00"),
+            is_valid=True,
+        )
+        
+        # Now get_asia_range should load from database
+        result = provider.get_asia_range("CC.D.CL.UNC.IP")
+        
+        self.assertIsNotNone(result)
+        self.assertEqual(result, (75.50, 74.50))
+        
+        # Verify it was also cached
+        self.assertEqual(provider._asia_range_cache.get("CC.D.CL.UNC.IP"), (75.50, 74.50))
+
+    def test_pre_us_range_falls_back_to_database(self):
+        """Test that get_pre_us_range falls back to database when cache is empty."""
+        from trading.models import BreakoutRange
+        from datetime import timedelta
+        
+        provider = IGMarketStateProvider(broker_service=self.mock_broker)
+        
+        # Associate asset with provider
+        provider.set_current_asset(self.asset)
+        
+        # Initially, cache should be empty
+        self.assertIsNone(provider._pre_us_range_cache.get("CC.D.CL.UNC.IP"))
+        
+        # Create a range in the database
+        now = datetime.now(timezone.utc)
+        BreakoutRange.objects.create(
+            asset=self.asset,
+            phase='PRE_US_RANGE',
+            start_time=now - timedelta(hours=4),
+            end_time=now - timedelta(hours=2),
+            high=Decimal("76.00"),
+            low=Decimal("75.00"),
+            height_ticks=100,
+            height_points=Decimal("1.00"),
+            is_valid=True,
+        )
+        
+        # Now get_pre_us_range should load from database
+        result = provider.get_pre_us_range("CC.D.CL.UNC.IP")
+        
+        self.assertIsNotNone(result)
+        self.assertEqual(result, (76.00, 75.00))
+        
+        # Verify it was also cached
+        self.assertEqual(provider._pre_us_range_cache.get("CC.D.CL.UNC.IP"), (76.00, 75.00))
+
+    def test_range_not_loaded_if_too_old(self):
+        """Test that ranges older than 24 hours are not loaded from database."""
+        from trading.models import BreakoutRange
+        from datetime import timedelta
+        
+        provider = IGMarketStateProvider(broker_service=self.mock_broker)
+        provider.set_current_asset(self.asset)
+        
+        # Create an old range in the database (25 hours ago)
+        now = datetime.now(timezone.utc)
+        BreakoutRange.objects.create(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time=now - timedelta(hours=30),
+            end_time=now - timedelta(hours=25),  # Ended 25 hours ago
+            high=Decimal("75.50"),
+            low=Decimal("74.50"),
+            height_ticks=100,
+            height_points=Decimal("1.00"),
+            is_valid=True,
+        )
+        
+        # get_asia_range should not load this old range
+        result = provider.get_asia_range("CC.D.CL.UNC.IP")
+        
+        self.assertIsNone(result)
+
+    def test_range_not_loaded_if_invalid(self):
+        """Test that invalid ranges are not loaded from database."""
+        from trading.models import BreakoutRange
+        from datetime import timedelta
+        
+        provider = IGMarketStateProvider(broker_service=self.mock_broker)
+        provider.set_current_asset(self.asset)
+        
+        # Create an invalid range
+        now = datetime.now(timezone.utc)
+        BreakoutRange.objects.create(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time=now - timedelta(hours=6),
+            end_time=now - timedelta(hours=2),
+            high=Decimal("75.50"),
+            low=Decimal("74.50"),
+            height_ticks=100,
+            height_points=Decimal("1.00"),
+            is_valid=False,  # Invalid!
+        )
+        
+        # get_asia_range should not load this invalid range
+        result = provider.get_asia_range("CC.D.CL.UNC.IP")
+        
+        self.assertIsNone(result)
+
+    def test_range_not_loaded_without_current_asset(self):
+        """Test that ranges are not loaded if no current asset is set."""
+        from trading.models import BreakoutRange
+        from datetime import timedelta
+        
+        provider = IGMarketStateProvider(broker_service=self.mock_broker)
+        
+        # Don't set current asset
+        
+        # Create a range in the database
+        now = datetime.now(timezone.utc)
+        BreakoutRange.objects.create(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time=now - timedelta(hours=6),
+            end_time=now - timedelta(hours=2),
+            high=Decimal("75.50"),
+            low=Decimal("74.50"),
+            height_ticks=100,
+            height_points=Decimal("1.00"),
+            is_valid=True,
+        )
+        
+        # get_asia_range should return None because no current asset
+        result = provider.get_asia_range("CC.D.CL.UNC.IP")
+        
+        self.assertIsNone(result)
+
+    def test_cache_takes_precedence_over_database(self):
+        """Test that cached values are used when available."""
+        from trading.models import BreakoutRange
+        from datetime import timedelta
+        
+        provider = IGMarketStateProvider(broker_service=self.mock_broker)
+        provider.set_current_asset(self.asset)
+        
+        # Set cache value directly
+        provider._asia_range_cache["CC.D.CL.UNC.IP"] = (80.00, 79.00)
+        
+        # Create a different range in the database
+        now = datetime.now(timezone.utc)
+        BreakoutRange.objects.create(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time=now - timedelta(hours=6),
+            end_time=now - timedelta(hours=2),
+            high=Decimal("75.50"),
+            low=Decimal("74.50"),
+            height_ticks=100,
+            height_points=Decimal("1.00"),
+            is_valid=True,
+        )
+        
+        # get_asia_range should return cached value, not database
+        result = provider.get_asia_range("CC.D.CL.UNC.IP")
+        
+        self.assertEqual(result, (80.00, 79.00))
+
+
 class FionaWorkerCommandTest(TestCase):
     """Tests for the run_fiona_worker management command."""
 
