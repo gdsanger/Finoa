@@ -1828,3 +1828,127 @@ def api_phase_configs(request, asset_id):
         'success': False,
         'error': 'Method not allowed.',
     }, status=405)
+
+
+@login_required
+def api_breakout_distance_chart(request, asset_code):
+    """
+    GET /api/assets/{asset_code}/diagnostics/breakout-distance-chart - Return breakout distance chart data.
+    
+    Path parameters:
+        asset_code: Asset symbol (e.g., 'OIL', 'NAS100')
+    
+    Query parameters:
+        phase: Required - Session phase ('LONDON_CORE', 'US_CORE_TRADING', 'PRE_US_RANGE', 'EIA_PRE', 'EIA_POST')
+    
+    Returns JSON with:
+        - asset: Asset symbol
+        - phase: Current phase
+        - reference_phase: Reference phase used for range (e.g., 'ASIA_RANGE', 'PRE_US_RANGE')
+        - range: Range data (high, low, tick_size, min_breakout_ticks, breakout_long_level, breakout_short_level)
+        - trend: Trend indicator ('up', 'down', 'sideways')
+        - prices: Array of price points with timestamp and price
+        - error: Optional error message if data unavailable
+        
+    This endpoint uses persisted data only - no IG API calls.
+    """
+    from .services.breakout_distance_chart import get_breakout_distance_chart_data_by_code, REFERENCE_PHASE_MAPPING
+    
+    # Get required phase parameter
+    phase = request.GET.get('phase')
+    
+    if not phase:
+        return JsonResponse({
+            'success': False,
+            'error': 'phase is required',
+        }, status=400)
+    
+    # Validate phase value (must have a reference phase mapping)
+    valid_phases = list(REFERENCE_PHASE_MAPPING.keys())
+    if phase not in valid_phases:
+        return JsonResponse({
+            'success': False,
+            'error': f"No breakout distance chart available for phase '{phase}'.",
+        }, status=400)
+    
+    try:
+        # Get chart data
+        chart_data = get_breakout_distance_chart_data_by_code(asset_code, phase)
+        
+        # Check for errors in chart data
+        if chart_data.error:
+            return JsonResponse({
+                'success': False,
+                'error': chart_data.error,
+            }, status=200)  # Return 200 but with error in body
+        
+        return JsonResponse({
+            'success': True,
+            **chart_data.to_dict(),
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting breakout distance chart data: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': 'Fehler beim Laden der Chart-Daten',
+        }, status=500)
+
+
+@login_required
+def api_breakout_distance_chart_by_id(request, asset_id):
+    """
+    GET /api/assets/{asset_id}/diagnostics/breakout-distance-chart/ - Return breakout distance chart data by asset ID.
+    
+    Path parameters:
+        asset_id: Asset database ID
+    
+    Query parameters:
+        phase: Required - Session phase ('LONDON_CORE', 'US_CORE_TRADING', 'PRE_US_RANGE', 'EIA_PRE', 'EIA_POST')
+    
+    Returns JSON with same structure as api_breakout_distance_chart.
+    """
+    from .services.breakout_distance_chart import get_breakout_distance_chart_data, REFERENCE_PHASE_MAPPING
+    
+    # Get required phase parameter
+    phase = request.GET.get('phase')
+    
+    if not phase:
+        return JsonResponse({
+            'success': False,
+            'error': 'phase is required',
+        }, status=400)
+    
+    # Validate phase value
+    valid_phases = list(REFERENCE_PHASE_MAPPING.keys())
+    if phase not in valid_phases:
+        return JsonResponse({
+            'success': False,
+            'error': f"No breakout distance chart available for phase '{phase}'.",
+        }, status=400)
+    
+    try:
+        # Get asset
+        asset = get_object_or_404(TradingAsset, id=asset_id)
+        
+        # Get chart data
+        chart_data = get_breakout_distance_chart_data(asset, phase)
+        
+        # Check for errors in chart data
+        if chart_data.error:
+            return JsonResponse({
+                'success': False,
+                'error': chart_data.error,
+            }, status=200)
+        
+        return JsonResponse({
+            'success': True,
+            **chart_data.to_dict(),
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting breakout distance chart data: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': 'Fehler beim Laden der Chart-Daten',
+        }, status=500)

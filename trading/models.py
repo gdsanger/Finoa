@@ -2123,3 +2123,132 @@ class AssetSessionPhaseConfig(models.Model):
         if isinstance(asset, int):
             return cls.objects.filter(asset_id=asset, enabled=True).order_by('phase')
         return cls.objects.filter(asset=asset, enabled=True).order_by('phase')
+
+
+class PriceSnapshot(models.Model):
+    """
+    Stores historical price snapshots for each trading asset.
+    
+    Used for the Breakout Distance Chart to display the last 60 minutes
+    of price history relative to the range and breakout levels.
+    
+    Records are automatically cleaned up after a configurable retention period
+    (default: 2 hours) to keep the database lean.
+    """
+    
+    # Relationship to asset
+    asset = models.ForeignKey(
+        TradingAsset,
+        on_delete=models.CASCADE,
+        related_name='price_snapshots',
+        help_text='Asset this snapshot belongs to'
+    )
+    
+    # Timestamp
+    timestamp = models.DateTimeField(
+        db_index=True,
+        help_text='Time of the price snapshot'
+    )
+    
+    # Price data (using mid price for simplicity in chart display)
+    price_mid = models.DecimalField(
+        max_digits=12,
+        decimal_places=6,
+        help_text='Mid price (average of bid and ask)'
+    )
+    price_bid = models.DecimalField(
+        max_digits=12,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        help_text='Bid price'
+    )
+    price_ask = models.DecimalField(
+        max_digits=12,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        help_text='Ask price'
+    )
+    
+    class Meta:
+        ordering = ['-timestamp']
+        verbose_name = 'Price Snapshot'
+        verbose_name_plural = 'Price Snapshots'
+        indexes = [
+            models.Index(fields=['asset', '-timestamp']),
+        ]
+    
+    def __str__(self):
+        return f"{self.asset.symbol}: {self.price_mid} @ {self.timestamp.strftime('%H:%M:%S')}"
+    
+    @classmethod
+    def record_snapshot(cls, asset, price_mid, price_bid=None, price_ask=None, timestamp=None):
+        """
+        Record a new price snapshot for an asset.
+        
+        Args:
+            asset: TradingAsset instance
+            price_mid: Mid price
+            price_bid: Optional bid price
+            price_ask: Optional ask price
+            timestamp: Optional timestamp (defaults to now)
+            
+        Returns:
+            PriceSnapshot instance
+        """
+        if timestamp is None:
+            timestamp = timezone.now()
+        
+        return cls.objects.create(
+            asset=asset,
+            timestamp=timestamp,
+            price_mid=Decimal(str(price_mid)),
+            price_bid=Decimal(str(price_bid)) if price_bid is not None else None,
+            price_ask=Decimal(str(price_ask)) if price_ask is not None else None,
+        )
+    
+    @classmethod
+    def get_recent_for_asset(cls, asset, minutes=60):
+        """
+        Get recent price snapshots for an asset.
+        
+        Args:
+            asset: TradingAsset instance or asset ID
+            minutes: Number of minutes of history to retrieve (default: 60)
+            
+        Returns:
+            QuerySet of PriceSnapshot instances ordered by timestamp ascending
+        """
+        cutoff = timezone.now() - timezone.timedelta(minutes=minutes)
+        
+        if isinstance(asset, int):
+            qs = cls.objects.filter(asset_id=asset, timestamp__gte=cutoff)
+        else:
+            qs = cls.objects.filter(asset=asset, timestamp__gte=cutoff)
+        
+        return qs.order_by('timestamp')
+    
+    @classmethod
+    def cleanup_old_snapshots(cls, hours=2):
+        """
+        Remove price snapshots older than the retention period.
+        
+        Args:
+            hours: Number of hours to retain (default: 2)
+            
+        Returns:
+            Number of deleted records
+        """
+        cutoff = timezone.now() - timezone.timedelta(hours=hours)
+        deleted_count, _ = cls.objects.filter(timestamp__lt=cutoff).delete()
+        return deleted_count
+    
+    def to_dict(self):
+        """Convert to dictionary for API responses."""
+        return {
+            'ts': self.timestamp.isoformat(),
+            'price': float(self.price_mid),
+            'bid': float(self.price_bid) if self.price_bid else None,
+            'ask': float(self.price_ask) if self.price_ask else None,
+        }

@@ -3344,3 +3344,401 @@ class PriceRangeStatusAPITest(TestCase):
         self.assertEqual(response.status_code, 200)
         # Should show error message in HTML
         self.assertIn(b'Kein Asset', response.content)
+
+
+# ============================================================================
+# PriceSnapshot Model Tests
+# ============================================================================
+
+class PriceSnapshotModelTest(TestCase):
+    """Tests for the PriceSnapshot model."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.asset = TradingAsset.objects.create(
+            name='Crude Oil',
+            symbol='OIL',
+            epic='CC.D.CL.UNC.IP',
+            tick_size=Decimal('0.01'),
+            is_active=True,
+        )
+    
+    def test_snapshot_creation(self):
+        """Test basic price snapshot creation."""
+        from .models import PriceSnapshot
+        
+        snapshot = PriceSnapshot.record_snapshot(
+            asset=self.asset,
+            price_mid=Decimal('75.50'),
+            price_bid=Decimal('75.49'),
+            price_ask=Decimal('75.51'),
+        )
+        
+        self.assertEqual(snapshot.asset, self.asset)
+        self.assertEqual(snapshot.price_mid, Decimal('75.50'))
+        self.assertEqual(snapshot.price_bid, Decimal('75.49'))
+        self.assertEqual(snapshot.price_ask, Decimal('75.51'))
+        self.assertIsNotNone(snapshot.timestamp)
+    
+    def test_get_recent_for_asset(self):
+        """Test retrieving recent snapshots for an asset."""
+        from .models import PriceSnapshot
+        
+        # Create some snapshots
+        for i in range(5):
+            PriceSnapshot.record_snapshot(
+                asset=self.asset,
+                price_mid=Decimal(f'75.{50 + i}'),
+            )
+        
+        recent = PriceSnapshot.get_recent_for_asset(self.asset, minutes=60)
+        self.assertEqual(recent.count(), 5)
+    
+    def test_get_recent_excludes_old_snapshots(self):
+        """Test that old snapshots are excluded."""
+        from .models import PriceSnapshot
+        
+        now = timezone.now()
+        
+        # Create a recent snapshot
+        PriceSnapshot.objects.create(
+            asset=self.asset,
+            timestamp=now,
+            price_mid=Decimal('75.50'),
+        )
+        
+        # Create an old snapshot
+        PriceSnapshot.objects.create(
+            asset=self.asset,
+            timestamp=now - timedelta(hours=2),
+            price_mid=Decimal('74.50'),
+        )
+        
+        recent = PriceSnapshot.get_recent_for_asset(self.asset, minutes=60)
+        self.assertEqual(recent.count(), 1)
+        self.assertEqual(recent.first().price_mid, Decimal('75.50'))
+    
+    def test_cleanup_old_snapshots(self):
+        """Test cleanup of old snapshots."""
+        from .models import PriceSnapshot
+        
+        now = timezone.now()
+        
+        # Create recent snapshots
+        PriceSnapshot.objects.create(
+            asset=self.asset,
+            timestamp=now,
+            price_mid=Decimal('75.50'),
+        )
+        
+        # Create old snapshots
+        for i in range(3):
+            PriceSnapshot.objects.create(
+                asset=self.asset,
+                timestamp=now - timedelta(hours=3 + i),
+                price_mid=Decimal(f'74.{50 + i}'),
+            )
+        
+        self.assertEqual(PriceSnapshot.objects.count(), 4)
+        
+        deleted = PriceSnapshot.cleanup_old_snapshots(hours=2)
+        self.assertEqual(deleted, 3)
+        self.assertEqual(PriceSnapshot.objects.count(), 1)
+    
+    def test_to_dict(self):
+        """Test conversion to dictionary."""
+        from .models import PriceSnapshot
+        
+        snapshot = PriceSnapshot.record_snapshot(
+            asset=self.asset,
+            price_mid=Decimal('75.50'),
+            price_bid=Decimal('75.49'),
+            price_ask=Decimal('75.51'),
+        )
+        
+        data = snapshot.to_dict()
+        
+        self.assertIn('ts', data)
+        self.assertEqual(data['price'], 75.50)
+        self.assertEqual(data['bid'], 75.49)
+        self.assertEqual(data['ask'], 75.51)
+
+
+# ============================================================================
+# Breakout Distance Chart Service Tests
+# ============================================================================
+
+class BreakoutDistanceChartServiceTest(TestCase):
+    """Tests for the Breakout Distance Chart service."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.asset = TradingAsset.objects.create(
+            name='Crude Oil',
+            symbol='OIL',
+            epic='CC.D.CL.UNC.IP',
+            category='commodity',
+            tick_size=Decimal('0.01'),
+            is_active=True,
+        )
+        AssetBreakoutConfig.objects.create(
+            asset=self.asset,
+            min_breakout_distance_ticks=2,
+        )
+    
+    def test_get_reference_phase_london_core(self):
+        """Test reference phase mapping for LONDON_CORE."""
+        from trading.services.breakout_distance_chart import get_reference_phase
+        
+        self.assertEqual(get_reference_phase('LONDON_CORE'), 'ASIA_RANGE')
+    
+    def test_get_reference_phase_us_core_trading(self):
+        """Test reference phase mapping for US_CORE_TRADING."""
+        from trading.services.breakout_distance_chart import get_reference_phase
+        
+        self.assertEqual(get_reference_phase('US_CORE_TRADING'), 'PRE_US_RANGE')
+    
+    def test_get_reference_phase_invalid(self):
+        """Test reference phase mapping for invalid phase."""
+        from trading.services.breakout_distance_chart import get_reference_phase
+        
+        self.assertIsNone(get_reference_phase('INVALID_PHASE'))
+    
+    def test_compute_trend_up(self):
+        """Test trend computation when prices are up."""
+        from trading.services.breakout_distance_chart import compute_trend
+        
+        prices = [
+            {'price': 75.00},
+            {'price': 75.10},
+            {'price': 75.20},
+            {'price': 75.30},
+        ]
+        
+        trend = compute_trend(prices, Decimal('0.01'), threshold_ticks=10)
+        self.assertEqual(trend, 'up')
+    
+    def test_compute_trend_down(self):
+        """Test trend computation when prices are down."""
+        from trading.services.breakout_distance_chart import compute_trend
+        
+        prices = [
+            {'price': 75.30},
+            {'price': 75.20},
+            {'price': 75.10},
+            {'price': 75.00},
+        ]
+        
+        trend = compute_trend(prices, Decimal('0.01'), threshold_ticks=10)
+        self.assertEqual(trend, 'down')
+    
+    def test_compute_trend_sideways(self):
+        """Test trend computation when prices are sideways."""
+        from trading.services.breakout_distance_chart import compute_trend
+        
+        prices = [
+            {'price': 75.00},
+            {'price': 75.05},
+            {'price': 74.98},
+            {'price': 75.03},
+        ]
+        
+        trend = compute_trend(prices, Decimal('0.01'), threshold_ticks=10)
+        self.assertEqual(trend, 'sideways')
+    
+    def test_compute_trend_empty_prices(self):
+        """Test trend computation with empty prices."""
+        from trading.services.breakout_distance_chart import compute_trend
+        
+        trend = compute_trend([], Decimal('0.01'))
+        self.assertEqual(trend, 'sideways')
+    
+    def test_get_chart_data_no_reference_phase(self):
+        """Test chart data when no reference phase available."""
+        from trading.services.breakout_distance_chart import get_breakout_distance_chart_data
+        
+        data = get_breakout_distance_chart_data(self.asset, 'ASIA_RANGE')  # ASIA_RANGE has no reference
+        
+        self.assertIsNotNone(data.error)
+        self.assertIn('No breakout distance chart available', data.error)
+    
+    def test_get_chart_data_no_range(self):
+        """Test chart data when no range data available."""
+        from trading.services.breakout_distance_chart import get_breakout_distance_chart_data
+        
+        data = get_breakout_distance_chart_data(self.asset, 'LONDON_CORE')
+        
+        self.assertIsNotNone(data.error)
+        self.assertIn('No reference range available', data.error)
+    
+    def test_get_chart_data_success(self):
+        """Test successful chart data retrieval."""
+        from trading.services.breakout_distance_chart import get_breakout_distance_chart_data
+        from .models import BreakoutRange, PriceSnapshot
+        
+        # Create reference range (Asia Range for LONDON_CORE)
+        now = timezone.now()
+        BreakoutRange.objects.create(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time=now - timedelta(hours=8),
+            end_time=now - timedelta(hours=1),
+            high=Decimal('75.50'),
+            low=Decimal('74.50'),
+            height_ticks=100,
+        )
+        
+        # Create price history
+        for i in range(10):
+            PriceSnapshot.objects.create(
+                asset=self.asset,
+                timestamp=now - timedelta(minutes=50 - i * 5),
+                price_mid=Decimal(f'75.{i:02d}'),
+            )
+        
+        data = get_breakout_distance_chart_data(self.asset, 'LONDON_CORE')
+        
+        self.assertIsNone(data.error)
+        self.assertEqual(data.asset, 'OIL')
+        self.assertEqual(data.phase, 'LONDON_CORE')
+        self.assertEqual(data.reference_phase, 'ASIA_RANGE')
+        self.assertEqual(data.range_high, Decimal('75.50'))
+        self.assertEqual(data.range_low, Decimal('74.50'))
+        self.assertEqual(data.min_breakout_ticks, 2)
+        self.assertEqual(data.breakout_long_level, Decimal('75.52'))  # 75.50 + 0.02
+        self.assertEqual(data.breakout_short_level, Decimal('74.48'))  # 74.50 - 0.02
+        self.assertEqual(len(data.prices), 10)
+    
+    def test_to_dict(self):
+        """Test chart data to_dict method."""
+        from trading.services.breakout_distance_chart import BreakoutDistanceChartData
+        
+        data = BreakoutDistanceChartData(
+            asset='OIL',
+            phase='LONDON_CORE',
+            reference_phase='ASIA_RANGE',
+            range_high=Decimal('75.50'),
+            range_low=Decimal('74.50'),
+            tick_size=Decimal('0.01'),
+            min_breakout_ticks=2,
+            breakout_long_level=Decimal('75.52'),
+            breakout_short_level=Decimal('74.48'),
+            trend='up',
+            prices=[{'ts': '2025-01-01T00:00:00Z', 'price': 75.0}],
+        )
+        
+        result = data.to_dict()
+        
+        self.assertEqual(result['asset'], 'OIL')
+        self.assertEqual(result['phase'], 'LONDON_CORE')
+        self.assertEqual(result['reference_phase'], 'ASIA_RANGE')
+        self.assertEqual(result['range']['high'], 75.50)
+        self.assertEqual(result['range']['low'], 74.50)
+        self.assertEqual(result['range']['breakout_long_level'], 75.52)
+        self.assertEqual(result['trend'], 'up')
+        self.assertEqual(len(result['prices']), 1)
+
+
+# ============================================================================
+# Breakout Distance Chart API Tests
+# ============================================================================
+
+class BreakoutDistanceChartAPITest(TestCase):
+    """Tests for the Breakout Distance Chart API endpoints."""
+    
+    def setUp(self):
+        """Set up test data and authenticated client."""
+        self.user = User.objects.create_user(
+            username='testuser',
+            password='testpass123'
+        )
+        self.client.login(username='testuser', password='testpass123')
+        
+        self.asset = TradingAsset.objects.create(
+            name='Crude Oil',
+            symbol='OIL',
+            epic='CC.D.CL.UNC.IP',
+            category='commodity',
+            tick_size=Decimal('0.01'),
+            is_active=True,
+        )
+        AssetBreakoutConfig.objects.create(
+            asset=self.asset,
+            min_breakout_distance_ticks=2,
+        )
+    
+    def test_api_requires_phase(self):
+        """Test that phase parameter is required."""
+        response = self.client.get('/fiona/api/assets/OIL/diagnostics/breakout-distance-chart')
+        self.assertEqual(response.status_code, 400)
+        
+        data = response.json()
+        self.assertFalse(data['success'])
+        self.assertIn('phase', data['error'])
+    
+    def test_api_invalid_phase(self):
+        """Test that invalid phase is rejected."""
+        response = self.client.get('/fiona/api/assets/OIL/diagnostics/breakout-distance-chart?phase=ASIA_RANGE')
+        self.assertEqual(response.status_code, 400)
+        
+        data = response.json()
+        self.assertFalse(data['success'])
+    
+    def test_api_asset_not_found(self):
+        """Test handling of non-existent asset."""
+        response = self.client.get('/fiona/api/assets/NONEXISTENT/diagnostics/breakout-distance-chart?phase=LONDON_CORE')
+        self.assertEqual(response.status_code, 200)  # Returns 200 with error in body
+        
+        data = response.json()
+        self.assertFalse(data['success'])
+        self.assertIn('not found', data['error'])
+    
+    def test_api_no_range_data(self):
+        """Test handling when no range data available."""
+        response = self.client.get('/fiona/api/assets/OIL/diagnostics/breakout-distance-chart?phase=LONDON_CORE')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertFalse(data['success'])
+        self.assertIn('No reference range', data['error'])
+    
+    def test_api_by_id_success(self):
+        """Test API endpoint by asset ID."""
+        from .models import BreakoutRange, PriceSnapshot
+        
+        # Create range
+        now = timezone.now()
+        BreakoutRange.objects.create(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time=now - timedelta(hours=8),
+            end_time=now - timedelta(hours=1),
+            high=Decimal('75.50'),
+            low=Decimal('74.50'),
+            height_ticks=100,
+        )
+        
+        # Create price history
+        for i in range(5):
+            PriceSnapshot.objects.create(
+                asset=self.asset,
+                timestamp=now - timedelta(minutes=30 - i * 5),
+                price_mid=Decimal(f'75.{i:02d}'),
+            )
+        
+        response = self.client.get(f'/fiona/api/assets/{self.asset.id}/diagnostics/breakout-distance-chart/?phase=LONDON_CORE')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['asset'], 'OIL')
+        self.assertEqual(data['phase'], 'LONDON_CORE')
+        self.assertEqual(data['reference_phase'], 'ASIA_RANGE')
+        self.assertEqual(len(data['prices']), 5)
+    
+    def test_api_requires_login(self):
+        """Test that API requires authentication."""
+        self.client.logout()
+        response = self.client.get('/fiona/api/assets/OIL/diagnostics/breakout-distance-chart?phase=LONDON_CORE')
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login/', response.url)
