@@ -2,19 +2,23 @@
 Chart Service for Breakout Distance Chart.
 
 Provides data for the interactive Breakout Distance Chart including:
-- 5-minute candlestick data
+- 5-minute candlestick data from IG API
 - Session ranges with phase-offset visualization
 - Breakout context (current range, breakout levels, distances)
 """
-import random
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import List, Optional, Dict, Any, Literal
 
 from django.utils import timezone
+from django.core.exceptions import ImproperlyConfigured
 
 from ..models import TradingAsset, BreakoutRange, PriceSnapshot, AssetPriceStatus
+
+
+logger = logging.getLogger(__name__)
 
 
 # Supported time windows in hours
@@ -22,9 +26,6 @@ SUPPORTED_TIME_WINDOWS = [1, 3, 6, 8, 12, 24]
 
 # Default tick size fallback
 DEFAULT_TICK_SIZE = Decimal('0.01')
-
-# Default base price for simulation (oil price)
-DEFAULT_SIMULATION_BASE_PRICE = 75.0
 
 # Session phase definitions with time boundaries (UTC hours)
 SESSION_DEFINITIONS = {
@@ -174,16 +175,16 @@ def get_candles_for_asset(
     timeframe: str = '5m',
 ) -> ChartCandlesResponse:
     """
-    Get candlestick data for an asset.
+    Get candlestick data for an asset from the IG API.
     
-    Since IG API may not provide historical candle data easily,
-    we generate candles from PriceSnapshot data or create simulated
-    data for demonstration purposes.
+    Fetches historical OHLC candle data directly from the IG REST API
+    using the /prices/{epic} endpoint. Returns the requested number of
+    candles based on the hours and timeframe parameters.
     
     Args:
         asset: TradingAsset instance
         hours: Number of hours of history (1, 3, 6, 8, 12, 24)
-        timeframe: Candle timeframe (currently only '5m' supported)
+        timeframe: Candle timeframe ('5m', '15m', '1h', etc.)
     
     Returns:
         ChartCandlesResponse with candle data
@@ -191,28 +192,172 @@ def get_candles_for_asset(
     if hours not in SUPPORTED_TIME_WINDOWS:
         hours = min(SUPPORTED_TIME_WINDOWS, key=lambda x: abs(x - hours))
 
+    # Parse timeframe to IG API resolution format
+    resolution = _timeframe_to_ig_resolution(timeframe)
+    
+    # Calculate number of candles needed
+    timeframe_minutes = _parse_timeframe_minutes(timeframe)
+    num_points = (hours * 60) // timeframe_minutes
+
+    try:
+        # Try to get candles from IG API
+        candles = _fetch_candles_from_ig(asset.epic, resolution, num_points)
+        
+        if candles:
+            return ChartCandlesResponse(
+                asset=asset.symbol,
+                timeframe=timeframe,
+                hours=hours,
+                candles=candles,
+            )
+    except Exception as e:
+        logger.warning(f"Failed to fetch candles from IG API for {asset.epic}: {e}")
+    
+    # Fallback: Try to get candles from PriceSnapshot database
     now = timezone.now()
     start_time = now - timedelta(hours=hours)
-
-    # Get price snapshots from the database
+    
     snapshots = PriceSnapshot.objects.filter(
         asset=asset,
         timestamp__gte=start_time,
     ).order_by('timestamp')
 
-    if not snapshots.exists():
-        # Generate simulated candles for demo purposes
-        return _generate_simulated_candles(asset, hours, start_time, now)
-
-    # Aggregate snapshots into 5-minute candles
-    candles = _aggregate_snapshots_to_candles(list(snapshots), timeframe_minutes=5)
-
+    if snapshots.exists():
+        candles = _aggregate_snapshots_to_candles(
+            list(snapshots), 
+            timeframe_minutes=timeframe_minutes
+        )
+        return ChartCandlesResponse(
+            asset=asset.symbol,
+            timeframe=timeframe,
+            hours=hours,
+            candles=candles,
+        )
+    
+    # No data available
     return ChartCandlesResponse(
         asset=asset.symbol,
         timeframe=timeframe,
         hours=hours,
-        candles=candles,
+        candles=[],
+        error="No candle data available. IG API connection may be unavailable.",
     )
+
+
+def _timeframe_to_ig_resolution(timeframe: str) -> str:
+    """
+    Convert timeframe string to IG API resolution format.
+    
+    Args:
+        timeframe: Timeframe string (e.g., '5m', '15m', '1h')
+    
+    Returns:
+        IG API resolution string (e.g., 'MINUTE_5', 'HOUR')
+    """
+    timeframe = timeframe.lower().strip()
+    
+    # Mapping of common timeframes to IG resolution
+    mapping = {
+        '1m': 'MINUTE',
+        '2m': 'MINUTE_2',
+        '3m': 'MINUTE_3',
+        '5m': 'MINUTE_5',
+        '10m': 'MINUTE_10',
+        '15m': 'MINUTE_15',
+        '30m': 'MINUTE_30',
+        '1h': 'HOUR',
+        '2h': 'HOUR_2',
+        '3h': 'HOUR_3',
+        '4h': 'HOUR_4',
+        '1d': 'DAY',
+        '1w': 'WEEK',
+        '1M': 'MONTH',
+    }
+    
+    return mapping.get(timeframe, 'MINUTE_5')
+
+
+def _parse_timeframe_minutes(timeframe: str) -> int:
+    """
+    Parse a timeframe string to minutes.
+    
+    Args:
+        timeframe: Timeframe string (e.g., '5m', '1h')
+    
+    Returns:
+        Number of minutes per candle
+    """
+    timeframe = timeframe.lower().strip()
+    
+    # Handle minute format (e.g., '5m', '15m')
+    if timeframe.endswith('m'):
+        try:
+            return int(timeframe[:-1])
+        except ValueError:
+            return 5
+    
+    # Handle hour format (e.g., '1h', '4h')
+    if timeframe.endswith('h'):
+        try:
+            return int(timeframe[:-1]) * 60
+        except ValueError:
+            return 5
+    
+    # Handle day format
+    if timeframe.endswith('d'):
+        try:
+            return int(timeframe[:-1]) * 60 * 24
+        except ValueError:
+            return 5
+    
+    # Try to parse as a plain number (minutes)
+    try:
+        return int(timeframe)
+    except ValueError:
+        return 5
+
+
+def _fetch_candles_from_ig(epic: str, resolution: str, num_points: int) -> List[CandleData]:
+    """
+    Fetch candles from the IG API.
+    
+    Args:
+        epic: Market EPIC code
+        resolution: IG API resolution string
+        num_points: Number of candles to fetch
+    
+    Returns:
+        List of CandleData objects
+    
+    Raises:
+        Exception: If IG API is not available or request fails
+    """
+    from core.services.broker import create_ig_broker_service
+    
+    broker = create_ig_broker_service()
+    broker.connect()
+    
+    try:
+        price_data = broker.get_historical_prices(
+            epic=epic,
+            resolution=resolution,
+            num_points=num_points,
+        )
+        
+        candles = []
+        for data in price_data:
+            candle = CandleData(
+                time=data["time"],
+                open=round(data["open"], 4),
+                high=round(data["high"], 4),
+                low=round(data["low"], 4),
+                close=round(data["close"], 4),
+            )
+            candles.append(candle)
+        
+        return candles
+    finally:
+        broker.disconnect()
 
 
 def _aggregate_snapshots_to_candles(
@@ -268,77 +413,6 @@ def _aggregate_snapshots_to_candles(
         candles.append(candle)
 
     return candles
-
-
-def _generate_simulated_candles(
-    asset: TradingAsset,
-    hours: int,
-    start_time: datetime,
-    end_time: datetime,
-) -> ChartCandlesResponse:
-    """
-    Generate simulated candle data for demonstration.
-    
-    Uses the current price (if available) or a base price, then generates
-    random-walk candles to show realistic chart behavior.
-    """
-    # Try to get current price from price status
-    base_price = DEFAULT_SIMULATION_BASE_PRICE
-    tick_size = float(asset.tick_size) if asset.tick_size else float(DEFAULT_TICK_SIZE)
-
-    try:
-        price_status = AssetPriceStatus.get_for_asset(asset)
-        if price_status and price_status.bid_price:
-            base_price = float(price_status.bid_price)
-    except Exception:
-        pass
-
-    # Try to get range data for realistic price levels
-    latest_range = BreakoutRange.get_latest_for_asset_phase(asset, 'ASIA_RANGE')
-    if latest_range:
-        base_price = float((latest_range.high + latest_range.low) / 2)
-
-    candles = []
-    current_time = start_time
-    current_price = base_price
-
-    # Volatility as percentage of base price
-    volatility = 0.001  # 0.1% per candle
-
-    while current_time < end_time:
-        # Generate random OHLC
-        change = random.gauss(0, base_price * volatility)
-        open_price = current_price
-        close_price = current_price + change
-
-        # Generate high and low with some wicks
-        wick_size = abs(change) * random.uniform(0.2, 0.8) if change != 0 else base_price * volatility * 0.5
-
-        if close_price > open_price:
-            high_price = close_price + wick_size * random.uniform(0, 0.5)
-            low_price = open_price - wick_size * random.uniform(0, 0.5)
-        else:
-            high_price = open_price + wick_size * random.uniform(0, 0.5)
-            low_price = close_price - wick_size * random.uniform(0, 0.5)
-
-        candle = CandleData(
-            time=int(current_time.timestamp()),
-            open=round(open_price, 4),
-            high=round(high_price, 4),
-            low=round(low_price, 4),
-            close=round(close_price, 4),
-        )
-        candles.append(candle)
-
-        current_price = close_price
-        current_time += timedelta(minutes=5)
-
-    return ChartCandlesResponse(
-        asset=asset.symbol,
-        timeframe='5m',
-        hours=hours,
-        candles=candles,
-    )
 
 
 def get_session_ranges_for_asset(
