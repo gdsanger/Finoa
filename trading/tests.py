@@ -3742,3 +3742,308 @@ class BreakoutDistanceChartAPITest(TestCase):
         response = self.client.get('/fiona/api/assets/OIL/diagnostics/breakout-distance-chart?phase=LONDON_CORE')
         self.assertEqual(response.status_code, 302)
         self.assertIn('/login/', response.url)
+
+
+# ============================================================================
+# Chart API Tests
+# ============================================================================
+
+class ChartCandlesAPITest(TestCase):
+    """Tests for the Chart Candles API endpoint."""
+    
+    def setUp(self):
+        self.user = User.objects.create_user('testuser', 'test@example.com', 'password')
+        self.client.login(username='testuser', password='password')
+        
+        self.asset = TradingAsset.objects.create(
+            name='Crude Oil',
+            symbol='OIL',
+            epic='CC.D.CL.UNC.IP',
+            tick_size=Decimal('0.01'),
+            is_active=True,
+        )
+    
+    def test_get_candles_success(self):
+        """Test successful candle retrieval."""
+        response = self.client.get('/fiona/api/chart/OIL/candles?hours=1')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['asset'], 'OIL')
+        self.assertEqual(data['timeframe'], '5m')
+        self.assertEqual(data['hours'], 1)
+        # Should have simulated candles
+        self.assertIn('candles', data)
+        self.assertIn('candle_count', data)
+    
+    def test_get_candles_invalid_hours(self):
+        """Test candle retrieval with invalid hours parameter."""
+        response = self.client.get('/fiona/api/chart/OIL/candles?hours=5')
+        self.assertEqual(response.status_code, 400)
+        
+        data = response.json()
+        self.assertFalse(data['success'])
+        self.assertIn('Invalid hours', data['error'])
+    
+    def test_get_candles_asset_not_found(self):
+        """Test candle retrieval for non-existent asset."""
+        response = self.client.get('/fiona/api/chart/NONEXISTENT/candles?hours=1')
+        self.assertEqual(response.status_code, 404)
+        
+        data = response.json()
+        self.assertFalse(data['success'])
+        self.assertIn('not found', data['error'])
+    
+    def test_get_candles_requires_login(self):
+        """Test that candles API requires authentication."""
+        self.client.logout()
+        response = self.client.get('/fiona/api/chart/OIL/candles?hours=1')
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login/', response.url)
+
+
+class ChartBreakoutContextAPITest(TestCase):
+    """Tests for the Chart Breakout Context API endpoint."""
+    
+    def setUp(self):
+        self.user = User.objects.create_user('testuser', 'test@example.com', 'password')
+        self.client.login(username='testuser', password='password')
+        
+        self.asset = TradingAsset.objects.create(
+            name='Crude Oil',
+            symbol='OIL',
+            epic='CC.D.CL.UNC.IP',
+            tick_size=Decimal('0.01'),
+            is_active=True,
+        )
+        
+        # Create breakout config
+        AssetBreakoutConfig.objects.create(
+            asset=self.asset,
+            min_breakout_distance_ticks=3,
+        )
+        
+        # Create a range
+        now = timezone.now()
+        from .models import BreakoutRange
+        BreakoutRange.objects.create(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time=now - timedelta(hours=8),
+            end_time=now - timedelta(hours=1),
+            high=Decimal('75.50'),
+            low=Decimal('74.50'),
+            is_valid=True,
+        )
+    
+    def test_get_breakout_context_success(self):
+        """Test successful breakout context retrieval."""
+        response = self.client.get('/fiona/api/chart/OIL/breakout-context')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertIn('phase', data)
+        self.assertIn('tick_size', data)
+    
+    def test_get_breakout_context_asset_not_found(self):
+        """Test breakout context for non-existent asset."""
+        response = self.client.get('/fiona/api/chart/NONEXISTENT/breakout-context')
+        self.assertEqual(response.status_code, 404)
+        
+        data = response.json()
+        self.assertFalse(data['success'])
+        self.assertIn('not found', data['error'])
+    
+    def test_get_breakout_context_requires_login(self):
+        """Test that breakout context API requires authentication."""
+        self.client.logout()
+        response = self.client.get('/fiona/api/chart/OIL/breakout-context')
+        self.assertEqual(response.status_code, 302)
+
+
+class ChartSessionRangesAPITest(TestCase):
+    """Tests for the Chart Session Ranges API endpoint."""
+    
+    def setUp(self):
+        self.user = User.objects.create_user('testuser', 'test@example.com', 'password')
+        self.client.login(username='testuser', password='password')
+        
+        self.asset = TradingAsset.objects.create(
+            name='Crude Oil',
+            symbol='OIL',
+            epic='CC.D.CL.UNC.IP',
+            tick_size=Decimal('0.01'),
+            is_active=True,
+        )
+        
+        # Create ranges for different phases
+        now = timezone.now()
+        from .models import BreakoutRange
+        BreakoutRange.objects.create(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time=now - timedelta(hours=8),
+            end_time=now - timedelta(hours=1),
+            high=Decimal('75.50'),
+            low=Decimal('74.50'),
+            is_valid=True,
+        )
+        BreakoutRange.objects.create(
+            asset=self.asset,
+            phase='LONDON_CORE',
+            start_time=now - timedelta(hours=6),
+            end_time=now - timedelta(hours=2),
+            high=Decimal('76.00'),
+            low=Decimal('75.00'),
+            is_valid=True,
+        )
+    
+    def test_get_session_ranges_success(self):
+        """Test successful session ranges retrieval."""
+        response = self.client.get('/fiona/api/chart/OIL/session-ranges?hours=24')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['asset'], 'OIL')
+        self.assertIn('ranges', data)
+        
+        # Check that ranges are present
+        ranges = data['ranges']
+        self.assertIn('ASIA_RANGE', ranges)
+        self.assertIn('LONDON_CORE', ranges)
+    
+    def test_get_session_ranges_asset_not_found(self):
+        """Test session ranges for non-existent asset."""
+        response = self.client.get('/fiona/api/chart/NONEXISTENT/session-ranges?hours=24')
+        self.assertEqual(response.status_code, 404)
+        
+        data = response.json()
+        self.assertFalse(data['success'])
+    
+    def test_get_session_ranges_requires_login(self):
+        """Test that session ranges API requires authentication."""
+        self.client.logout()
+        response = self.client.get('/fiona/api/chart/OIL/session-ranges')
+        self.assertEqual(response.status_code, 302)
+
+
+class BreakoutDistanceChartViewTest(TestCase):
+    """Tests for the Breakout Distance Chart page view."""
+    
+    def setUp(self):
+        self.user = User.objects.create_user('testuser', 'test@example.com', 'password')
+        self.client.login(username='testuser', password='password')
+        
+        self.asset = TradingAsset.objects.create(
+            name='Crude Oil',
+            symbol='OIL',
+            epic='CC.D.CL.UNC.IP',
+            tick_size=Decimal('0.01'),
+            is_active=True,
+        )
+    
+    def test_chart_view_renders(self):
+        """Test that chart view renders successfully."""
+        response = self.client.get('/fiona/chart/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Breakout Distance Chart')
+        self.assertContains(response, 'lightweight-charts')
+    
+    def test_chart_view_with_asset_param(self):
+        """Test chart view with asset parameter."""
+        response = self.client.get('/fiona/chart/?asset=OIL&hours=6')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'OIL')
+    
+    def test_chart_view_requires_login(self):
+        """Test that chart view requires authentication."""
+        self.client.logout()
+        response = self.client.get('/fiona/chart/')
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login/', response.url)
+
+
+class ChartServiceTest(TestCase):
+    """Tests for the Chart Service functions."""
+    
+    def setUp(self):
+        self.asset = TradingAsset.objects.create(
+            name='Crude Oil',
+            symbol='OIL',
+            epic='CC.D.CL.UNC.IP',
+            tick_size=Decimal('0.01'),
+            is_active=True,
+        )
+        
+        # Create breakout config
+        AssetBreakoutConfig.objects.create(
+            asset=self.asset,
+            min_breakout_distance_ticks=3,
+        )
+        
+        # Create ranges
+        now = timezone.now()
+        from .models import BreakoutRange
+        BreakoutRange.objects.create(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time=now - timedelta(hours=8),
+            end_time=now - timedelta(hours=1),
+            high=Decimal('75.50'),
+            low=Decimal('74.50'),
+            is_valid=True,
+        )
+    
+    def test_get_asset_by_symbol(self):
+        """Test getting asset by symbol."""
+        from .services.chart_service import get_asset_by_symbol
+        
+        asset = get_asset_by_symbol('OIL')
+        self.assertIsNotNone(asset)
+        self.assertEqual(asset.symbol, 'OIL')
+        
+        # Test case insensitivity
+        asset = get_asset_by_symbol('oil')
+        self.assertIsNotNone(asset)
+        
+        # Test non-existent asset
+        asset = get_asset_by_symbol('NONEXISTENT')
+        self.assertIsNone(asset)
+    
+    def test_get_candles_for_asset(self):
+        """Test getting candles for asset."""
+        from .services.chart_service import get_candles_for_asset
+        
+        result = get_candles_for_asset(self.asset, hours=1, timeframe='5m')
+        
+        self.assertEqual(result.asset, 'OIL')
+        self.assertEqual(result.timeframe, '5m')
+        self.assertEqual(result.hours, 1)
+        self.assertIsNone(result.error)
+        # Should have simulated candles
+        self.assertGreater(len(result.candles), 0)
+    
+    def test_get_breakout_context_for_asset(self):
+        """Test getting breakout context for asset."""
+        from .services.chart_service import get_breakout_context_for_asset
+        
+        context = get_breakout_context_for_asset(self.asset)
+        
+        self.assertIsNotNone(context.phase)
+        self.assertEqual(context.tick_size, 0.01)
+    
+    def test_get_session_ranges_for_asset(self):
+        """Test getting session ranges for asset."""
+        from .services.chart_service import get_session_ranges_for_asset
+        
+        result = get_session_ranges_for_asset(self.asset, hours=24)
+        
+        self.assertEqual(result.asset, 'OIL')
+        self.assertIn('ASIA_RANGE', result.ranges)
+        
+        asia_range = result.ranges['ASIA_RANGE']
+        self.assertTrue(asia_range.is_valid)
+        self.assertEqual(asia_range.high, 75.50)

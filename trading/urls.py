@@ -10,6 +10,9 @@ urlpatterns = [
     # Trading Diagnostics (Sanity & Confidence Layer)
     path('diagnostics/', views.diagnostics_view, name='trading_diagnostics'),
     
+    # Breakout Distance Chart v1
+    path('chart/', views.breakout_distance_chart_view, name='breakout_distance_chart'),
+    
     # Trade Actions
     path('signals/<str:signal_id>/live/', views.execute_live_trade, name='execute_live_trade'),
     path('signals/<str:signal_id>/shadow/', views.execute_shadow_trade, name='execute_shadow_trade'),
@@ -38,7 +41,12 @@ urlpatterns = [
     path('api/assets/<int:asset_id>/breakout-ranges/', views.api_breakout_range_history, name='api_breakout_range_history'),
     path('api/assets/<int:asset_id>/breakout-ranges/latest/', views.api_breakout_range_latest, name='api_breakout_range_latest'),
     
-    # Breakout Distance Chart API
+    # Breakout Distance Chart v1 API
+    path('api/chart/<str:asset_code>/candles', views.api_chart_candles, name='api_chart_candles'),
+    path('api/chart/<str:asset_code>/breakout-context', views.api_chart_breakout_context, name='api_chart_breakout_context'),
+    path('api/chart/<str:asset_code>/session-ranges', views.api_chart_session_ranges, name='api_chart_session_ranges'),
+    
+    # Breakout Distance Chart API (legacy)
     path('api/assets/<str:asset_code>/diagnostics/breakout-distance-chart', views.api_breakout_distance_chart, name='api_breakout_distance_chart'),
     path('api/assets/<int:asset_id>/diagnostics/breakout-distance-chart/', views.api_breakout_distance_chart_by_id, name='api_breakout_distance_chart_by_id'),
     
