@@ -411,3 +411,99 @@ class IgBrokerService(BrokerService):
             raise
         except Exception as e:
             raise BrokerError(f"Failed to close position: {e}")
+
+    def get_historical_prices(
+        self,
+        epic: str,
+        resolution: str = "MINUTE_5",
+        num_points: int = 144,
+    ) -> List[dict]:
+        """
+        Get historical price data (candles) for a market.
+        
+        Uses the IG REST API /prices/{epic} endpoint to fetch historical
+        OHLC candlestick data.
+        
+        Args:
+            epic: Market EPIC code (e.g., 'CC.D.CL.UNC.IP').
+            resolution: Price resolution. One of:
+                - 'MINUTE', 'MINUTE_2', 'MINUTE_3', 'MINUTE_5', 
+                  'MINUTE_10', 'MINUTE_15', 'MINUTE_30'
+                - 'HOUR', 'HOUR_2', 'HOUR_3', 'HOUR_4'
+                - 'DAY', 'WEEK', 'MONTH'
+            num_points: Number of data points to retrieve.
+        
+        Returns:
+            List of price data dictionaries, each containing:
+                - time: Unix timestamp in seconds
+                - open: Open price (mid)
+                - high: High price (mid)
+                - low: Low price (mid)
+                - close: Close price (mid)
+        
+        Raises:
+            ConnectionError: If not connected to the broker.
+            BrokerError: If prices cannot be retrieved.
+        """
+        self._ensure_connected()
+        
+        try:
+            response = self._client.get_prices(
+                epic=epic,
+                resolution=resolution,
+                num_points=num_points,
+            )
+            
+            prices = response.get("prices", [])
+            candles = []
+            
+            for price_data in prices:
+                # Parse timestamp
+                snapshot_time = price_data.get("snapshotTimeUTC")
+                if snapshot_time:
+                    try:
+                        dt = dateutil_parser.parse(snapshot_time)
+                        timestamp = int(dt.timestamp())
+                    except (ValueError, TypeError):
+                        continue
+                else:
+                    continue
+                
+                # Extract mid prices (average of bid and ask)
+                open_price = price_data.get("openPrice", {})
+                close_price = price_data.get("closePrice", {})
+                high_price = price_data.get("highPrice", {})
+                low_price = price_data.get("lowPrice", {})
+                
+                # Calculate mid prices
+                def get_mid(price_obj):
+                    bid = price_obj.get("bid")
+                    ask = price_obj.get("ask")
+                    if bid is not None and ask is not None:
+                        return (float(bid) + float(ask)) / 2
+                    elif bid is not None:
+                        return float(bid)
+                    elif ask is not None:
+                        return float(ask)
+                    last_traded = price_obj.get("lastTraded")
+                    return float(last_traded) if last_traded is not None else None
+                
+                candle = {
+                    "time": timestamp,
+                    "open": get_mid(open_price),
+                    "high": get_mid(high_price),
+                    "low": get_mid(low_price),
+                    "close": get_mid(close_price),
+                }
+                
+                # Only add if we have valid data
+                if all(v is not None for v in [candle["open"], candle["high"], candle["low"], candle["close"]]):
+                    candles.append(candle)
+            
+            logger.debug(f"Retrieved {len(candles)} candles for {epic}")
+            return candles
+            
+        except BrokerError:
+            raise
+        except Exception as e:
+            raise BrokerError(f"Failed to get historical prices for {epic}: {e}")

@@ -693,3 +693,54 @@ class IgApiClient:
             self._get_auth_headers(API_VERSION_ORDERS)
         )
         return response
+
+    def get_prices(
+        self,
+        epic: str,
+        resolution: str = "MINUTE_5",
+        num_points: int = 144,
+    ) -> Dict[str, Any]:
+        """
+        Get historical price data (candles) for a market.
+        
+        Uses the IG REST API /prices/{epic} endpoint to fetch historical
+        OHLC candlestick data.
+        
+        Args:
+            epic: Market EPIC code (e.g., 'CC.D.CL.UNC.IP').
+            resolution: Price resolution. One of:
+                - 'SECOND' (not recommended)
+                - 'MINUTE', 'MINUTE_2', 'MINUTE_3', 'MINUTE_5', 
+                  'MINUTE_10', 'MINUTE_15', 'MINUTE_30'
+                - 'HOUR', 'HOUR_2', 'HOUR_3', 'HOUR_4'
+                - 'DAY', 'WEEK', 'MONTH'
+            num_points: Number of data points to retrieve (max varies by resolution).
+                For MINUTE_5: max ~10000 points (about 35 days).
+        
+        Returns:
+            Dictionary containing:
+                - instrumentType: Type of instrument
+                - prices: List of price data points, each containing:
+                    - snapshotTime: Timestamp string
+                    - snapshotTimeUTC: UTC timestamp string
+                    - openPrice: {bid, ask, lastTraded}
+                    - closePrice: {bid, ask, lastTraded}
+                    - highPrice: {bid, ask, lastTraded}
+                    - lowPrice: {bid, ask, lastTraded}
+                    - lastTradedVolume: Volume
+                - allowance: API allowance info
+        
+        Raises:
+            BrokerError: If the API request fails.
+        """
+        response = self._make_request(
+            "GET",
+            f"/prices/{epic}",
+            self._get_auth_headers(API_VERSION_MARKETS),
+            params={
+                "resolution": resolution,
+                "max": num_points,
+                "pageSize": 0,  # Return all in one response
+            }
+        )
+        return response

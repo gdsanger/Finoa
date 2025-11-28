@@ -3764,7 +3764,18 @@ class ChartCandlesAPITest(TestCase):
         )
     
     def test_get_candles_success(self):
-        """Test successful candle retrieval."""
+        """Test successful candle retrieval with price snapshot data."""
+        from .models import PriceSnapshot
+        
+        # Create price snapshots for the last hour
+        now = timezone.now()
+        for i in range(12):  # 12 snapshots = 12 * 5 = 60 minutes
+            PriceSnapshot.objects.create(
+                asset=self.asset,
+                timestamp=now - timedelta(minutes=55 - i * 5),
+                price_mid=Decimal(f'75.{i:02d}'),
+            )
+        
         response = self.client.get('/fiona/api/chart/OIL/candles?hours=1')
         self.assertEqual(response.status_code, 200)
         
@@ -3773,9 +3784,19 @@ class ChartCandlesAPITest(TestCase):
         self.assertEqual(data['asset'], 'OIL')
         self.assertEqual(data['timeframe'], '5m')
         self.assertEqual(data['hours'], 1)
-        # Should have simulated candles
         self.assertIn('candles', data)
         self.assertIn('candle_count', data)
+        self.assertGreater(data['candle_count'], 0)
+    
+    def test_get_candles_no_data(self):
+        """Test candle retrieval when no data is available."""
+        response = self.client.get('/fiona/api/chart/OIL/candles?hours=1')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        # Should return error when no IG API or snapshots available
+        self.assertFalse(data['success'])
+        self.assertIn('error', data)
     
     def test_get_candles_invalid_hours(self):
         """Test candle retrieval with invalid hours parameter."""
@@ -4014,8 +4035,18 @@ class ChartServiceTest(TestCase):
         self.assertIsNone(asset)
     
     def test_get_candles_for_asset(self):
-        """Test getting candles for asset."""
+        """Test getting candles for asset with price snapshot data."""
         from .services.chart_service import get_candles_for_asset
+        from .models import PriceSnapshot
+        
+        # Create price snapshots for the last hour
+        now = timezone.now()
+        for i in range(12):  # 12 snapshots = 12 * 5 = 60 minutes
+            PriceSnapshot.objects.create(
+                asset=self.asset,
+                timestamp=now - timedelta(minutes=55 - i * 5),
+                price_mid=Decimal(f'75.{i:02d}'),
+            )
         
         result = get_candles_for_asset(self.asset, hours=1, timeframe='5m')
         
@@ -4023,8 +4054,19 @@ class ChartServiceTest(TestCase):
         self.assertEqual(result.timeframe, '5m')
         self.assertEqual(result.hours, 1)
         self.assertIsNone(result.error)
-        # Should have simulated candles
+        # Should have candles from snapshot data
         self.assertGreater(len(result.candles), 0)
+    
+    def test_get_candles_for_asset_no_data(self):
+        """Test getting candles when no data is available."""
+        from .services.chart_service import get_candles_for_asset
+        
+        result = get_candles_for_asset(self.asset, hours=1, timeframe='5m')
+        
+        self.assertEqual(result.asset, 'OIL')
+        # Should have error message when no data available
+        self.assertIsNotNone(result.error)
+        self.assertEqual(len(result.candles), 0)
     
     def test_get_breakout_context_for_asset(self):
         """Test getting breakout context for asset."""
