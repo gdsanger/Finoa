@@ -240,7 +240,7 @@ def get_candles_for_asset(
         timeframe=timeframe,
         hours=hours,
         candles=[],
-        error="No candle data available. IG API connection may be unavailable.",
+        error="No historical price data available for the requested time period.",
     )
 
 

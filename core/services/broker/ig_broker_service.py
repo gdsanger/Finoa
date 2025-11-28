@@ -485,7 +485,8 @@ class IgBrokerService(BrokerService):
                         return float(bid)
                     elif ask is not None:
                         return float(ask)
-                    return price_obj.get("lastTraded")
+                    last_traded = price_obj.get("lastTraded")
+                    return float(last_traded) if last_traded is not None else None
                 
                 candle = {
                     "time": timestamp,
