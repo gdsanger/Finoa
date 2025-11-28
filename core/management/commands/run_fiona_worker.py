@@ -29,7 +29,7 @@ from core.services.broker import (
     create_ig_broker_service,
     SessionTimesConfig,
 )
-from trading.models import WorkerStatus, AssetDiagnostics, AssetPriceStatus
+from trading.models import WorkerStatus, AssetDiagnostics, AssetPriceStatus, PriceSnapshot
 from core.services.strategy import (
     StrategyEngine,
     StrategyConfig,
@@ -482,6 +482,15 @@ class Command(BaseCommand):
             }],
             worker_interval=worker_interval,
         )
+        
+        # Clean up old price snapshots to keep database lean
+        # Retain 2 hours of data (enough for the 60-minute chart display)
+        try:
+            deleted = PriceSnapshot.cleanup_old_snapshots(hours=2)
+            if deleted > 0:
+                logger.debug(f"Cleaned up {deleted} old price snapshots")
+        except Exception as e:
+            logger.warning(f"Failed to clean up old price snapshots: {e}")
     
     def _run_asset_cycle(
         self,
@@ -594,6 +603,17 @@ class Command(BaseCommand):
                     ask_price=price.ask,
                     spread=price.spread,
                 )
+                
+                # Record price snapshot for Breakout Distance Chart
+                # Calculate mid price from bid/ask
+                if price.bid is not None and price.ask is not None:
+                    price_mid = (Decimal(str(price.bid)) + Decimal(str(price.ask))) / 2
+                    PriceSnapshot.record_snapshot(
+                        asset=asset,
+                        price_mid=price_mid,
+                        price_bid=price.bid,
+                        price_ask=price.ask,
+                    )
             except Exception as e:
                 self.stdout.write(self.style.WARNING(f"     Could not get price: {e}"))
             
