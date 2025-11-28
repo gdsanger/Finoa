@@ -250,3 +250,161 @@ class TradingLayerLoggingTests(TestCase):
         # Should be able to log without errors
         logger.debug('Test execution debug message')
         logger.info('Test execution info message')
+
+
+class StrategyEngineDebugLoggingTests(TestCase):
+    """Tests for Strategy Engine debug logging with price analysis."""
+    
+    def test_strategy_engine_logs_price_analysis_data(self):
+        """Test that Strategy Engine debug logs include price analysis data."""
+        from datetime import datetime
+        from core.services.strategy.strategy_engine import StrategyEngine
+        from core.services.strategy.models import SessionPhase, Candle
+        
+        # Capture log records
+        captured_records = []
+        
+        class CapturingHandler(logging.Handler):
+            def emit(self, record):
+                captured_records.append(record)
+        
+        # Mock market state provider
+        class MockMarketState:
+            def get_phase(self, ts):
+                return SessionPhase.ASIA_RANGE  # Non-tradeable phase
+            
+            def get_asia_range(self, epic):
+                return (72.50, 68.50)  # High, Low
+            
+            def get_pre_us_range(self, epic):
+                return None
+            
+            def get_recent_candles(self, epic, timeframe, count):
+                return [Candle(
+                    timestamp=datetime.now(),
+                    open=68.00,
+                    high=68.20,
+                    low=67.80,
+                    close=67.50,  # Below range low
+                )]
+            
+            def get_atr(self, epic, timeframe, period):
+                return 1.5
+            
+            def get_eia_timestamp(self):
+                return None
+        
+        # Set up logger with capturing handler
+        logger = logging.getLogger('core.services.strategy.strategy_engine')
+        original_level = logger.level
+        original_handlers = logger.handlers[:]
+        
+        try:
+            logger.handlers = []
+            logger.addHandler(CapturingHandler())
+            logger.setLevel(logging.DEBUG)
+            logger.propagate = False
+            
+            # Run strategy evaluation
+            engine = StrategyEngine(MockMarketState())
+            candidates = engine.evaluate('CC.D.CL.UNC.IP', datetime.now())
+            
+            # Check that no candidates were returned (non-tradeable phase)
+            self.assertEqual(len(candidates), 0)
+            
+            # Check that we captured debug logs
+            self.assertGreater(len(captured_records), 0)
+            
+            # Find the "Phase is not tradeable" log entry
+            phase_log = None
+            for record in captured_records:
+                if hasattr(record, 'strategy_data') and 'is_tradeable_phase' in record.strategy_data:
+                    phase_log = record
+                    break
+            
+            self.assertIsNotNone(phase_log, "Should have a log record with phase info")
+            
+            # Verify the structured data contains price analysis
+            strategy_data = phase_log.strategy_data
+            self.assertEqual(strategy_data['current_price'], 67.50)
+            self.assertEqual(strategy_data['asia_range_high'], 72.50)
+            self.assertEqual(strategy_data['asia_range_low'], 68.50)
+            self.assertFalse(strategy_data['is_tradeable_phase'])
+            
+            # Verify price analysis
+            self.assertIn('price_analysis', strategy_data)
+            price_analysis = strategy_data['price_analysis']
+            self.assertEqual(price_analysis['asia_position'], 'below_low')
+            self.assertEqual(price_analysis['asia_breakout_potential'], 'SHORT')
+            
+        finally:
+            # Restore original logger state
+            logger.handlers = original_handlers
+            logger.level = original_level
+            logger.propagate = True
+    
+    def test_strategy_engine_logs_within_range_analysis(self):
+        """Test price analysis when price is within range."""
+        from datetime import datetime
+        from core.services.strategy.strategy_engine import StrategyEngine
+        from core.services.strategy.models import SessionPhase, Candle
+        
+        captured_records = []
+        
+        class CapturingHandler(logging.Handler):
+            def emit(self, record):
+                captured_records.append(record)
+        
+        class MockMarketState:
+            def get_phase(self, ts):
+                return SessionPhase.ASIA_RANGE
+            
+            def get_asia_range(self, epic):
+                return (72.50, 68.50)
+            
+            def get_pre_us_range(self, epic):
+                return None
+            
+            def get_recent_candles(self, epic, timeframe, count):
+                return [Candle(
+                    timestamp=datetime.now(),
+                    open=70.00,
+                    high=70.20,
+                    low=69.80,
+                    close=70.00,  # Within range
+                )]
+            
+            def get_atr(self, epic, timeframe, period):
+                return 1.5
+            
+            def get_eia_timestamp(self):
+                return None
+        
+        logger = logging.getLogger('core.services.strategy.strategy_engine')
+        original_level = logger.level
+        original_handlers = logger.handlers[:]
+        
+        try:
+            logger.handlers = []
+            logger.addHandler(CapturingHandler())
+            logger.setLevel(logging.DEBUG)
+            logger.propagate = False
+            
+            engine = StrategyEngine(MockMarketState())
+            engine.evaluate('CC.D.CL.UNC.IP', datetime.now())
+            
+            # Find log with price analysis
+            price_analysis = None
+            for record in captured_records:
+                if hasattr(record, 'strategy_data') and 'price_analysis' in record.strategy_data:
+                    price_analysis = record.strategy_data['price_analysis']
+                    break
+            
+            self.assertIsNotNone(price_analysis)
+            self.assertEqual(price_analysis['asia_position'], 'within_range')
+            self.assertIsNone(price_analysis['asia_breakout_potential'])
+            
+        finally:
+            logger.handlers = original_handlers
+            logger.level = original_level
+            logger.propagate = True
