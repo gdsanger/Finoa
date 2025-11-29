@@ -168,7 +168,7 @@ class IGMarketStateProviderTest(TestCase):
         self.assertEqual(phase, SessionPhase.US_CORE_TRADING)
 
     def test_get_phase_crypto_asset_friday_late_trading(self):
-        """Test that crypto assets can trade during Friday late hours."""
+        """Test that crypto assets can trade during Friday late hours (skip FRIDAY_LATE check)."""
         provider = IGMarketStateProvider(broker_service=self.mock_broker)
         
         # Create a mock crypto asset
@@ -180,14 +180,12 @@ class IGMarketStateProviderTest(TestCase):
         
         provider.set_current_asset(mock_crypto_asset)
         
-        # Friday 22:00 UTC - should return US_CORE_TRADING (not FRIDAY_LATE)
-        ts = datetime(2024, 1, 12, 22, 0, 0, tzinfo=timezone.utc)
+        # Friday 21:00 UTC - within US_CORE_TRADING and would be FRIDAY_LATE for IG assets
+        # For crypto, should return US_CORE_TRADING (not FRIDAY_LATE)
+        ts = datetime(2024, 1, 12, 21, 0, 0, tzinfo=timezone.utc)
         phase = provider.get_phase(ts)
         
-        # 22:00 is within US_CORE_TRADING (15:00-22:00) - at the end boundary
-        # Since it's current_time < us_trading_end, 22:00 should be just at the boundary
-        # Actually 22:00 == 22:00, so it returns OTHER for time after trading ends
-        self.assertNotEqual(phase, SessionPhase.FRIDAY_LATE)
+        self.assertEqual(phase, SessionPhase.US_CORE_TRADING)
 
     def test_get_phase_ig_asset_weekend_blocked(self):
         """Test that IG assets are blocked on weekends."""
