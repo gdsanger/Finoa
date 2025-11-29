@@ -493,11 +493,14 @@ class IgBrokerConfig(models.Model):
 class MexcBrokerConfig(models.Model):
     """
     Configuration for MEXC Broker API integration.
-    Used for trading operations via MEXC API (Spot & Margin).
+    Used for trading operations via MEXC API (Spot & Futures).
+    
+    Note: MEXC only has Spot and Futures accounts. There is no separate
+    Margin account - margin trading is done through the Futures API.
     """
     ACCOUNT_TYPE_CHOICES = [
         ('SPOT', 'Spot'),
-        ('MARGIN', 'Margin'),
+        ('FUTURES', 'Futures'),
     ]
     
     name = models.CharField(
@@ -516,7 +519,7 @@ class MexcBrokerConfig(models.Model):
         max_length=10,
         choices=ACCOUNT_TYPE_CHOICES,
         default='SPOT',
-        help_text='Account type (Spot or Margin)'
+        help_text='Account type (Spot or Futures)'
     )
     api_base_url = models.URLField(
         default='https://api.mexc.com',
