@@ -10,12 +10,15 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import List, Optional, Dict, Any, Literal
+from typing import List, Optional, Dict, Any, Literal, TYPE_CHECKING
 
 from django.utils import timezone
 from django.core.exceptions import ImproperlyConfigured
 
 from ..models import TradingAsset, BreakoutRange, PriceSnapshot, AssetPriceStatus
+
+if TYPE_CHECKING:
+    from core.services.broker import BrokerRegistry
 
 
 logger = logging.getLogger(__name__)
@@ -289,7 +292,7 @@ def _timeframe_to_mexc_interval(timeframe: str) -> str:
     """
     timeframe = timeframe.lower().strip()
     
-    # MEXC intervals: 1m, 5m, 15m, 30m, 1h, 4h, 1d, 1M
+    # MEXC intervals: 1m, 5m, 15m, 30m, 1h, 4h, 1d, 1w, 1M
     valid_intervals = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w', '1M']
     
     if timeframe in valid_intervals:
@@ -386,7 +389,7 @@ def _fetch_candles_from_ig_internal(
     asset: TradingAsset,
     timeframe: str,
     num_points: int,
-    registry
+    registry: 'BrokerRegistry'
 ) -> List[CandleData]:
     """
     Fetch candles from the IG API using the broker registry.
@@ -428,7 +431,7 @@ def _fetch_candles_from_mexc(
     asset: TradingAsset,
     timeframe: str,
     num_points: int,
-    registry
+    registry: 'BrokerRegistry'
 ) -> List[CandleData]:
     """
     Fetch candles from the MEXC API using the broker registry.
