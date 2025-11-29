@@ -325,6 +325,8 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         Get the current market session phase for a given timestamp.
         
         Uses configurable session times from self._session_times.
+        For crypto assets (is_crypto=True or broker='MEXC'), weekend and
+        Friday late restrictions are skipped since crypto trades 24/7.
         
         Args:
             ts: Timestamp to evaluate (should be UTC).
@@ -347,6 +349,14 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         current_time = to_minutes(hour, minute)
         cfg = self._session_times
         
+        # Check if current asset is crypto (trades 24/7)
+        is_crypto_asset = False
+        if self._current_asset:
+            is_crypto_asset = (
+                getattr(self._current_asset, 'is_crypto', False) or
+                getattr(self._current_asset, 'broker', '') == 'MEXC'
+            )
+        
         # Check EIA window first (takes priority)
         if self._eia_timestamp:
             eia_start = self._eia_timestamp - timedelta(minutes=5)
@@ -357,12 +367,12 @@ class IGMarketStateProvider(BaseMarketStateProvider):
             elif self._eia_timestamp <= ts <= eia_end:
                 return SessionPhase.EIA_POST
         
-        # Friday late restriction
-        if weekday == 4 and hour >= cfg.friday_late:
+        # Friday late restriction (skip for crypto - trades 24/7)
+        if not is_crypto_asset and weekday == 4 and hour >= cfg.friday_late:
             return SessionPhase.FRIDAY_LATE
         
-        # Weekend
-        if weekday >= 5:  # Saturday or Sunday
+        # Weekend (skip for crypto - trades 24/7)
+        if not is_crypto_asset and weekday >= 5:  # Saturday or Sunday
             return SessionPhase.OTHER
         
         # Asia Range (default: 00:00 - 08:00 UTC)
