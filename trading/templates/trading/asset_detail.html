@@ -119,6 +119,28 @@
                             </td>
                         </tr>
                         <tr>
+                            <th>Broker</th>
+                            <td>
+                                <span class="badge {% if asset.broker == 'IG' %}bg-primary{% else %}bg-warning text-dark{% endif %}">
+                                    {{ asset.get_broker_display }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>Broker-Symbol</th>
+                            <td>
+                                {% if asset.broker_symbol %}
+                                    <code>{{ asset.broker_symbol }}</code>
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>Quote-Währung</th>
+                            <td>{{ asset.quote_currency }}</td>
+                        </tr>
+                        <tr>
                             <th>Strategie</th>
                             <td>{{ asset.get_strategy_type_display }}</td>
                         </tr>
