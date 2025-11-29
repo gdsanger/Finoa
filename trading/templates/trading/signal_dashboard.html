@@ -1703,15 +1703,41 @@
     const REFRESH_INTERVAL = 30000; // 30 seconds
     let currentBrokerTab = 'ig';  // Default to IG
     
+    // Known cryptocurrency codes that are not ISO 4217 compliant
+    const CRYPTO_CURRENCIES = ['USDT', 'BTC', 'ETH', 'USDC', 'BNB', 'XRP', 'SOL', 'ADA', 'DOGE', 'DOT'];
+    
     function formatCurrency(value, currency) {
         const num = parseFloat(value);
         if (isNaN(num)) return '--';
-        return new Intl.NumberFormat('de-DE', {
-            style: 'currency',
-            currency: currency || 'EUR',
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2
-        }).format(num);
+        
+        const currencyCode = currency || 'EUR';
+        
+        // Check if it's a cryptocurrency that Intl.NumberFormat doesn't support
+        if (CRYPTO_CURRENCIES.includes(currencyCode.toUpperCase())) {
+            // Format as plain number and append currency symbol
+            const formatted = new Intl.NumberFormat('de-DE', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(num);
+            return formatted + ' ' + currencyCode;
+        }
+        
+        // Use standard currency formatting for ISO 4217 currencies
+        try {
+            return new Intl.NumberFormat('de-DE', {
+                style: 'currency',
+                currency: currencyCode,
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(num);
+        } catch (e) {
+            // Fallback for any other unsupported currency codes
+            const formatted = new Intl.NumberFormat('de-DE', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(num);
+            return formatted + ' ' + currencyCode;
+        }
     }
     
     function selectBrokerTab(broker) {
