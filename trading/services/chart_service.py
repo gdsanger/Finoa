@@ -332,10 +332,10 @@ def _fetch_candles_from_ig(epic: str, resolution: str, num_points: int) -> List[
     Raises:
         Exception: If IG API is not available or request fails
     """
-    from core.services.broker import create_ig_broker_service
+    from core.services.broker import BrokerRegistry
     
-    broker = create_ig_broker_service()
-    broker.connect()
+    registry = BrokerRegistry()
+    broker = registry.get_ig_broker()
     
     try:
         price_data = broker.get_historical_prices(
@@ -357,7 +357,7 @@ def _fetch_candles_from_ig(epic: str, resolution: str, num_points: int) -> List[
         
         return candles
     finally:
-        broker.disconnect()
+        registry.disconnect_all()
 
 
 def _aggregate_snapshots_to_candles(

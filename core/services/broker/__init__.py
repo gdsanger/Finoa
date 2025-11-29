@@ -32,6 +32,7 @@ from .config import (
     get_active_mexc_broker_config,
     create_mexc_broker_service,
     get_broker_service_for_asset,
+    BrokerRegistry,
 )
 
 from .ig_market_state_provider import IGMarketStateProvider, SessionTimesConfig
@@ -64,6 +65,7 @@ __all__ = [
     'get_active_mexc_broker_config',
     'create_mexc_broker_service',
     'get_broker_service_for_asset',
+    'BrokerRegistry',
     # Market State Provider
     'IGMarketStateProvider',
     'SessionTimesConfig',

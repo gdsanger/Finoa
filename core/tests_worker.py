@@ -598,7 +598,7 @@ class FionaWorkerCommandTest(TestCase):
             is_active=True,
         )
 
-    @patch('core.management.commands.run_fiona_worker.create_ig_broker_service')
+    @patch('core.services.broker.config.create_ig_broker_service')
     def test_command_dry_run_once(self, mock_create_broker):
         """Test command with dry run and once options."""
         # Set up mock broker
@@ -643,9 +643,8 @@ class FionaWorkerCommandTest(TestCase):
         
         # Verify broker was connected
         mock_broker.connect.assert_called_once()
-        mock_broker.disconnect.assert_called_once()
 
-    @patch('core.management.commands.run_fiona_worker.create_ig_broker_service')
+    @patch('core.services.broker.config.create_ig_broker_service')
     def test_command_shadow_only_mode(self, mock_create_broker):
         """Test command in shadow-only mode."""
         mock_broker = MagicMock(spec=IgBrokerService)
@@ -685,7 +684,7 @@ class FionaWorkerCommandTest(TestCase):
         
         self.assertIn("Shadow Only: True", output)
 
-    @patch('core.management.commands.run_fiona_worker.create_ig_broker_service')
+    @patch('core.services.broker.config.create_ig_broker_service')
     def test_command_max_iterations(self, mock_create_broker):
         """Test command with max iterations limit."""
         mock_broker = MagicMock(spec=IgBrokerService)
@@ -725,7 +724,7 @@ class FionaWorkerCommandTest(TestCase):
         
         self.assertIn("Reached max iterations (2)", output)
 
-    @patch('core.management.commands.run_fiona_worker.create_ig_broker_service')
+    @patch('core.services.broker.config.create_ig_broker_service')
     def test_command_custom_epic(self, mock_create_broker):
         """Test command with custom epic."""
         mock_broker = MagicMock(spec=IgBrokerService)

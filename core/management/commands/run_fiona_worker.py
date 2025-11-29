@@ -1,9 +1,11 @@
 """
-Fiona Background Worker v1.0 - IG Market Integration.
+Fiona Background Worker v1.1 - Multi-Broker Support.
 
 Management command for running the Fiona trading system background worker.
 Continuously fetches market data, runs strategy analysis, evaluates risk,
 and executes trades (real or shadow).
+
+Supports multiple brokers (IG, MEXC) with automatic broker selection per asset.
 
 Usage:
     python manage.py run_fiona_worker
@@ -20,13 +22,12 @@ from typing import Optional
 
 from django.core.management.base import BaseCommand
 
-from core.models import IgBrokerConfig
 from core.services.broker import (
-    IgBrokerService,
+    BrokerService,
     IGMarketStateProvider,
     BrokerError,
     AuthenticationError,
-    create_ig_broker_service,
+    BrokerRegistry,
     SessionTimesConfig,
 )
 from trading.models import WorkerStatus, AssetDiagnostics, AssetPriceStatus, PriceSnapshot
@@ -73,7 +74,7 @@ class Command(BaseCommand):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.broker_service: Optional[IgBrokerService] = None
+        self.broker_registry: Optional[BrokerRegistry] = None
         self.market_state_provider: Optional[IGMarketStateProvider] = None
         self.strategy_engine: Optional[StrategyEngine] = None
         self.risk_engine: Optional[RiskEngine] = None
@@ -207,37 +208,43 @@ class Command(BaseCommand):
         """Initialize all required services."""
         self.stdout.write("Initializing services...")
         
-        # 1. Create IG Broker Service
-        self.stdout.write("  → Creating IG Broker Service...")
+        # 1. Create Broker Registry (manages multiple broker services)
+        self.stdout.write("  → Creating Broker Registry...")
         try:
-            self.broker_service = create_ig_broker_service()
-            self.stdout.write(self.style.SUCCESS("    ✓ IG Broker Service created"))
+            self.broker_registry = BrokerRegistry()
+            self.stdout.write(self.style.SUCCESS("    ✓ Broker Registry created"))
         except Exception as e:
-            raise RuntimeError(f"Failed to create IG Broker Service: {e}")
+            raise RuntimeError(f"Failed to create Broker Registry: {e}")
         
-        # 2. Connect to broker
-        self.stdout.write("  → Connecting to IG...")
+        # 2. Initialize default IG Broker for backward compatibility
+        # (will be replaced by per-asset broker selection in multi-asset mode)
+        self.stdout.write("  → Connecting to default broker (IG)...")
         try:
-            self.broker_service.connect()
+            default_broker = self.broker_registry.get_ig_broker()
             self.stdout.write(self.style.SUCCESS("    ✓ Connected to IG"))
         except AuthenticationError as e:
-            raise RuntimeError(f"IG authentication failed: {e}")
+            logger.warning(f"IG authentication failed: {e}")
+            self.stdout.write(self.style.WARNING(f"    ⚠ IG authentication failed: {e}"))
+            default_broker = None
         except Exception as e:
-            raise RuntimeError(f"Failed to connect to IG: {e}")
+            logger.warning(f"Failed to connect to IG: {e}")
+            self.stdout.write(self.style.WARNING(f"    ⚠ Failed to connect to IG: {e}"))
+            default_broker = None
         
-        # 3. Get account state to verify connection
-        try:
-            account = self.broker_service.get_account_state()
-            self.stdout.write(f"    Account: {account.account_name}")
-            self.stdout.write(f"    Balance: {account.balance} {account.currency}")
-            self.stdout.write(f"    Available: {account.available} {account.currency}")
-        except Exception as e:
-            logger.warning(f"Could not get account state: {e}")
+        # 3. Get account state to verify connection (if broker available)
+        if default_broker:
+            try:
+                account = default_broker.get_account_state()
+                self.stdout.write(f"    Account: {account.account_name}")
+                self.stdout.write(f"    Balance: {account.balance} {account.currency}")
+                self.stdout.write(f"    Available: {account.available} {account.currency}")
+            except Exception as e:
+                logger.warning(f"Could not get account state: {e}")
         
-        # 4. Create Market State Provider
+        # 4. Create Market State Provider (using default broker for backward compatibility)
         self.stdout.write("  → Creating Market State Provider...")
         self.market_state_provider = IGMarketStateProvider(
-            broker_service=self.broker_service,
+            broker_service=default_broker,
             eia_timestamp=None,  # Can be set later if needed
         )
         self.stdout.write(self.style.SUCCESS("    ✓ Market State Provider created"))
@@ -274,24 +281,26 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("    ✓ Weaviate Service created"))
         
         # 10. Create Execution Service
+        # Note: ExecutionService now gets broker per-asset via BrokerRegistry
         self.stdout.write("  → Creating Execution Service...")
         execution_config = ExecutionConfig(
             allow_shadow_if_risk_denied=True,
         )
-        # In shadow-only mode, don't pass broker to prevent real trades
-        broker_for_execution = None if shadow_only else self.broker_service
         self.execution_service = ExecutionService(
-            broker_service=broker_for_execution,
+            broker_service=None,  # Will use per-asset broker selection
             weaviate_service=self.weaviate_service,
             config=execution_config,
         )
+        # Store reference to registry and shadow_only flag for per-asset broker selection
+        self.execution_service._broker_registry = self.broker_registry
+        self.execution_service._shadow_only = shadow_only
         self.stdout.write(self.style.SUCCESS("    ✓ Execution Service created"))
         
         self.stdout.write(self.style.SUCCESS("\n✓ All services initialized successfully!"))
         self.stdout.write("")
 
     def _run_cycle(self, epic: str, shadow_only: bool, dry_run: bool, worker_interval: int = 60) -> None:
-        """Run one cycle of the worker loop."""
+        """Run one cycle of the worker loop (legacy single-asset mode)."""
         now = datetime.now(timezone.utc)
         
         # Initialize status tracking variables
@@ -312,10 +321,11 @@ class Command(BaseCommand):
         except Exception as e:
             logger.warning(f"Failed to update candle: {e}")
         
-        # 3. Get current price for logging
+        # 3. Get current price for logging (using default IG broker for legacy mode)
         price = None
         try:
-            price = self.broker_service.get_symbol_price(epic)
+            default_broker = self.broker_registry.get_ig_broker()
+            price = default_broker.get_symbol_price(epic)
             bid_price = price.bid
             ask_price = price.ask
             spread = price.spread
@@ -517,8 +527,9 @@ class Command(BaseCommand):
         """
         Run strategy evaluation for a single asset.
         
-        This method also handles range building and persistence when in
-        range-building phases (ASIA_RANGE, LONDON_CORE, PRE_US_RANGE).
+        This method uses the asset's broker configuration to get market data
+        from the correct broker (IG or MEXC). It also handles range building
+        and persistence when in range-building phases.
         
         Args:
             asset: TradingAsset instance
@@ -533,7 +544,16 @@ class Command(BaseCommand):
         from trading.models import AssetSessionPhaseConfig
         
         epic = asset.epic
+        broker_symbol = asset.effective_broker_symbol
         result = AssetCycleResult()
+        
+        # Get the broker service for this asset
+        try:
+            asset_broker = self.broker_registry.get_broker_for_asset(asset)
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f"     Could not get broker for {asset.broker}: {e}"))
+            logger.exception(f"Failed to get broker for asset {epic}")
+            return result
         
         # Set current asset for range persistence (Acceptance Criteria #2)
         self.market_state_provider.set_current_asset(asset)
@@ -600,15 +620,16 @@ class Command(BaseCommand):
                 logger.warning(f"Failed to update candle for {epic}: {e}")
             
             # 4. Get current price for logging and range building
+            # Use asset-specific broker and broker_symbol
             current_price = None
             try:
-                price = self.broker_service.get_symbol_price(epic)
+                price = asset_broker.get_symbol_price(broker_symbol)
                 current_price = price
                 # Store price in result for WorkerStatus update
                 result.bid_price = Decimal(str(price.bid)) if price.bid is not None else None
                 result.ask_price = Decimal(str(price.ask)) if price.ask is not None else None
                 result.spread = Decimal(str(price.spread)) if price.spread is not None else None
-                self.stdout.write(f"     Price: {price.bid}/{price.ask}")
+                self.stdout.write(f"     Price: {price.bid}/{price.ask} (via {asset.broker})")
                 
                 # Update asset-specific price status for multi-asset support
                 AssetPriceStatus.update_price(
@@ -928,10 +949,23 @@ class Command(BaseCommand):
         except Exception as e:
             logger.warning(f"Failed to store setup: {e}")
         
+        # Get the broker for this asset
+        try:
+            if trading_asset:
+                asset_broker = self.broker_registry.get_broker_for_asset(trading_asset)
+                broker_symbol = trading_asset.effective_broker_symbol
+            else:
+                # Fallback to IG broker for legacy mode
+                asset_broker = self.broker_registry.get_ig_broker()
+                broker_symbol = setup.epic
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f"    Failed to get broker: {e}"))
+            return
+        
         # Get account state for risk evaluation
         try:
-            account = self.broker_service.get_account_state()
-            positions = self.broker_service.get_open_positions()
+            account = asset_broker.get_account_state()
+            positions = asset_broker.get_open_positions()
         except Exception as e:
             self.stdout.write(self.style.ERROR(f"    Failed to get account state: {e}"))
             return
@@ -956,8 +990,9 @@ class Command(BaseCommand):
             stop_loss = Decimal(str(setup.reference_price + sl_distance))
             take_profit = Decimal(str(setup.reference_price - tp_distance))
         
+        # Use broker_symbol for the order
         order = OrderRequest(
-            epic=setup.epic,
+            epic=broker_symbol,
             direction=direction,
             size=Decimal('1.0'),
             stop_loss=stop_loss,
@@ -1036,22 +1071,19 @@ class Command(BaseCommand):
                     self.stdout.write(self.style.ERROR(f"    Shadow trade also failed: {se}"))
 
     def _try_reconnect(self) -> None:
-        """Try to reconnect to the broker after an error."""
-        self.stdout.write(self.style.WARNING("Attempting to reconnect to broker..."))
+        """Try to reconnect to all brokers after an error."""
+        self.stdout.write(self.style.WARNING("Attempting to reconnect to brokers..."))
         
         try:
-            # Disconnect first if connected
-            if self.broker_service:
-                try:
-                    self.broker_service.disconnect()
-                except Exception:
-                    pass
+            # Clear and reinitialize all broker connections
+            if self.broker_registry:
+                self.broker_registry.clear()
             
             # Wait a bit before reconnecting
             time.sleep(5)
             
-            # Reconnect
-            self.broker_service.connect()
+            # Reconnect to default IG broker
+            self.broker_registry.get_ig_broker()
             self.stdout.write(self.style.SUCCESS("Reconnected successfully!"))
             
         except Exception as e:
@@ -1062,11 +1094,11 @@ class Command(BaseCommand):
         """Clean up resources on shutdown."""
         self.stdout.write("\nCleaning up...")
         
-        if self.broker_service:
+        if self.broker_registry:
             try:
-                self.broker_service.disconnect()
-                self.stdout.write("  ✓ Disconnected from broker")
+                self.broker_registry.disconnect_all()
+                self.stdout.write("  ✓ Disconnected from all brokers")
             except Exception as e:
-                logger.warning(f"Error disconnecting broker: {e}")
+                logger.warning(f"Error disconnecting brokers: {e}")
         
         self.stdout.write("  ✓ Cleanup complete")
