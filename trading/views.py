@@ -2426,6 +2426,35 @@ def api_market_data_status(request):
 # Sidebar API - Active Assets with Phase and Price Information
 # ============================================================================
 
+def _time_str_to_minutes(time_str):
+    """Convert HH:MM time string to minutes since midnight for proper comparison."""
+    try:
+        parts = time_str.split(':')
+        return int(parts[0]) * 60 + int(parts[1])
+    except (ValueError, IndexError, AttributeError):
+        return 0
+
+
+def _is_time_in_range(current_minutes, start_minutes, end_minutes):
+    """
+    Check if current time is within a time range, handling midnight crossover.
+    
+    Args:
+        current_minutes: Current time in minutes since midnight
+        start_minutes: Start time in minutes since midnight
+        end_minutes: End time in minutes since midnight
+        
+    Returns:
+        True if current time is within the range
+    """
+    if start_minutes <= end_minutes:
+        # Normal case: start < end (e.g., 08:00 to 12:00)
+        return start_minutes <= current_minutes < end_minutes
+    else:
+        # Spans midnight: start > end (e.g., 23:00 to 02:00)
+        return current_minutes >= start_minutes or current_minutes < end_minutes
+
+
 @login_required
 def api_sidebar_assets(request):
     """
@@ -2442,7 +2471,6 @@ def api_sidebar_assets(request):
             - phase_type: 'tradeable', 'range_building', 'other', or 'not_tradeable'
             - previous_range: Object with high/low from previous phase range (if available)
     """
-    from datetime import datetime
     from .models import TradingAsset, AssetPriceStatus, BreakoutRange, AssetSessionPhaseConfig
     
     try:
@@ -2451,7 +2479,8 @@ def api_sidebar_assets(request):
         
         result = []
         now = timezone.now()
-        current_time_utc = now.strftime('%H:%M')
+        current_time_str = now.strftime('%H:%M')
+        current_minutes = _time_str_to_minutes(current_time_str)
         
         for asset in assets:
             asset_data = {
@@ -2486,32 +2515,18 @@ def api_sidebar_assets(request):
                 ).order_by('start_time_utc')
                 
                 for config in phase_configs:
-                    start_time = config.start_time_utc
-                    end_time = config.end_time_utc
+                    start_minutes = _time_str_to_minutes(config.start_time_utc)
+                    end_minutes = _time_str_to_minutes(config.end_time_utc)
                     
-                    # Handle phase that spans midnight
-                    if start_time <= end_time:
-                        # Normal case: start < end
-                        if start_time <= current_time_utc < end_time:
-                            current_phase = config.phase
-                            if config.is_trading_phase:
-                                phase_type = 'tradeable'
-                            elif config.is_range_build_phase:
-                                phase_type = 'range_building'
-                            else:
-                                phase_type = 'other'
-                            break
-                    else:
-                        # Spans midnight: start > end (e.g., 23:00 to 02:00)
-                        if current_time_utc >= start_time or current_time_utc < end_time:
-                            current_phase = config.phase
-                            if config.is_trading_phase:
-                                phase_type = 'tradeable'
-                            elif config.is_range_build_phase:
-                                phase_type = 'range_building'
-                            else:
-                                phase_type = 'other'
-                            break
+                    if _is_time_in_range(current_minutes, start_minutes, end_minutes):
+                        current_phase = config.phase
+                        if config.is_trading_phase:
+                            phase_type = 'tradeable'
+                        elif config.is_range_build_phase:
+                            phase_type = 'range_building'
+                        else:
+                            phase_type = 'other'
+                        break
                 
                 if not current_phase:
                     current_phase = 'OTHER'

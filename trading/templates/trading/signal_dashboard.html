@@ -2294,17 +2294,6 @@
         });
     }
     
-    // Accordion toggle for Criteria
-    function toggleCriteriaAccordion() {
-        const content = document.getElementById('criteria-content');
-        const toggle = document.getElementById('criteria-toggle');
-        
-        if (content && toggle) {
-            content.classList.toggle('expanded');
-            toggle.classList.toggle('expanded');
-        }
-    }
-    
     function showWorkerError(errorMessage) {
         const contentEl = document.getElementById('worker-status-content');
         if (contentEl) {
