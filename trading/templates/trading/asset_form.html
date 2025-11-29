@@ -73,6 +73,36 @@
                         
                         <hr class="my-4">
                         
+                        <h5 class="mb-3">Broker-Konfiguration</h5>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label for="broker" class="form-label">Broker <span class="text-danger">*</span></label>
+                                <select class="form-select" id="broker" name="broker">
+                                    {% for value, label in broker_kinds %}
+                                        <option value="{{ value }}" {% if asset and asset.broker == value %}selected{% elif not asset and value == 'IG' %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                                <small class="form-text text-muted">Broker für dieses Asset (IG oder MEXC)</small>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="broker_symbol" class="form-label">Broker-Symbol</label>
+                                <input type="text" class="form-control font-monospace" id="broker_symbol" name="broker_symbol"
+                                       value="{% if asset %}{{ asset.broker_symbol }}{% endif %}"
+                                       placeholder="z.B. BTCUSDT">
+                                <small class="form-text text-muted">Optional: Broker-spezifisches Symbol (falls unterschiedlich zu EPIC)</small>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="quote_currency" class="form-label">Quote-Währung</label>
+                                <input type="text" class="form-control" id="quote_currency" name="quote_currency"
+                                       value="{% if asset %}{{ asset.quote_currency }}{% else %}USD{% endif %}"
+                                       placeholder="z.B. USD, EUR, USDT">
+                                <small class="form-text text-muted">Währung für Preisangaben</small>
+                            </div>
+                        </div>
+                        
+                        <hr class="my-4">
+                        
                         <h5 class="mb-3">Trading-Parameter</h5>
                         
                         <div class="row mb-3">
@@ -130,6 +160,14 @@
                         <li class="mb-2">
                             <strong>EPIC:</strong> Der Broker-spezifische Identifier für das Asset. 
                             Für IG Markets z.B. <code>CC.D.CL.UNC.IP</code> für WTI Crude.
+                        </li>
+                        <li class="mb-2">
+                            <strong>Broker:</strong> IG für CFDs und klassische Märkte, 
+                            MEXC für Kryptowährungen.
+                        </li>
+                        <li class="mb-2">
+                            <strong>Broker-Symbol:</strong> Falls der Broker ein anderes Symbol verwendet 
+                            als im EPIC-Feld angegeben (z.B. <code>BTCUSDT</code> für MEXC).
                         </li>
                         <li class="mb-2">
                             <strong>Tick Size:</strong> Die minimale Preisbewegung. 

@@ -64,6 +64,7 @@ urlpatterns = [
     path('api/signals/since/<str:since>/', views.api_signals_since, name='api_signals_since'),
     path('api/trade/<str:signal_id>/', views.api_signal_detail, name='api_signal_detail'),
     path('api/account-state/', views.api_account_state, name='api_account_state'),
+    path('api/all-brokers-account-state/', views.api_all_brokers_account_state, name='api_all_brokers_account_state'),
     path('api/worker/status/', views.api_worker_status, name='api_worker_status'),
     path('api/assets/', views.api_active_assets, name='api_active_assets'),
     path('api/debug/breakout-range/', views.api_breakout_range_diagnostics, name='api_breakout_range_diagnostics'),
