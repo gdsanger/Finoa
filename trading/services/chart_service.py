@@ -175,11 +175,11 @@ def get_candles_for_asset(
     timeframe: str = '5m',
 ) -> ChartCandlesResponse:
     """
-    Get candlestick data for an asset from the IG API.
+    Get candlestick data for an asset from the appropriate broker API.
     
-    Fetches historical OHLC candle data directly from the IG REST API
-    using the /prices/{epic} endpoint. Returns the requested number of
-    candles based on the hours and timeframe parameters.
+    Fetches historical OHLC candle data from the broker configured for
+    the asset (IG or MEXC). Returns the requested number of candles
+    based on the hours and timeframe parameters.
     
     Args:
         asset: TradingAsset instance
@@ -192,16 +192,13 @@ def get_candles_for_asset(
     if hours not in SUPPORTED_TIME_WINDOWS:
         hours = min(SUPPORTED_TIME_WINDOWS, key=lambda x: abs(x - hours))
 
-    # Parse timeframe to IG API resolution format
-    resolution = _timeframe_to_ig_resolution(timeframe)
-    
     # Calculate number of candles needed
     timeframe_minutes = _parse_timeframe_minutes(timeframe)
     num_points = (hours * 60) // timeframe_minutes
 
     try:
-        # Try to get candles from IG API
-        candles = _fetch_candles_from_ig(asset.epic, resolution, num_points)
+        # Fetch candles from the appropriate broker based on asset configuration
+        candles = _fetch_candles_from_broker(asset, timeframe, num_points)
         
         if candles:
             return ChartCandlesResponse(
@@ -211,7 +208,8 @@ def get_candles_for_asset(
                 candles=candles,
             )
     except Exception as e:
-        logger.warning(f"Failed to fetch candles from IG API for {asset.epic}: {e}")
+        broker_name = asset.broker if hasattr(asset, 'broker') else 'unknown'
+        logger.warning(f"Failed to fetch candles from {broker_name} API for {asset.symbol}: {e}")
     
     # Fallback: Try to get candles from PriceSnapshot database
     now = timezone.now()
@@ -277,6 +275,38 @@ def _timeframe_to_ig_resolution(timeframe: str) -> str:
     return mapping.get(timeframe, 'MINUTE_5')
 
 
+def _timeframe_to_mexc_interval(timeframe: str) -> str:
+    """
+    Convert timeframe string to MEXC API interval format.
+    
+    Args:
+        timeframe: Timeframe string (e.g., '5m', '15m', '1h')
+    
+    Returns:
+        MEXC API interval string (e.g., '5m', '15m', '1h')
+    
+    Note: MEXC uses the same format as our timeframe strings for most intervals.
+    """
+    timeframe = timeframe.lower().strip()
+    
+    # MEXC intervals: 1m, 5m, 15m, 30m, 1h, 4h, 1d, 1M
+    valid_intervals = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w', '1M']
+    
+    if timeframe in valid_intervals:
+        return timeframe
+    
+    # Map some common variations
+    mapping = {
+        '2m': '5m',  # Round up to 5m
+        '3m': '5m',
+        '10m': '15m',
+        '2h': '4h',
+        '3h': '4h',
+    }
+    
+    return mapping.get(timeframe, '5m')
+
+
 def _parse_timeframe_minutes(timeframe: str) -> int:
     """
     Parse a timeframe string to minutes.
@@ -315,6 +345,125 @@ def _parse_timeframe_minutes(timeframe: str) -> int:
         return int(timeframe)
     except ValueError:
         return 5
+
+
+def _fetch_candles_from_broker(asset: TradingAsset, timeframe: str, num_points: int) -> List[CandleData]:
+    """
+    Fetch candles from the appropriate broker based on asset configuration.
+    
+    Routes the request to either IG or MEXC broker based on the asset's
+    broker field setting.
+    
+    Args:
+        asset: TradingAsset instance with broker configuration
+        timeframe: Candle timeframe ('5m', '15m', '1h', etc.)
+        num_points: Number of candles to fetch
+    
+    Returns:
+        List of CandleData objects
+    
+    Raises:
+        Exception: If broker API is not available or request fails
+    """
+    from core.services.broker import BrokerRegistry
+    
+    registry = BrokerRegistry()
+    
+    try:
+        broker_type = asset.broker if hasattr(asset, 'broker') else TradingAsset.BrokerKind.IG
+        
+        if broker_type == TradingAsset.BrokerKind.MEXC:
+            # Use MEXC broker for crypto assets
+            return _fetch_candles_from_mexc(asset, timeframe, num_points, registry)
+        else:
+            # Default to IG broker
+            return _fetch_candles_from_ig_internal(asset, timeframe, num_points, registry)
+    finally:
+        registry.disconnect_all()
+
+
+def _fetch_candles_from_ig_internal(
+    asset: TradingAsset,
+    timeframe: str,
+    num_points: int,
+    registry
+) -> List[CandleData]:
+    """
+    Fetch candles from the IG API using the broker registry.
+    
+    Args:
+        asset: TradingAsset instance
+        timeframe: Candle timeframe
+        num_points: Number of candles to fetch
+        registry: BrokerRegistry instance
+    
+    Returns:
+        List of CandleData objects
+    """
+    broker = registry.get_ig_broker()
+    resolution = _timeframe_to_ig_resolution(timeframe)
+    epic = asset.effective_broker_symbol
+    
+    price_data = broker.get_historical_prices(
+        epic=epic,
+        resolution=resolution,
+        num_points=num_points,
+    )
+    
+    candles = []
+    for data in price_data:
+        candle = CandleData(
+            time=data["time"],
+            open=round(data["open"], 4),
+            high=round(data["high"], 4),
+            low=round(data["low"], 4),
+            close=round(data["close"], 4),
+        )
+        candles.append(candle)
+    
+    return candles
+
+
+def _fetch_candles_from_mexc(
+    asset: TradingAsset,
+    timeframe: str,
+    num_points: int,
+    registry
+) -> List[CandleData]:
+    """
+    Fetch candles from the MEXC API using the broker registry.
+    
+    Args:
+        asset: TradingAsset instance
+        timeframe: Candle timeframe
+        num_points: Number of candles to fetch
+        registry: BrokerRegistry instance
+    
+    Returns:
+        List of CandleData objects
+    """
+    broker = registry.get_mexc_broker()
+    interval = _timeframe_to_mexc_interval(timeframe)
+    symbol = asset.effective_broker_symbol
+    
+    price_data = broker.get_historical_prices(
+        symbol=symbol,
+        interval=interval,
+        limit=num_points,
+    )
+    
+    candles = []
+    for data in price_data:
+        candle = CandleData(
+            time=data["time"],
+            open=round(data["open"], 4),
+            high=round(data["high"], 4),
+            low=round(data["low"], 4),
+            close=round(data["close"], 4),
+        )
+        candles.append(candle)
+    
+    return candles
 
 
 def _fetch_candles_from_ig(epic: str, resolution: str, num_points: int) -> List[CandleData]:
