@@ -483,7 +483,7 @@ if sl_ticks < sl_min_ticks:
 # Maximales Risiko berechnen
 max_risk_amount = equity * (max_risk_per_trade_percent / 100)
 
-# Potentiellen Verlust berechnen
+# Potenziellen Verlust berechnen
 potential_loss = sl_ticks * tick_value * position_size
 
 if potential_loss > max_risk_amount:
@@ -984,4 +984,4 @@ for key, value in result.risk_metrics.items():
 
 ---
 
-*Letzte Aktualisierung: November 2024 | Risk Engine Version: 1.0*
+*Letzte Aktualisierung: November 2025 | Risk Engine Version: 1.0*
