@@ -4089,3 +4089,445 @@ class ChartServiceTest(TestCase):
         asia_range = result.ranges['ASIA_RANGE']
         self.assertTrue(asia_range.is_valid)
         self.assertEqual(asia_range.high, 75.50)
+
+
+# ============================================================================
+# Market Data Layer Tests
+# ============================================================================
+
+class CandleModelTest(TestCase):
+    """Tests for the Candle data model."""
+    
+    def test_candle_creation(self):
+        """Test basic candle creation."""
+        from core.services.market_data import Candle
+        
+        candle = Candle(
+            timestamp=1700000000,
+            open=75.50,
+            high=75.75,
+            low=75.25,
+            close=75.60,
+            volume=1000.0,
+            complete=True,
+        )
+        
+        self.assertEqual(candle.timestamp, 1700000000)
+        self.assertEqual(candle.open, 75.50)
+        self.assertEqual(candle.high, 75.75)
+        self.assertEqual(candle.low, 75.25)
+        self.assertEqual(candle.close, 75.60)
+        self.assertEqual(candle.volume, 1000.0)
+        self.assertTrue(candle.complete)
+    
+    def test_candle_to_dict(self):
+        """Test candle serialization to dict."""
+        from core.services.market_data import Candle
+        
+        candle = Candle(
+            timestamp=1700000000,
+            open=75.50,
+            high=75.75,
+            low=75.25,
+            close=75.60,
+        )
+        
+        data = candle.to_dict()
+        
+        self.assertEqual(data['time'], 1700000000)
+        self.assertEqual(data['open'], 75.5)
+        self.assertEqual(data['high'], 75.75)
+        self.assertEqual(data['low'], 75.25)
+        self.assertEqual(data['close'], 75.6)
+    
+    def test_candle_from_dict(self):
+        """Test candle deserialization from dict."""
+        from core.services.market_data import Candle
+        
+        data = {
+            'time': 1700000000,
+            'open': 75.50,
+            'high': 75.75,
+            'low': 75.25,
+            'close': 75.60,
+            'volume': 1000.0,
+        }
+        
+        candle = Candle.from_dict(data)
+        
+        self.assertEqual(candle.timestamp, 1700000000)
+        self.assertEqual(candle.open, 75.50)
+        self.assertEqual(candle.high, 75.75)
+        self.assertEqual(candle.volume, 1000.0)
+
+
+class MarketDataConfigTest(TestCase):
+    """Tests for Market Data configuration."""
+    
+    def test_window_config_validation(self):
+        """Test window config validation."""
+        from core.services.market_data import WindowConfig
+        
+        config = WindowConfig()
+        
+        # Should snap to allowed values
+        self.assertEqual(config.validate_hours(1), 1)
+        self.assertEqual(config.validate_hours(6), 6)
+        self.assertEqual(config.validate_hours(24), 24)
+        
+        # Should snap to nearest allowed value
+        self.assertEqual(config.validate_hours(5), 6)
+        self.assertEqual(config.validate_hours(7), 6)
+        
+        # Should clamp to max
+        self.assertEqual(config.validate_hours(100), 72)
+    
+    def test_timeframe_config_validation(self):
+        """Test timeframe config validation."""
+        from core.services.market_data import TimeframeConfig
+        
+        config = TimeframeConfig()
+        
+        self.assertEqual(config.validate_timeframe('1m'), '1m')
+        self.assertEqual(config.validate_timeframe('5m'), '5m')
+        self.assertEqual(config.validate_timeframe('invalid'), '1m')  # default
+    
+    def test_timeframe_to_minutes(self):
+        """Test timeframe to minutes conversion."""
+        from core.services.market_data import TimeframeConfig
+        
+        self.assertEqual(TimeframeConfig.to_minutes('1m'), 1)
+        self.assertEqual(TimeframeConfig.to_minutes('5m'), 5)
+        self.assertEqual(TimeframeConfig.to_minutes('15m'), 15)
+        self.assertEqual(TimeframeConfig.to_minutes('1h'), 60)
+        self.assertEqual(TimeframeConfig.to_minutes('4h'), 240)
+        self.assertEqual(TimeframeConfig.to_minutes('1d'), 1440)
+
+
+class RedisCandleStoreTest(TestCase):
+    """Tests for Redis candle store (using in-memory fallback)."""
+    
+    def setUp(self):
+        """Set up test data."""
+        from core.services.market_data import RedisCandleStore, reset_candle_store
+        reset_candle_store()
+        
+        # Create a store that will use in-memory fallback
+        self.store = RedisCandleStore()
+        self.asset_id = 'TEST_OIL'
+        self.timeframe = '1m'
+    
+    def tearDown(self):
+        """Clean up."""
+        from core.services.market_data import reset_candle_store
+        reset_candle_store()
+    
+    def test_append_and_load_candle(self):
+        """Test appending and loading a single candle."""
+        from core.services.market_data import Candle
+        
+        candle = Candle(
+            timestamp=1700000000,
+            open=75.50,
+            high=75.75,
+            low=75.25,
+            close=75.60,
+        )
+        
+        # Append
+        result = self.store.append_candle(self.asset_id, self.timeframe, candle)
+        self.assertTrue(result)
+        
+        # Load
+        candles = self.store.load_candles(self.asset_id, self.timeframe)
+        self.assertEqual(len(candles), 1)
+        self.assertEqual(candles[0].timestamp, 1700000000)
+    
+    def test_append_multiple_candles(self):
+        """Test appending multiple candles."""
+        from core.services.market_data import Candle
+        
+        candles = [
+            Candle(timestamp=1700000000 + i * 60, open=75.0 + i * 0.1, high=75.5, low=74.5, close=75.2)
+            for i in range(10)
+        ]
+        
+        count = self.store.append_candles(self.asset_id, self.timeframe, candles)
+        self.assertEqual(count, 10)
+        
+        loaded = self.store.load_candles(self.asset_id, self.timeframe)
+        self.assertEqual(len(loaded), 10)
+    
+    def test_get_latest_candle(self):
+        """Test getting latest candle."""
+        from core.services.market_data import Candle
+        
+        candles = [
+            Candle(timestamp=1700000000 + i * 60, open=75.0, high=75.5, low=74.5, close=75.0 + i * 0.1)
+            for i in range(5)
+        ]
+        self.store.append_candles(self.asset_id, self.timeframe, candles)
+        
+        latest = self.store.get_latest_candle(self.asset_id, self.timeframe)
+        self.assertIsNotNone(latest)
+        self.assertEqual(latest.timestamp, 1700000000 + 4 * 60)
+    
+    def test_clear_candles(self):
+        """Test clearing candles."""
+        from core.services.market_data import Candle
+        
+        candle = Candle(timestamp=1700000000, open=75.0, high=75.5, low=74.5, close=75.2)
+        self.store.append_candle(self.asset_id, self.timeframe, candle)
+        
+        self.assertEqual(self.store.get_candle_count(self.asset_id, self.timeframe), 1)
+        
+        self.store.clear(self.asset_id, self.timeframe)
+        
+        self.assertEqual(self.store.get_candle_count(self.asset_id, self.timeframe), 0)
+
+
+class CandleStreamTest(TestCase):
+    """Tests for the CandleStream class."""
+    
+    def setUp(self):
+        """Set up test data."""
+        from core.services.market_data import CandleStream, reset_candle_store
+        reset_candle_store()
+        
+        self.stream = CandleStream(
+            asset_id='TEST_OIL',
+            timeframe='1m',
+            broker='IG',
+            max_candles=100,
+        )
+    
+    def tearDown(self):
+        """Clean up."""
+        from core.services.market_data import reset_candle_store
+        reset_candle_store()
+    
+    def test_append_candle(self):
+        """Test appending a candle to the stream."""
+        from core.services.market_data import Candle
+        
+        candle = Candle(
+            timestamp=1700000000,
+            open=75.50,
+            high=75.75,
+            low=75.25,
+            close=75.60,
+        )
+        
+        self.stream.append(candle)
+        
+        self.assertEqual(self.stream.get_count(), 1)
+    
+    def test_get_recent_candles(self):
+        """Test getting recent candles."""
+        from core.services.market_data import Candle
+        from datetime import datetime, timezone
+        
+        now = int(datetime.now(timezone.utc).timestamp())
+        
+        # Add some candles
+        for i in range(10):
+            candle = Candle(
+                timestamp=now - (10 - i) * 60,  # 10 minutes ago to now
+                open=75.0 + i * 0.1,
+                high=75.5,
+                low=74.5,
+                close=75.2,
+            )
+            self.stream.append(candle, persist=False)
+        
+        # Get all recent
+        candles = self.stream.get_recent()
+        self.assertEqual(len(candles), 10)
+        
+        # Get by count
+        candles = self.stream.get_recent(count=5)
+        self.assertEqual(len(candles), 5)
+    
+    def test_stream_status(self):
+        """Test getting stream status."""
+        status = self.stream.get_status()
+        
+        self.assertEqual(status.asset_id, 'TEST_OIL')
+        self.assertEqual(status.timeframe, '1m')
+        self.assertEqual(status.broker, 'IG')
+        self.assertEqual(status.candle_count, 0)
+
+
+class MarketDataStreamManagerTest(TestCase):
+    """Tests for MarketDataStreamManager."""
+    
+    def setUp(self):
+        """Set up test data."""
+        from core.services.market_data import MarketDataStreamManager
+        
+        self.asset = TradingAsset.objects.create(
+            name='Test Oil',
+            symbol='TEST_OIL',
+            epic='CC.D.CL.UNC.IP',
+            category='commodity',
+            tick_size=Decimal('0.01'),
+            is_active=True,
+        )
+        
+        # Reset singleton for clean test
+        MarketDataStreamManager.reset_instance()
+        self.manager = MarketDataStreamManager()
+    
+    def tearDown(self):
+        """Clean up."""
+        from core.services.market_data import MarketDataStreamManager
+        MarketDataStreamManager.reset_instance()
+    
+    def test_get_or_create_stream(self):
+        """Test stream creation."""
+        stream = self.manager.get_or_create_stream('TEST_OIL', '1m', 'IG')
+        
+        self.assertIsNotNone(stream)
+        self.assertEqual(stream.asset_id, 'TEST_OIL')
+        self.assertEqual(stream.timeframe, '1m')
+    
+    def test_get_stream_status(self):
+        """Test getting stream status."""
+        self.manager.get_or_create_stream('TEST_OIL', '1m', 'IG')
+        
+        status = self.manager.get_stream_status('TEST_OIL', '1m')
+        
+        self.assertEqual(status.asset_id, 'TEST_OIL')
+        self.assertEqual(status.timeframe, '1m')
+    
+    def test_get_all_stream_statuses(self):
+        """Test getting all stream statuses."""
+        self.manager.get_or_create_stream('TEST_OIL', '1m', 'IG')
+        self.manager.get_or_create_stream('TEST_OIL', '5m', 'IG')
+        
+        statuses = self.manager.get_all_stream_statuses()
+        
+        self.assertEqual(len(statuses), 2)
+
+
+class BreakoutDistanceCandlesAPITest(TestCase):
+    """Tests for the new breakout distance candles API endpoint."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.user = User.objects.create_user('testuser', 'test@example.com', 'password')
+        self.client.login(username='testuser', password='password')
+        
+        self.asset = TradingAsset.objects.create(
+            name='Crude Oil',
+            symbol='OIL',
+            epic='CC.D.CL.UNC.IP',
+            tick_size=Decimal('0.01'),
+            is_active=True,
+        )
+        
+        from core.services.market_data import MarketDataStreamManager
+        MarketDataStreamManager.reset_instance()
+    
+    def tearDown(self):
+        """Clean up."""
+        from core.services.market_data import MarketDataStreamManager
+        MarketDataStreamManager.reset_instance()
+    
+    def test_api_requires_asset_id(self):
+        """Test that asset_id is required."""
+        response = self.client.get('/fiona/api/breakout-distance-candles')
+        self.assertEqual(response.status_code, 400)
+        
+        data = response.json()
+        self.assertFalse(data['success'])
+        self.assertIn('asset_id', data['error'])
+    
+    def test_api_returns_response(self):
+        """Test that API returns a valid response."""
+        response = self.client.get(f'/fiona/api/breakout-distance-candles?asset_id={self.asset.id}')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['asset'], 'OIL')
+        self.assertIn('timeframe', data)
+        self.assertIn('window_hours', data)
+        self.assertIn('candles', data)
+        self.assertIn('status', data)
+    
+    def test_api_with_timeframe_param(self):
+        """Test API with timeframe parameter."""
+        response = self.client.get(f'/fiona/api/breakout-distance-candles?asset_id={self.asset.id}&timeframe=5m')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertEqual(data['timeframe'], '5m')
+    
+    def test_api_with_window_param(self):
+        """Test API with window parameter."""
+        response = self.client.get(f'/fiona/api/breakout-distance-candles?asset_id={self.asset.id}&window=12')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertEqual(data['window_hours'], 12.0)
+    
+    def test_api_asset_not_found(self):
+        """Test API with non-existent asset."""
+        response = self.client.get('/fiona/api/breakout-distance-candles?asset_id=99999')
+        self.assertEqual(response.status_code, 404)
+        
+        data = response.json()
+        self.assertFalse(data['success'])
+    
+    def test_api_requires_login(self):
+        """Test that API requires authentication."""
+        self.client.logout()
+        response = self.client.get(f'/fiona/api/breakout-distance-candles?asset_id={self.asset.id}')
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login/', response.url)
+    
+    def test_api_status_includes_data_source(self):
+        """Test that status includes data source indicator."""
+        response = self.client.get(f'/fiona/api/breakout-distance-candles?asset_id={self.asset.id}')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        status = data['status']
+        
+        self.assertIn('status', status)
+        # Status should be one of the valid values
+        self.assertIn(status['status'], ['LIVE', 'POLL', 'CACHED', 'OFFLINE'])
+
+
+class MarketDataStatusAPITest(TestCase):
+    """Tests for the market data status API endpoint."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.user = User.objects.create_user('testuser', 'test@example.com', 'password')
+        self.client.login(username='testuser', password='password')
+        
+        from core.services.market_data import MarketDataStreamManager
+        MarketDataStreamManager.reset_instance()
+    
+    def tearDown(self):
+        """Clean up."""
+        from core.services.market_data import MarketDataStreamManager
+        MarketDataStreamManager.reset_instance()
+    
+    def test_status_api_returns_empty_initially(self):
+        """Test that status API returns empty initially."""
+        response = self.client.get('/fiona/api/market-data/status/')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['total_streams'], 0)
+        self.assertEqual(len(data['streams']), 0)
+    
+    def test_status_api_requires_login(self):
+        """Test that status API requires authentication."""
+        self.client.logout()
+        response = self.client.get('/fiona/api/market-data/status/')
+        self.assertEqual(response.status_code, 302)

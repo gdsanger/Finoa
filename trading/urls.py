@@ -37,6 +37,10 @@ urlpatterns = [
     path('assets/<int:asset_id>/phases/<str:phase>/delete/', views.phase_config_delete, name='phase_config_delete'),
     path('assets/<int:asset_id>/phases/<str:phase>/toggle/', views.phase_config_toggle, name='phase_config_toggle'),
     
+    # Market Data Layer - Realtime Breakout Distance Candles
+    path('api/breakout-distance-candles', views.api_breakout_distance_candles, name='api_breakout_distance_candles'),
+    path('api/market-data/status/', views.api_market_data_status, name='api_market_data_status'),
+    
     # Breakout Range API
     path('api/assets/<int:asset_id>/breakout-ranges/', views.api_breakout_range_history, name='api_breakout_range_history'),
     path('api/assets/<int:asset_id>/breakout-ranges/latest/', views.api_breakout_range_latest, name='api_breakout_range_latest'),
