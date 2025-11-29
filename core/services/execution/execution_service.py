@@ -81,6 +81,8 @@ class ExecutionService:
         broker_service: Optional[BrokerService] = None,
         weaviate_service: Optional[WeaviateService] = None,
         config: Optional[ExecutionConfig] = None,
+        broker_registry=None,
+        shadow_only: bool = False,
     ):
         """
         Initialize the ExecutionService.
@@ -89,10 +91,14 @@ class ExecutionService:
             broker_service: BrokerService instance for live trades.
             weaviate_service: WeaviateService for persistence.
             config: ExecutionConfig for behavior settings.
+            broker_registry: BrokerRegistry for per-asset broker selection.
+            shadow_only: Whether to run in shadow-only mode.
         """
         self._broker = broker_service
         self._weaviate = weaviate_service or WeaviateService()
         self._config = config or ExecutionConfig()
+        self._broker_registry = broker_registry
+        self._shadow_only = shadow_only
         
         # In-memory session storage (replace with persistent storage if needed)
         self._sessions: dict[str, ExecutionSession] = {}
@@ -101,6 +107,22 @@ class ExecutionService:
     def config(self) -> ExecutionConfig:
         """Get the current configuration."""
         return self._config
+
+    @property
+    def broker_registry(self):
+        """Get the broker registry."""
+        return self._broker_registry
+
+    def set_broker_registry(self, registry, shadow_only: bool = False) -> None:
+        """
+        Set the broker registry for per-asset broker selection.
+        
+        Args:
+            registry: BrokerRegistry instance.
+            shadow_only: Whether to run in shadow-only mode.
+        """
+        self._broker_registry = registry
+        self._shadow_only = shadow_only
 
     def propose_trade(
         self,

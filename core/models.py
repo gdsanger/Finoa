@@ -488,3 +488,56 @@ class IgBrokerConfig(models.Model):
     def __str__(self):
         status = '✓' if self.is_active else '✗'
         return f"{status} {self.name} ({self.get_account_type_display()})"
+
+
+class MexcBrokerConfig(models.Model):
+    """
+    Configuration for MEXC Broker API integration.
+    Used for trading operations via MEXC API (Spot & Margin).
+    """
+    ACCOUNT_TYPE_CHOICES = [
+        ('SPOT', 'Spot'),
+        ('MARGIN', 'Margin'),
+    ]
+    
+    name = models.CharField(
+        max_length=200,
+        help_text='Configuration name for identification'
+    )
+    api_key = models.CharField(
+        max_length=500,
+        help_text='MEXC API key'
+    )
+    api_secret = models.CharField(
+        max_length=500,
+        help_text='MEXC API secret'
+    )
+    account_type = models.CharField(
+        max_length=10,
+        choices=ACCOUNT_TYPE_CHOICES,
+        default='SPOT',
+        help_text='Account type (Spot or Margin)'
+    )
+    api_base_url = models.URLField(
+        default='https://api.mexc.com',
+        help_text='MEXC API base URL'
+    )
+    timeout_seconds = models.PositiveIntegerField(
+        default=30,
+        help_text='Request timeout in seconds'
+    )
+    is_active = models.BooleanField(
+        default=False,
+        help_text='Whether this configuration is active'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-is_active', 'name']
+        verbose_name = 'MEXC Broker Configuration'
+        verbose_name_plural = 'MEXC Broker Configurations'
+    
+    def __str__(self):
+        status = '✓' if self.is_active else '✗'
+        return f"{status} {self.name} ({self.get_account_type_display()})"
