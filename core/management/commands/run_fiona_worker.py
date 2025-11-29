@@ -241,11 +241,12 @@ class Command(BaseCommand):
             except Exception as e:
                 logger.warning(f"Could not get account state: {e}")
         
-        # 4. Create Market State Provider (using default broker for backward compatibility)
+        # 4. Create Market State Provider (with broker registry for multi-broker support)
         self.stdout.write("  → Creating Market State Provider...")
         self.market_state_provider = IGMarketStateProvider(
             broker_service=default_broker,
             eia_timestamp=None,  # Can be set later if needed
+            broker_registry=self.broker_registry,
         )
         self.stdout.write(self.style.SUCCESS("    ✓ Market State Provider created"))
         
@@ -613,10 +614,12 @@ class Command(BaseCommand):
             self.stdout.write(f"     Phase: {phase.value}")
             
             # 3. Update candle cache with current price
+            # The provider automatically uses the correct broker via BrokerRegistry
+            # when current_asset is set (done above via set_current_asset)
             try:
-                self.market_state_provider.update_candle_from_price(epic)
+                self.market_state_provider.update_candle_from_price()
             except Exception as e:
-                logger.warning(f"Failed to update candle for {epic}: {e}")
+                logger.warning(f"Failed to update candle for {broker_symbol}: {e}")
             
             # 4. Get current price for logging and range building
             # Use asset-specific broker and broker_symbol

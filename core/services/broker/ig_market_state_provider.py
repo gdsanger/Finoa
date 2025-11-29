@@ -20,6 +20,7 @@ from .ig_broker_service import IgBrokerService
 
 if TYPE_CHECKING:
     from trading.models import TradingAsset
+    from .config import BrokerRegistry
 
 
 logger = logging.getLogger(__name__)
@@ -191,19 +192,24 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         broker_service: IgBrokerService,
         eia_timestamp: Optional[datetime] = None,
         session_times: Optional[SessionTimesConfig] = None,
+        broker_registry: Optional['BrokerRegistry'] = None,
     ):
         """
         Initialize the IG Market State Provider.
         
         Args:
-            broker_service: Connected IgBrokerService instance.
+            broker_service: Connected IgBrokerService instance (default/fallback broker).
             eia_timestamp: Optional EIA release timestamp for current week.
             session_times: Optional custom session time configuration.
                           If not provided, uses default session times.
+            broker_registry: Optional BrokerRegistry for multi-broker support.
+                            When provided and a current_asset is set, the registry
+                            will be used to get the correct broker for the asset.
         """
         self._broker = broker_service
         self._eia_timestamp = eia_timestamp
         self._session_times = session_times or SessionTimesConfig()
+        self._broker_registry = broker_registry
         
         # Cache for session ranges
         self._asia_range_cache: dict[str, tuple[float, float]] = {}
@@ -464,18 +470,38 @@ class IGMarketStateProvider(BaseMarketStateProvider):
             logger.warning(f"Failed to get candles for {epic}: {e}")
             return []
 
-    def update_candle_from_price(self, epic: str, timeframe: str = '1m') -> None:
+    def update_candle_from_price(self, epic: str = None, timeframe: str = '1m') -> None:
         """
         Update the candle cache with current price data.
         
-        Call this periodically to build up candle history.
+        Call this periodically to build up candle history. When a current_asset
+        is set and a broker_registry is available, this method automatically
+        uses the correct broker for the asset (e.g., MEXC for crypto, IG for CFDs).
         
         Args:
-            epic: Market identifier.
+            epic: Market identifier. If not provided, uses the effective broker
+                  symbol from the current asset.
             timeframe: Candle timeframe.
         """
+        # Determine the symbol to use for logging in case of error
+        symbol = epic
+        
         try:
-            price = self._broker.get_symbol_price(epic)
+            # Determine the broker and symbol to use
+            broker_service = self._broker
+            
+            # If we have a current asset and broker registry, use them
+            # This ensures we use the correct broker (IG or MEXC) for the asset
+            if self._current_asset and self._broker_registry:
+                broker_service = self._broker_registry.get_broker_for_asset(self._current_asset)
+                symbol = self._current_asset.effective_broker_symbol
+            elif epic is None:
+                # No epic provided and no asset/registry - nothing to do
+                logger.warning("No epic provided and no current asset set, skipping candle update")
+                return
+            # else: epic is provided but no asset/registry - use default broker with provided epic
+            
+            price = broker_service.get_symbol_price(symbol)
             now = datetime.now(timezone.utc)
             
             candle = Candle(
@@ -487,7 +513,7 @@ class IGMarketStateProvider(BaseMarketStateProvider):
                 volume=None,
             )
             
-            cache_key = f"{epic}_{timeframe}"
+            cache_key = f"{symbol}_{timeframe}"
             if cache_key not in self._candle_cache:
                 self._candle_cache[cache_key] = []
             
@@ -496,7 +522,7 @@ class IGMarketStateProvider(BaseMarketStateProvider):
             self._candle_cache[cache_key] = self._candle_cache[cache_key][-100:]
             
         except Exception as e:
-            logger.warning(f"Failed to update candle for {epic}: {e}")
+            logger.warning(f"Failed to update candle for {symbol}: {e}")
 
     def get_daily_high_low(self, epic: str) -> Optional[tuple[float, float]]:
         """
