@@ -464,7 +464,7 @@ class IGMarketStateProvider(BaseMarketStateProvider):
             logger.warning(f"Failed to get candles for {epic}: {e}")
             return []
 
-    def update_candle_from_price(self, epic: str, timeframe: str = '1m') -> None:
+    def update_candle_from_price(self, epic: str, timeframe: str = '1m', broker=None) -> None:
         """
         Update the candle cache with current price data.
         
@@ -473,9 +473,14 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         Args:
             epic: Market identifier.
             timeframe: Candle timeframe.
+            broker: Optional broker service to use. If not provided, uses the
+                   internal default broker. Pass the asset-specific broker for
+                   multi-broker setups (e.g., MEXC for crypto assets).
         """
         try:
-            price = self._broker.get_symbol_price(epic)
+            # Use provided broker or fall back to internal default
+            broker_service = broker if broker is not None else self._broker
+            price = broker_service.get_symbol_price(epic)
             now = datetime.now(timezone.utc)
             
             candle = Candle(

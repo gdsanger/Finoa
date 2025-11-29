@@ -613,10 +613,13 @@ class Command(BaseCommand):
             self.stdout.write(f"     Phase: {phase.value}")
             
             # 3. Update candle cache with current price
+            # Use asset-specific broker to avoid mixing IG and MEXC API calls
             try:
-                self.market_state_provider.update_candle_from_price(epic)
+                self.market_state_provider.update_candle_from_price(
+                    broker_symbol, broker=asset_broker
+                )
             except Exception as e:
-                logger.warning(f"Failed to update candle for {epic}: {e}")
+                logger.warning(f"Failed to update candle for {broker_symbol}: {e}")
             
             # 4. Get current price for logging and range building
             # Use asset-specific broker and broker_symbol
