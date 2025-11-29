@@ -9,7 +9,7 @@ from django.core.paginator import Paginator
 from django.core.exceptions import ImproperlyConfigured
 from django.utils import timezone
 
-from .models import Signal, Trade, WorkerStatus, TradingAsset, AssetDiagnostics, AssetPriceStatus
+from .models import Signal, Trade, WorkerStatus, TradingAsset, AssetDiagnostics, AssetPriceStatus, BreakoutRange
 from .services.chart_service import (
     get_asset_by_symbol,
     get_candles_for_asset,
@@ -2307,3 +2307,145 @@ def breakout_distance_chart_view(request):
     }
     
     return render(request, 'trading/breakout_distance_chart.html', context)
+
+
+# ============================================================================
+# Sidebar API Endpoint for Active Assets Status
+# ============================================================================
+
+@login_required
+def api_sidebar_assets(request):
+    """
+    GET /api/sidebar/assets/ - Return sidebar data for all active assets.
+    
+    Returns JSON with asset information for sidebar display including:
+    - Asset name and symbol
+    - Current price (from AssetPriceStatus)
+    - Current phase (from WorkerStatus or inferred)
+    - Previous phase range (High/Low)
+    - Tradeable status
+    
+    This endpoint uses persisted data only - no broker API calls.
+    """
+    try:
+        # Get all active assets
+        active_assets = TradingAsset.objects.filter(is_active=True).order_by('name')
+        
+        # Get worker status for phase info
+        worker_status = WorkerStatus.get_current()
+        current_phase = worker_status.phase if worker_status else 'OTHER'
+        
+        assets_data = []
+        for asset in active_assets:
+            asset_data = {
+                'id': asset.id,
+                'name': asset.name,
+                'symbol': asset.symbol,
+                'category': asset.category,
+                'current_price': None,
+                'bid_price': None,
+                'ask_price': None,
+                'current_phase': current_phase,
+                'phase_display': dict(WorkerStatus.SESSION_PHASES).get(current_phase, current_phase),
+                'is_tradeable': _is_phase_tradeable(current_phase),
+                'is_other_phase': current_phase == 'OTHER',
+                'previous_range': None,
+            }
+            
+            # Get price status for asset
+            price_status = AssetPriceStatus.get_for_asset(asset)
+            if price_status:
+                if price_status.bid_price and price_status.ask_price:
+                    mid_price = (price_status.bid_price + price_status.ask_price) / 2
+                    asset_data['current_price'] = str(round(mid_price, 4))
+                elif price_status.bid_price:
+                    asset_data['current_price'] = str(price_status.bid_price)
+                asset_data['bid_price'] = str(price_status.bid_price) if price_status.bid_price else None
+                asset_data['ask_price'] = str(price_status.ask_price) if price_status.ask_price else None
+            
+            # Get previous phase range
+            # The "previous phase" depends on the current phase
+            prev_range = _get_previous_phase_range(asset, current_phase)
+            if prev_range:
+                asset_data['previous_range'] = {
+                    'high': str(prev_range.high),
+                    'low': str(prev_range.low),
+                    'phase': prev_range.phase,
+                    'phase_display': dict(BreakoutRange.PHASE_CHOICES).get(prev_range.phase, prev_range.phase),
+                    'is_valid': prev_range.is_valid,
+                }
+        
+            assets_data.append(asset_data)
+        
+        return JsonResponse({
+            'success': True,
+            'current_phase': current_phase,
+            'phase_display': dict(WorkerStatus.SESSION_PHASES).get(current_phase, current_phase),
+            'count': len(assets_data),
+            'assets': assets_data,
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching sidebar assets: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': f'Fehler beim Laden der Sidebar-Daten: {str(e)}',
+        }, status=500)
+
+
+def _is_phase_tradeable(phase: str) -> bool:
+    """
+    Check if a phase is tradeable.
+    
+    Trading is allowed during:
+    - LONDON_CORE
+    - US_CORE_TRADING
+    - EIA_POST
+    
+    Not tradeable phases:
+    - ASIA_RANGE (range building)
+    - PRE_US_RANGE (range building)
+    - EIA_PRE (paused for event)
+    - FRIDAY_LATE
+    - OTHER
+    """
+    tradeable_phases = ['LONDON_CORE', 'US_CORE_TRADING', 'US_CORE', 'EIA_POST']
+    return phase in tradeable_phases
+
+
+def _get_previous_phase_range(asset, current_phase: str):
+    """
+    Get the reference range for the current phase.
+    
+    Phase -> Reference Range mapping:
+    - LONDON_CORE -> ASIA_RANGE
+    - PRE_US_RANGE -> LONDON_CORE or ASIA_RANGE
+    - US_CORE_TRADING -> PRE_US_RANGE or LONDON_CORE or ASIA_RANGE
+    - EIA_PRE/EIA_POST -> PRE_US_RANGE
+    - ASIA_RANGE -> None (building)
+    - OTHER -> Most recent available range
+    
+    Returns the most recent valid range for the reference phase.
+    """
+    # Define the reference phase mapping
+    reference_mapping = {
+        'LONDON_CORE': ['ASIA_RANGE'],
+        'PRE_US_RANGE': ['LONDON_CORE', 'ASIA_RANGE'],
+        'US_CORE_TRADING': ['PRE_US_RANGE', 'LONDON_CORE', 'ASIA_RANGE'],
+        'US_CORE': ['PRE_US_RANGE', 'LONDON_CORE', 'ASIA_RANGE'],
+        'EIA_PRE': ['PRE_US_RANGE', 'LONDON_CORE', 'ASIA_RANGE'],
+        'EIA_POST': ['PRE_US_RANGE', 'LONDON_CORE', 'ASIA_RANGE'],
+        'FRIDAY_LATE': ['US_CORE_TRADING', 'PRE_US_RANGE', 'LONDON_CORE', 'ASIA_RANGE'],
+        'OTHER': ['US_CORE_TRADING', 'PRE_US_RANGE', 'LONDON_CORE', 'ASIA_RANGE'],
+        'ASIA_RANGE': [],  # No previous range during Asia range building
+    }
+    
+    reference_phases = reference_mapping.get(current_phase, ['ASIA_RANGE'])
+    
+    # Try to find a range in order of preference
+    for ref_phase in reference_phases:
+        range_data = BreakoutRange.get_latest_for_asset_phase(asset, ref_phase)
+        if range_data:
+            return range_data
+    
+    return None
