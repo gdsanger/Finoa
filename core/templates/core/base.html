@@ -35,39 +35,39 @@
                             <i class="bi bi-speedometer2"></i> Dashboard
                         </a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'accounts' %}">
-                            <i class="bi bi-wallet2"></i> Konten
+                     <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" id="financeDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-graph-up-arrow text-success"></i> Finanazplanung
                         </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'monthly_view' %}">
-                            <i class="bi bi-calendar-month"></i> Monatsansicht
-                        </a>
-                    </li>
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="analyticsDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="bi bi-bar-chart"></i> Auswertungen
-                        </a>
-                        <ul class="dropdown-menu" aria-labelledby="analyticsDropdown">
+                         <ul class="dropdown-menu" aria-labelledby="tradingDropdown">
+                            <li><a class="dropdown-item" href="{% url 'accounts' %}">
+                               <i class="bi bi-wallet2"></i> Konten
+                            </a></li>
+                            <li><a class="dropdown-item" href="{% url 'monthly_view' %}">
+                                 <i class="bi bi-calendar-month"></i> Monatsansicht
+                            </a></li>
                             <li><a class="dropdown-item" href="{% url 'category_analytics' %}">
-                                <i class="bi bi-pie-chart"></i> Kategorien-Auswertung
+                                <i class="bi bi-box-seam"></i> Kategorien-Auswertung
                             </a></li>
                             <li><a class="dropdown-item" href="{% url 'ai_analysis' %}">
-                                <i class="bi bi-lightning-charge-fill text-warning"></i> KI-Analyse
+                                <i class="bi bi-clock-history"></i> KI-Analyse
                             </a></li>
-                        </ul>
-                    </li>
-                    <li class="nav-item">
+                            <li class="dropdown-item">
                         <a class="nav-link" href="{% url 'due_bookings' %}">
                             <i class="bi bi-exclamation-triangle-fill"></i> Fällige Rechnungen
                         </a>
                     </li>
-                    <li class="nav-item">
+                      <li class="dropdown-item">
                         <a class="nav-link" href="{% url 'payees' %}">
                             <i class="bi bi-people"></i> Zahlungsempfänger
                         </a>
                     </li>
+                        </ul>
+                     </li>
+                                    
+                   
+                 
+                  
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'time_tracking' %}">
                             <i class="bi bi-clock-history"></i> Zeiterfassung

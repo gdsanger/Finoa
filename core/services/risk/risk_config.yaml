@@ -1,0 +1,73 @@
+# Risk Engine v1.0 Configuration
+# ================================
+# This file contains all configurable risk limits for the Fiona trading system.
+# The Risk Engine evaluates each trade against these limits and determines
+# whether the trade is allowed.
+
+# -----------------------------------------
+# Account Risk Limits
+# -----------------------------------------
+
+# Maximum risk per trade as percentage of account equity
+# Example: 1.0 means max 1% of equity can be risked on a single trade
+max_risk_per_trade_percent: 1.0
+
+# Maximum daily loss as percentage of account equity
+# When exceeded, all further trades are blocked for the day
+max_daily_loss_percent: 3.0
+
+# Maximum weekly loss as percentage of account equity
+# When exceeded, all further trades are blocked for the week
+max_weekly_loss_percent: 6.0
+
+# -----------------------------------------
+# Position Limits
+# -----------------------------------------
+
+# Maximum number of concurrent open positions
+# Recommended: 1 for v1.0 to prevent overtrading
+max_open_positions: 1
+
+# Maximum position size (contracts)
+max_position_size: 5.0
+
+# Whether to allow trades against the higher timeframe trend
+# When false, breakout trades must align with trend direction
+# Note: EIA setups are exempt from this rule
+allow_countertrend: false
+
+# -----------------------------------------
+# Stop Loss / Take Profit Limits
+# -----------------------------------------
+
+# Minimum stop loss distance in ticks
+# Prevents overly tight stops that could be triggered by noise
+sl_min_ticks: 5
+
+# Minimum take profit distance in ticks
+tp_min_ticks: 5
+
+# -----------------------------------------
+# Time-Based Restrictions
+# -----------------------------------------
+
+# Minutes before and after EIA release when new trades are blocked
+# Normal breakout strategies are blocked, but EIA-specific strategies allowed
+deny_eia_window_minutes: 5
+
+# Time (CET) after which no new trades on Friday
+# Format: "HH:MM"
+deny_friday_after: "21:00"
+
+# Whether to deny holding positions overnight
+deny_overnight: true
+
+# -----------------------------------------
+# Instrument-Specific Settings
+# -----------------------------------------
+
+# Tick size for the traded instrument (e.g., 0.01 for WTI Crude Oil)
+tick_size: 0.01
+
+# Value of one tick in account currency (e.g., $10 for CL mini contract)
+tick_value: 10.0
