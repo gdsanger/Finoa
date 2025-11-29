@@ -17,7 +17,7 @@ Die **Strategy Engine** ist das Herzstück der Signalgenerierung im Fiona Tradin
 5. [Konfiguration](#konfiguration)
 6. [Datenmodelle](#datenmodelle)
 7. [MarketStateProvider](#marketstateprovider)
-8. [Diagnostik & Debugging](#diagnostik--debugging)
+8. [Diagnostik und Debugging](#diagnostik-und-debugging)
 9. [Integration mit anderen Layern](#integration-mit-anderen-layern)
 10. [Beispiele](#beispiele)
 
@@ -491,7 +491,7 @@ provider = IGMarketStateProvider(ig_broker_service)
 
 ---
 
-## Diagnostik & Debugging
+## Diagnostik und Debugging
 
 ### Debug-Logging aktivieren
 
