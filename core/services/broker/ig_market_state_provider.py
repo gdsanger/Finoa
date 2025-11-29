@@ -749,8 +749,10 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         """
         Get the London Core session range (high, low).
         
-        Note: This uses cached values that should be updated
-        after London Core session ends.
+        First checks the in-memory cache, then falls back to loading
+        from the database (BreakoutRange) if the cache is empty.
+        This ensures ranges are available even after worker restarts
+        or when trading in phases that follow the London Core range building phase.
         
         Args:
             epic: Market identifier.
@@ -758,7 +760,24 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         Returns:
             Tuple of (high, low) or None if not available.
         """
-        return self._london_core_range_cache.get(epic)
+        # Check cache first
+        cached = self._london_core_range_cache.get(epic)
+        if cached is not None:
+            return cached
+        
+        # Fall back to database if asset is set
+        if self._current_asset and self._current_asset.epic == epic:
+            range_data = self._load_range_from_db(self._current_asset, 'LONDON_CORE')
+            if range_data is not None:
+                # Cache the loaded data for subsequent calls
+                self._london_core_range_cache[epic] = range_data
+                logger.debug(
+                    f"Loaded London Core range from database for {epic}: "
+                    f"high={range_data[0]:.4f}, low={range_data[1]:.4f}"
+                )
+            return range_data
+        
+        return None
 
     def set_london_core_range(
         self,

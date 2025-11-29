@@ -635,6 +635,42 @@ class IGMarketStateProviderDbFallbackTest(TestCase):
         # Verify it was also cached
         self.assertEqual(provider._pre_us_range_cache.get("CC.D.CL.UNC.IP"), (76.00, 75.00))
 
+    def test_london_core_range_falls_back_to_database(self):
+        """Test that get_london_core_range falls back to database when cache is empty."""
+        from trading.models import BreakoutRange
+        from datetime import timedelta
+        
+        provider = IGMarketStateProvider(broker_service=self.mock_broker)
+        
+        # Associate asset with provider
+        provider.set_current_asset(self.asset)
+        
+        # Initially, cache should be empty
+        self.assertIsNone(provider._london_core_range_cache.get("CC.D.CL.UNC.IP"))
+        
+        # Create a range in the database
+        now = datetime.now(timezone.utc)
+        BreakoutRange.objects.create(
+            asset=self.asset,
+            phase='LONDON_CORE',
+            start_time=now - timedelta(hours=5),
+            end_time=now - timedelta(hours=2),
+            high=Decimal("75.80"),
+            low=Decimal("74.80"),
+            height_ticks=100,
+            height_points=Decimal("1.00"),
+            is_valid=True,
+        )
+        
+        # Now get_london_core_range should load from database
+        result = provider.get_london_core_range("CC.D.CL.UNC.IP")
+        
+        self.assertIsNotNone(result)
+        self.assertEqual(result, (75.80, 74.80))
+        
+        # Verify it was also cached
+        self.assertEqual(provider._london_core_range_cache.get("CC.D.CL.UNC.IP"), (75.80, 74.80))
+
     def test_range_not_loaded_if_too_old(self):
         """Test that ranges older than 24 hours are not loaded from database."""
         from trading.models import BreakoutRange
