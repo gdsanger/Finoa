@@ -1196,7 +1196,7 @@
         <div class="fiona-header">
             <div>
                 <h1>
-                    <i class="bi bi-graph-up-arrow"></i> Fiona Signal Dashboard
+                    <i class="bi bi-graph-up-arrow"></i> Signal Dashboard
                 </h1>
                 <small class="text-muted">Trading Signal Management v1.0</small>
             </div>
@@ -1323,11 +1323,7 @@
                     <div class="worker-status-item">
                         <div class="worker-status-value" id="worker-epic">--</div>
                         <div class="worker-status-label">Epic</div>
-                    </div>
-                    <div class="worker-status-item">
-                        <div class="worker-status-value" id="worker-price">--</div>
-                        <div class="worker-status-label">Preis (Bid/Ask)</div>
-                    </div>
+                    </div>                   
                     <div class="worker-status-item">
                         <div class="worker-status-value" id="worker-setup-count">--</div>
                         <div class="worker-status-label">Setups gefunden</div>
@@ -1342,27 +1338,7 @@
                     <span class="countdown-label"><i class="bi bi-clock"></i> Nächster Lauf in</span>
                     <span class="countdown-value" id="worker-countdown-value">--</span>
                 </div>
-                <div class="worker-diagnostic" id="worker-diagnostic">
-                    <div class="label">Diagnose</div>
-                    <div class="message" id="worker-diagnostic-message">--</div>
-                </div>
-                <!-- Diagnostic Criteria List - Accordion -->
-                <div class="diagnostic-criteria" id="diagnostic-criteria">
-                    <div class="diagnostic-criteria-header" onclick="toggleCriteriaAccordion()">
-                        <div class="label">Kriterien-Prüfung</div>
-                        <span class="diagnostic-criteria-toggle" id="criteria-toggle"><i class="bi bi-chevron-down"></i></span>
-                    </div>
-                    <div class="diagnostic-criteria-content" id="criteria-content">
-                        <ul class="criteria-list" id="criteria-list">
-                            <li class="criteria-item">
-                                <span class="criteria-icon"><i class="bi bi-dash"></i></span>
-                            <span class="criteria-content">
-                                <span class="criteria-name">Keine Daten</span>
-                            </span>
-                        </li>
-                    </ul>
-                    </div>
-                </div>
+                        
             </div>
         </div>
         
@@ -1451,50 +1427,10 @@
                         </div>
                     </div>
                 </div>
-                
-                <!-- Diagnostic Message -->
-                <div class="range-diagnostic-message" id="range-diagnostic-message-section">
-                    <div class="label">Diagnose</div>
-                    <div class="message" id="range-diagnostic-message">--</div>
-                </div>
+               
             </div>
         </div>
-        
-        <!-- Price vs Range - Live Status Panel -->
-        <div class="price-range-status-card" id="price-range-status">
-            <div class="price-range-status-header">
-                <h5><i class="bi bi-crosshair"></i> Price vs Range – Live Status</h5>
-                <div class="d-flex align-items-center gap-2">
-                    <!-- Asset Selector (synced with range diagnostics) -->
-                    <select id="price-range-asset-selector" class="form-select form-select-sm" style="width: auto; min-width: 120px; background-color: rgba(0, 0, 0, 0.3); border: 1px solid var(--fiona-border); color: var(--fiona-text-light); font-size: 0.75rem; padding: 0.25rem 0.5rem;" onchange="selectPriceRangeAsset(this.value)">
-                        {% for asset in active_assets %}
-                        <option value="{{ asset.id }}">{{ asset.symbol }}</option>
-                        {% empty %}
-                        <option value="">Keine Assets</option>
-                        {% endfor %}
-                    </select>
-                    <!-- Phase Tabs -->
-                    <div class="price-range-phase-tabs">
-                        <button class="phase-tab-btn active" data-phase="ASIA_RANGE" onclick="selectPriceRangePhase('ASIA_RANGE')">Asia</button>
-                        <button class="phase-tab-btn" data-phase="LONDON_CORE" onclick="selectPriceRangePhase('LONDON_CORE')">London</button>
-                        <button class="phase-tab-btn" data-phase="PRE_US_RANGE" onclick="selectPriceRangePhase('PRE_US_RANGE')">Pre-US</button>
-                        <button class="phase-tab-btn" data-phase="US_CORE_TRADING" onclick="selectPriceRangePhase('US_CORE_TRADING')">US Core</button>
-                    </div>
-                    <button class="refresh-btn" id="refresh-price-range-btn" onclick="refreshPriceRangeStatus()" title="Aktualisieren">
-                        <i class="bi bi-arrow-clockwise"></i>
-                    </button>
-                </div>
-            </div>
-            <div id="price-range-status-content"
-                 hx-get="{% url 'htmx_price_range_status' %}"
-                 hx-trigger="load"
-                 hx-swap="innerHTML">
-                <div class="price-range-fallback">
-                    <i class="bi bi-hourglass-split"></i>
-                    <span>Lade Status...</span>
-                </div>
-            </div>
-        </div>
+            
         
         <!-- Signal List Container (refreshable via HTMX) -->
         <div id="signal-list-container">
