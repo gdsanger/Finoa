@@ -1,7 +1,7 @@
 """
 Broker Service module for Finoa.
 
-Provides abstraction layer for broker integrations (IG, etc.)
+Provides abstraction layer for broker integrations (IG, MEXC, etc.)
 """
 
 from .models import (
@@ -24,7 +24,15 @@ from .ig_api_client import IgApiClient
 
 from .ig_broker_service import IgBrokerService
 
-from .config import get_active_ig_broker_config, create_ig_broker_service
+from .mexc_broker_service import MexcBrokerService
+
+from .config import (
+    get_active_ig_broker_config,
+    create_ig_broker_service,
+    get_active_mexc_broker_config,
+    create_mexc_broker_service,
+    get_broker_service_for_asset,
+)
 
 from .ig_market_state_provider import IGMarketStateProvider, SessionTimesConfig
 
@@ -48,9 +56,14 @@ __all__ = [
     # IG implementation
     'IgApiClient',
     'IgBrokerService',
+    # MEXC implementation
+    'MexcBrokerService',
     # Config utilities
     'get_active_ig_broker_config',
     'create_ig_broker_service',
+    'get_active_mexc_broker_config',
+    'create_mexc_broker_service',
+    'get_broker_service_for_asset',
     # Market State Provider
     'IGMarketStateProvider',
     'SessionTimesConfig',
