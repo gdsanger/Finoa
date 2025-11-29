@@ -2374,7 +2374,7 @@ def api_sidebar_assets(request):
                     'phase_display': dict(BreakoutRange.PHASE_CHOICES).get(prev_range.phase, prev_range.phase),
                     'is_valid': prev_range.is_valid,
                 }
-        
+            
             assets_data.append(asset_data)
         
         return JsonResponse({
@@ -2386,10 +2386,10 @@ def api_sidebar_assets(request):
         })
         
     except Exception as e:
-        logger.error(f"Error fetching sidebar assets: {e}")
+        logger.error("Error fetching sidebar assets: %s", type(e).__name__)
         return JsonResponse({
             'success': False,
-            'error': f'Fehler beim Laden der Sidebar-Daten: {str(e)}',
+            'error': 'Fehler beim Laden der Sidebar-Daten',
         }, status=500)
 
 
