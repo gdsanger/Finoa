@@ -422,6 +422,10 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         This implementation returns cached/simulated candles or
         creates a single candle from current price data.
         
+        When a current_asset is set and a broker_registry is available, this method
+        automatically uses the correct broker for the asset (e.g., MEXC for crypto,
+        IG for CFDs).
+        
         Logging (Acceptance Criteria #1):
         - Logs EPIC, time window, candle count, first/last timestamps
         
@@ -434,8 +438,18 @@ class IGMarketStateProvider(BaseMarketStateProvider):
             List of Candle objects, most recent last.
         """
         try:
+            # Determine the broker and symbol to use
+            broker_service = self._broker
+            symbol = epic
+            
+            # If we have a current asset and broker registry, use them
+            # This ensures we use the correct broker (IG or MEXC) for the asset
+            if self._current_asset and self._broker_registry:
+                broker_service = self._broker_registry.get_broker_for_asset(self._current_asset)
+                symbol = self._current_asset.effective_broker_symbol
+            
             # Get current market data
-            price = self._broker.get_symbol_price(epic)
+            price = broker_service.get_symbol_price(symbol)
             
             # Create a candle from current price data
             now = datetime.now(timezone.utc)
@@ -449,7 +463,7 @@ class IGMarketStateProvider(BaseMarketStateProvider):
             )
             
             # For now, return cached candles plus current
-            cache_key = f"{epic}_{timeframe}"
+            cache_key = f"{symbol}_{timeframe}"
             cached = self._candle_cache.get(cache_key, [])
             
             # Add current candle and limit
@@ -460,7 +474,7 @@ class IGMarketStateProvider(BaseMarketStateProvider):
             self._candle_cache[cache_key] = candles[-50:]  # Keep last 50
             
             # Track candle count - increment by actual number of candles returned
-            self._candle_counts[epic] = self._candle_counts.get(epic, 0) + len(candles)
+            self._candle_counts[symbol] = self._candle_counts.get(symbol, 0) + len(candles)
             
             # Log candle fetch details (Acceptance Criteria #1)
             if len(candles) > 0:
@@ -470,7 +484,7 @@ class IGMarketStateProvider(BaseMarketStateProvider):
                 first_ts = 'N/A'
                 last_ts = 'N/A'
             logger.info(
-                f"Candle fetch: epic={epic}, timeframe={timeframe}, "
+                f"Candle fetch: epic={symbol}, timeframe={timeframe}, "
                 f"count={len(candles)}, first={first_ts}, last={last_ts}"
             )
             
@@ -538,6 +552,10 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         """
         Get the current day's high and low prices.
         
+        When a current_asset is set and a broker_registry is available, this method
+        automatically uses the correct broker for the asset (e.g., MEXC for crypto,
+        IG for CFDs).
+        
         Args:
             epic: Market identifier.
             
@@ -545,7 +563,17 @@ class IGMarketStateProvider(BaseMarketStateProvider):
             Tuple of (high, low) or None if not available.
         """
         try:
-            price = self._broker.get_symbol_price(epic)
+            # Determine the broker and symbol to use
+            broker_service = self._broker
+            symbol = epic
+            
+            # If we have a current asset and broker registry, use them
+            # This ensures we use the correct broker (IG or MEXC) for the asset
+            if self._current_asset and self._broker_registry:
+                broker_service = self._broker_registry.get_broker_for_asset(self._current_asset)
+                symbol = self._current_asset.effective_broker_symbol
+            
+            price = broker_service.get_symbol_price(symbol)
             if price.high is not None and price.low is not None:
                 return (float(price.high), float(price.low))
             return None
@@ -913,7 +941,13 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         Returns:
             ATR value or None if not available.
         """
-        cache_key = f"{epic}_{timeframe}"
+        # Determine the effective symbol for cache lookup
+        # This ensures consistency with get_recent_candles cache keys
+        symbol = epic
+        if self._current_asset and self._broker_registry:
+            symbol = self._current_asset.effective_broker_symbol
+        
+        cache_key = f"{symbol}_{timeframe}"
         candles = self._candle_cache.get(cache_key, [])
         
         if len(candles) < period:
@@ -986,12 +1020,22 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         Returns:
             True if no data warning was triggered, False otherwise.
         """
-        candle_count = self._candle_counts.get(epic, 0)
+        # Determine the effective symbol for cache lookup
+        # This ensures consistency with get_recent_candles cache keys
+        symbol = epic
+        if self._current_asset and self._broker_registry:
+            symbol = self._current_asset.effective_broker_symbol
+        
+        candle_count = self._candle_counts.get(symbol, 0)
         
         if candle_count == 0:
+            # Determine broker type for more helpful warning message
+            broker_type = "broker"
+            if self._current_asset:
+                broker_type = self._current_asset.broker
             logger.warning(
-                f"No candles received for asset {epic} in the last {threshold_hours}h. "
-                "Check EPIC or IG API configuration."
+                f"No candles received for asset {symbol} in the last {threshold_hours}h. "
+                f"Check EPIC or {broker_type} API configuration."
             )
             return True
         

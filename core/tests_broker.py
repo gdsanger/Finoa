@@ -1627,3 +1627,150 @@ class IGMarketStateProviderTest(TestCase):
         # Verify everything is cleared
         self.assertEqual(len(provider._candle_counts), 0)
         self.assertEqual(len(provider._asia_range_cache), 0)
+
+    def test_broker_registry_used_for_mexc_asset(self):
+        """Test that broker registry is used to get correct broker for MEXC assets."""
+        from core.services.broker import IGMarketStateProvider
+        from core.services.broker.config import BrokerRegistry
+        from trading.models import TradingAsset
+        from decimal import Decimal
+        
+        # Create a MEXC crypto asset
+        mexc_asset = TradingAsset.objects.create(
+            name="ETH/USDT",
+            symbol="ETHUSDT",
+            epic="ETHUSDT",
+            broker="MEXC",
+            broker_symbol="ETHUSDT",
+            category="crypto",
+            is_crypto=True,
+            tick_size=Decimal("0.01"),
+            is_active=True,
+        )
+        
+        # Create mocks
+        mock_ig_broker = MagicMock()
+        mock_mexc_broker = MagicMock()
+        mock_registry = MagicMock(spec=BrokerRegistry)
+        mock_registry.get_broker_for_asset.return_value = mock_mexc_broker
+        
+        # Set up mock price response
+        mock_price = MagicMock()
+        mock_price.mid_price = Decimal("3000.50")
+        mock_price.high = Decimal("3100.00")
+        mock_price.low = Decimal("2950.00")
+        mock_mexc_broker.get_symbol_price.return_value = mock_price
+        
+        # Create provider with registry
+        provider = IGMarketStateProvider(
+            broker_service=mock_ig_broker,
+            broker_registry=mock_registry,
+        )
+        provider.set_current_asset(mexc_asset)
+        
+        # Call get_daily_high_low - should use MEXC broker, not IG
+        result = provider.get_daily_high_low("ETHUSDT")
+        
+        # Verify registry was used to get broker for asset
+        mock_registry.get_broker_for_asset.assert_called_once_with(mexc_asset)
+        
+        # Verify MEXC broker was called with correct symbol
+        mock_mexc_broker.get_symbol_price.assert_called_once_with("ETHUSDT")
+        
+        # Verify IG broker was NOT called
+        mock_ig_broker.get_symbol_price.assert_not_called()
+        
+        # Verify result
+        self.assertEqual(result, (3100.00, 2950.00))
+        
+        # Clean up
+        mexc_asset.delete()
+
+    def test_broker_registry_used_for_get_recent_candles(self):
+        """Test that broker registry is used for get_recent_candles with MEXC assets."""
+        from core.services.broker import IGMarketStateProvider
+        from core.services.broker.config import BrokerRegistry
+        from trading.models import TradingAsset
+        from decimal import Decimal
+        
+        # Create a MEXC crypto asset
+        mexc_asset = TradingAsset.objects.create(
+            name="SOL/USDT",
+            symbol="SOLUSDT",
+            epic="SOLUSDT",
+            broker="MEXC",
+            broker_symbol="SOLUSDT",
+            category="crypto",
+            is_crypto=True,
+            tick_size=Decimal("0.1"),
+            is_active=True,
+        )
+        
+        # Create mocks
+        mock_ig_broker = MagicMock()
+        mock_mexc_broker = MagicMock()
+        mock_registry = MagicMock(spec=BrokerRegistry)
+        mock_registry.get_broker_for_asset.return_value = mock_mexc_broker
+        
+        # Set up mock price response
+        mock_price = MagicMock()
+        mock_price.mid_price = Decimal("150.50")
+        mock_price.high = Decimal("155.00")
+        mock_price.low = Decimal("148.00")
+        mock_mexc_broker.get_symbol_price.return_value = mock_price
+        
+        # Create provider with registry
+        provider = IGMarketStateProvider(
+            broker_service=mock_ig_broker,
+            broker_registry=mock_registry,
+        )
+        provider.set_current_asset(mexc_asset)
+        
+        # Call get_recent_candles - should use MEXC broker, not IG
+        candles = provider.get_recent_candles("SOLUSDT", "1m", 5)
+        
+        # Verify registry was used to get broker for asset
+        mock_registry.get_broker_for_asset.assert_called_once_with(mexc_asset)
+        
+        # Verify MEXC broker was called with correct symbol
+        mock_mexc_broker.get_symbol_price.assert_called_once_with("SOLUSDT")
+        
+        # Verify IG broker was NOT called
+        mock_ig_broker.get_symbol_price.assert_not_called()
+        
+        # Verify candles were returned
+        self.assertGreater(len(candles), 0)
+        self.assertEqual(candles[-1].close, 150.50)
+        
+        # Clean up
+        mexc_asset.delete()
+
+    def test_fallback_to_default_broker_without_registry(self):
+        """Test that default broker is used when no registry is available."""
+        from core.services.broker import IGMarketStateProvider
+        from decimal import Decimal
+        
+        # Create mocks - only default broker, no registry
+        mock_ig_broker = MagicMock()
+        
+        # Set up mock price response
+        mock_price = MagicMock()
+        mock_price.mid_price = Decimal("75.50")
+        mock_price.high = Decimal("76.00")
+        mock_price.low = Decimal("74.50")
+        mock_ig_broker.get_symbol_price.return_value = mock_price
+        
+        # Create provider WITHOUT registry
+        provider = IGMarketStateProvider(
+            broker_service=mock_ig_broker,
+            broker_registry=None,  # No registry
+        )
+        
+        # Call get_daily_high_low without setting asset
+        result = provider.get_daily_high_low("CC.D.CL.UNC.IP")
+        
+        # Verify default IG broker was called
+        mock_ig_broker.get_symbol_price.assert_called_once_with("CC.D.CL.UNC.IP")
+        
+        # Verify result
+        self.assertEqual(result, (76.00, 74.50))
