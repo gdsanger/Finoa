@@ -9,7 +9,6 @@ and brokers. Handles:
 - Caching and persistence coordination
 """
 import logging
-from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 from threading import Lock
 from typing import Dict, List, Optional, Tuple, Callable

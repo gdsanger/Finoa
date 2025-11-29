@@ -9,7 +9,7 @@ Provides a Redis-backed storage layer for market candles with:
 """
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Tuple
 from collections import deque
 
@@ -223,8 +223,8 @@ class RedisCandleStore:
             try:
                 if window_hours is not None:
                     # Load by time range
-                    min_ts = int((datetime.utcnow() - timedelta(hours=window_hours)).timestamp())
-                    max_ts = int(datetime.utcnow().timestamp()) + 60  # Plus 1 minute buffer
+                    min_ts = int((datetime.now(timezone.utc) - timedelta(hours=window_hours)).timestamp())
+                    max_ts = int(datetime.now(timezone.utc).timestamp()) + 60  # Plus 1 minute buffer
                     
                     results = redis_client.zrangebyscore(key, min_ts, max_ts)
                 elif count is not None:
@@ -255,7 +255,7 @@ class RedisCandleStore:
         candles = list(self._fallback_store[key])
         
         if window_hours is not None:
-            min_ts = int((datetime.utcnow() - timedelta(hours=window_hours)).timestamp())
+            min_ts = int((datetime.now(timezone.utc) - timedelta(hours=window_hours)).timestamp())
             candles = [c for c in candles if c.timestamp >= min_ts]
         
         if count is not None:

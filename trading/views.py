@@ -2388,7 +2388,7 @@ def api_breakout_distance_candles(request):
         logger.error(f"Error fetching breakout distance candles: {e}")
         return JsonResponse({
             'success': False,
-            'error': 'Fehler beim Laden der Candle-Daten',
+            'error': 'Error loading candle data',
         }, status=500)
 
 
@@ -2418,5 +2418,5 @@ def api_market_data_status(request):
         logger.error(f"Error fetching market data status: {e}")
         return JsonResponse({
             'success': False,
-            'error': 'Fehler beim Abrufen des Market Data Status',
+            'error': 'Error retrieving market data status',
         }, status=500)

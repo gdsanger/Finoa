@@ -6,7 +6,7 @@ Used by the MarketDataStreamManager for each asset/timeframe pair.
 """
 import logging
 from collections import deque
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from threading import Lock
 from typing import List, Optional, Callable
 
@@ -241,8 +241,7 @@ class CandleStream:
             candles = list(self._buffer)
         
         if hours is not None:
-            min_ts = int((datetime.utcnow() - 
-                         __import__('datetime').timedelta(hours=hours)).timestamp())
+            min_ts = int((datetime.now(timezone.utc) - timedelta(hours=hours)).timestamp())
             candles = [c for c in candles if c.timestamp >= min_ts]
         
         if count is not None:
