@@ -592,6 +592,65 @@ def api_worker_status(request):
 # Asset Management Views
 # ============================================================================
 
+def _get_asset_form_context(asset=None):
+    """
+    Get common context for asset create/edit forms.
+    
+    Args:
+        asset: TradingAsset instance or None for create form.
+        
+    Returns:
+        dict: Context dictionary with categories, strategy_types, broker_kinds.
+    """
+    from .models import TradingAsset
+    return {
+        'asset': asset,
+        'categories': TradingAsset.ASSET_CATEGORIES,
+        'strategy_types': TradingAsset.STRATEGY_TYPES,
+        'broker_kinds': TradingAsset.BrokerKind.choices,
+    }
+
+
+def _parse_asset_form_data(request):
+    """
+    Parse asset form data from POST request.
+    
+    Returns:
+        dict: Parsed form data with all asset fields.
+    """
+    from .models import TradingAsset
+    
+    # Basic fields
+    name = request.POST.get('name', '').strip()
+    symbol = request.POST.get('symbol', '').strip()
+    epic = request.POST.get('epic', '').strip()
+    category = request.POST.get('category', 'commodity')
+    tick_size_str = request.POST.get('tick_size', '0.01')
+    is_active = request.POST.get('is_active') == 'on'
+    
+    # Broker configuration
+    broker = request.POST.get('broker', 'IG')
+    broker_symbol = request.POST.get('broker_symbol', '').strip()
+    quote_currency = request.POST.get('quote_currency', 'USD').strip() or 'USD'
+    
+    # Validate broker value
+    valid_brokers = [choice[0] for choice in TradingAsset.BrokerKind.choices]
+    if broker not in valid_brokers:
+        broker = 'IG'
+    
+    return {
+        'name': name,
+        'symbol': symbol,
+        'epic': epic,
+        'category': category,
+        'tick_size_str': tick_size_str,
+        'is_active': is_active,
+        'broker': broker,
+        'broker_symbol': broker_symbol,
+        'quote_currency': quote_currency,
+    }
+
+
 @login_required
 def asset_list(request):
     """
@@ -663,81 +722,45 @@ def asset_create(request):
     from decimal import Decimal, InvalidOperation
     
     if request.method == 'POST':
-        # Get form data
-        name = request.POST.get('name', '').strip()
-        symbol = request.POST.get('symbol', '').strip()
-        epic = request.POST.get('epic', '').strip()
-        category = request.POST.get('category', 'commodity')
-        tick_size_str = request.POST.get('tick_size', '0.01')
-        is_active = request.POST.get('is_active') == 'on'
-        
-        # Broker configuration
-        broker = request.POST.get('broker', 'IG')
-        broker_symbol = request.POST.get('broker_symbol', '').strip()
-        quote_currency = request.POST.get('quote_currency', 'USD').strip() or 'USD'
+        # Parse form data using helper
+        form_data = _parse_asset_form_data(request)
         
         # Validate required fields
-        if not name or not symbol or not epic:
+        if not form_data['name'] or not form_data['symbol'] or not form_data['epic']:
             messages.error(request, 'Name, Symbol und EPIC sind Pflichtfelder.')
-            return render(request, 'trading/asset_form.html', {
-                'asset': None,
-                'categories': TradingAsset.ASSET_CATEGORIES,
-                'strategy_types': TradingAsset.STRATEGY_TYPES,
-                'broker_kinds': TradingAsset.BrokerKind.choices,
-            })
-        
-        # Validate broker value
-        if broker not in [choice[0] for choice in TradingAsset.BrokerKind.choices]:
-            broker = 'IG'
+            return render(request, 'trading/asset_form.html', _get_asset_form_context())
         
         # Check for duplicate epic
-        if TradingAsset.objects.filter(epic=epic).exists():
-            messages.error(request, f'Ein Asset mit EPIC "{epic}" existiert bereits.')
-            return render(request, 'trading/asset_form.html', {
-                'asset': None,
-                'categories': TradingAsset.ASSET_CATEGORIES,
-                'strategy_types': TradingAsset.STRATEGY_TYPES,
-                'broker_kinds': TradingAsset.BrokerKind.choices,
-            })
+        if TradingAsset.objects.filter(epic=form_data['epic']).exists():
+            messages.error(request, f'Ein Asset mit EPIC "{form_data["epic"]}" existiert bereits.')
+            return render(request, 'trading/asset_form.html', _get_asset_form_context())
         
         try:
-            tick_size = Decimal(tick_size_str)
+            tick_size = Decimal(form_data['tick_size_str'])
         except InvalidOperation:
             messages.error(request, 'Ungültiger Tick Size Wert.')
-            return render(request, 'trading/asset_form.html', {
-                'asset': None,
-                'categories': TradingAsset.ASSET_CATEGORIES,
-                'strategy_types': TradingAsset.STRATEGY_TYPES,
-                'broker_kinds': TradingAsset.BrokerKind.choices,
-            })
+            return render(request, 'trading/asset_form.html', _get_asset_form_context())
         
         # Create asset
         asset = TradingAsset.objects.create(
-            name=name,
-            symbol=symbol,
-            epic=epic,
-            category=category,
+            name=form_data['name'],
+            symbol=form_data['symbol'],
+            epic=form_data['epic'],
+            category=form_data['category'],
             tick_size=tick_size,
-            is_active=is_active,
-            broker=broker,
-            broker_symbol=broker_symbol,
-            quote_currency=quote_currency,
+            is_active=form_data['is_active'],
+            broker=form_data['broker'],
+            broker_symbol=form_data['broker_symbol'],
+            quote_currency=form_data['quote_currency'],
         )
         
         # Create default breakout config
         AssetBreakoutConfig.objects.create(asset=asset)
         
-        messages.success(request, f'Asset "{name}" erfolgreich erstellt.')
+        messages.success(request, f'Asset "{form_data["name"]}" erfolgreich erstellt.')
         return redirect('asset_detail', asset_id=asset.id)
     
-    context = {
-        'asset': None,
-        'categories': TradingAsset.ASSET_CATEGORIES,
-        'strategy_types': TradingAsset.STRATEGY_TYPES,
-        'broker_kinds': TradingAsset.BrokerKind.choices,
-    }
-    
-    return render(request, 'trading/asset_form.html', context)
+    return render(request, 'trading/asset_form.html', _get_asset_form_context())
 
 
 @login_required
@@ -752,77 +775,41 @@ def asset_edit(request, asset_id):
     asset = get_object_or_404(TradingAsset, id=asset_id)
     
     if request.method == 'POST':
-        # Get form data
-        name = request.POST.get('name', '').strip()
-        symbol = request.POST.get('symbol', '').strip()
-        epic = request.POST.get('epic', '').strip()
-        category = request.POST.get('category', 'commodity')
-        tick_size_str = request.POST.get('tick_size', '0.01')
-        is_active = request.POST.get('is_active') == 'on'
-        
-        # Broker configuration
-        broker = request.POST.get('broker', 'IG')
-        broker_symbol = request.POST.get('broker_symbol', '').strip()
-        quote_currency = request.POST.get('quote_currency', 'USD').strip() or 'USD'
+        # Parse form data using helper
+        form_data = _parse_asset_form_data(request)
         
         # Validate required fields
-        if not name or not symbol or not epic:
+        if not form_data['name'] or not form_data['symbol'] or not form_data['epic']:
             messages.error(request, 'Name, Symbol und EPIC sind Pflichtfelder.')
-            return render(request, 'trading/asset_form.html', {
-                'asset': asset,
-                'categories': TradingAsset.ASSET_CATEGORIES,
-                'strategy_types': TradingAsset.STRATEGY_TYPES,
-                'broker_kinds': TradingAsset.BrokerKind.choices,
-            })
-        
-        # Validate broker value
-        if broker not in [choice[0] for choice in TradingAsset.BrokerKind.choices]:
-            broker = 'IG'
+            return render(request, 'trading/asset_form.html', _get_asset_form_context(asset))
         
         # Check for duplicate epic (excluding current asset)
-        if TradingAsset.objects.filter(epic=epic).exclude(id=asset.id).exists():
-            messages.error(request, f'Ein anderes Asset mit EPIC "{epic}" existiert bereits.')
-            return render(request, 'trading/asset_form.html', {
-                'asset': asset,
-                'categories': TradingAsset.ASSET_CATEGORIES,
-                'strategy_types': TradingAsset.STRATEGY_TYPES,
-                'broker_kinds': TradingAsset.BrokerKind.choices,
-            })
+        if TradingAsset.objects.filter(epic=form_data['epic']).exclude(id=asset.id).exists():
+            messages.error(request, f'Ein anderes Asset mit EPIC "{form_data["epic"]}" existiert bereits.')
+            return render(request, 'trading/asset_form.html', _get_asset_form_context(asset))
         
         try:
-            tick_size = Decimal(tick_size_str)
+            tick_size = Decimal(form_data['tick_size_str'])
         except InvalidOperation:
             messages.error(request, 'Ungültiger Tick Size Wert.')
-            return render(request, 'trading/asset_form.html', {
-                'asset': asset,
-                'categories': TradingAsset.ASSET_CATEGORIES,
-                'strategy_types': TradingAsset.STRATEGY_TYPES,
-                'broker_kinds': TradingAsset.BrokerKind.choices,
-            })
+            return render(request, 'trading/asset_form.html', _get_asset_form_context(asset))
         
         # Update asset
-        asset.name = name
-        asset.symbol = symbol
-        asset.epic = epic
-        asset.category = category
+        asset.name = form_data['name']
+        asset.symbol = form_data['symbol']
+        asset.epic = form_data['epic']
+        asset.category = form_data['category']
         asset.tick_size = tick_size
-        asset.is_active = is_active
-        asset.broker = broker
-        asset.broker_symbol = broker_symbol
-        asset.quote_currency = quote_currency
+        asset.is_active = form_data['is_active']
+        asset.broker = form_data['broker']
+        asset.broker_symbol = form_data['broker_symbol']
+        asset.quote_currency = form_data['quote_currency']
         asset.save()
         
-        messages.success(request, f'Asset "{name}" erfolgreich aktualisiert.')
+        messages.success(request, f'Asset "{form_data["name"]}" erfolgreich aktualisiert.')
         return redirect('asset_detail', asset_id=asset.id)
     
-    context = {
-        'asset': asset,
-        'categories': TradingAsset.ASSET_CATEGORIES,
-        'strategy_types': TradingAsset.STRATEGY_TYPES,
-        'broker_kinds': TradingAsset.BrokerKind.choices,
-    }
-    
-    return render(request, 'trading/asset_form.html', context)
+    return render(request, 'trading/asset_form.html', _get_asset_form_context(asset))
 
 
 @login_required
