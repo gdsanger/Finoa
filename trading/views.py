@@ -2307,3 +2307,116 @@ def breakout_distance_chart_view(request):
     }
     
     return render(request, 'trading/breakout_distance_chart.html', context)
+
+
+# ============================================================================
+# Market Data Layer - Realtime Breakout Distance Candles API
+# ============================================================================
+
+@login_required
+def api_breakout_distance_candles(request):
+    """
+    GET /trading/api/breakout-distance-candles - Return candles via the Market Data Layer.
+    
+    This is the new broker-agnostic endpoint that uses the Market Data Layer
+    with Redis-backed persistence. It removes the 24h hard limit and provides
+    flexible window sizes.
+    
+    Query parameters:
+        asset_id: Required - Asset ID to fetch candles for
+        timeframe: Candle timeframe (default: '1m', options: 1m, 5m, 15m, 1h)
+        window: Time window in hours (default: 6, options: 1, 3, 6, 8, 12, 24, 48, 72)
+    
+    Returns JSON with:
+        - success: Whether the request was successful
+        - asset: Asset symbol
+        - timeframe: Candle timeframe
+        - window_hours: Time window in hours
+        - candle_count: Number of candles returned
+        - candles: Array of OHLC candles with unix timestamps
+        - status: Data stream status object:
+            - status: 'LIVE', 'POLL', 'CACHED', or 'OFFLINE'
+            - last_update: Timestamp of last data update
+            - candle_count: Number of candles in buffer
+            - broker: Broker providing the data
+            - error: Error message if status is OFFLINE
+        - error: Optional error message
+    """
+    from core.services.market_data import get_stream_manager, SUPPORTED_WINDOW_HOURS
+    
+    # Get required asset_id parameter
+    asset_id = request.GET.get('asset_id')
+    if not asset_id:
+        return JsonResponse({
+            'success': False,
+            'error': 'asset_id is required',
+        }, status=400)
+    
+    # Get optional timeframe parameter
+    timeframe = request.GET.get('timeframe', '1m')
+    
+    # Get optional window parameter
+    try:
+        window_hours = float(request.GET.get('window', 6))
+    except (ValueError, TypeError):
+        window_hours = 6
+    
+    try:
+        # Get the asset
+        try:
+            asset = TradingAsset.objects.get(id=asset_id, is_active=True)
+        except TradingAsset.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'error': f'Asset with ID {asset_id} not found or not active.',
+            }, status=404)
+        
+        # Get the stream manager and fetch candles
+        manager = get_stream_manager()
+        response = manager.get_candles(
+            asset=asset,
+            timeframe=timeframe,
+            window_hours=window_hours,
+        )
+        
+        return JsonResponse({
+            'success': True,
+            **response.to_dict(),
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching breakout distance candles: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': 'Error loading candle data',
+        }, status=500)
+
+
+@login_required
+def api_market_data_status(request):
+    """
+    GET /trading/api/market-data/status - Return status of all active market data streams.
+    
+    Returns JSON with:
+        - success: Whether the request was successful
+        - streams: Array of stream status objects
+        - total_streams: Total number of active streams
+    """
+    from core.services.market_data import get_stream_manager
+    
+    try:
+        manager = get_stream_manager()
+        statuses = manager.get_all_stream_statuses()
+        
+        return JsonResponse({
+            'success': True,
+            'total_streams': len(statuses),
+            'streams': [s.to_dict() for s in statuses],
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching market data status: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': 'Error retrieving market data status',
+        }, status=500)
