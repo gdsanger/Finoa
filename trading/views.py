@@ -2420,3 +2420,162 @@ def api_market_data_status(request):
             'success': False,
             'error': 'Error retrieving market data status',
         }, status=500)
+
+
+# ============================================================================
+# Sidebar API - Active Assets with Phase and Price Information
+# ============================================================================
+
+@login_required
+def api_sidebar_assets(request):
+    """
+    GET /fiona/api/sidebar/assets/ - Return active assets with price and phase info for the sidebar.
+    
+    Returns JSON with:
+        - success: Whether the request was successful
+        - assets: Array of asset objects with:
+            - id: Asset ID
+            - name: Asset display name
+            - symbol: Asset symbol
+            - current_price: Current mid price (bid/ask average)
+            - current_phase: Current session phase name
+            - phase_type: 'tradeable', 'range_building', 'other', or 'not_tradeable'
+            - previous_range: Object with high/low from previous phase range (if available)
+    """
+    from datetime import datetime
+    from .models import TradingAsset, AssetPriceStatus, BreakoutRange, AssetSessionPhaseConfig
+    
+    try:
+        # Get all active assets
+        assets = TradingAsset.objects.filter(is_active=True).order_by('name')
+        
+        result = []
+        now = timezone.now()
+        current_time_utc = now.strftime('%H:%M')
+        
+        for asset in assets:
+            asset_data = {
+                'id': asset.id,
+                'name': asset.name,
+                'symbol': asset.symbol,
+                'current_price': None,
+                'current_phase': 'OTHER',
+                'phase_type': 'other',
+                'previous_range': None,
+            }
+            
+            # Get current price
+            try:
+                price_status = AssetPriceStatus.objects.filter(asset=asset).first()
+                if price_status and price_status.bid_price and price_status.ask_price:
+                    mid_price = (float(price_status.bid_price) + float(price_status.ask_price)) / 2
+                    asset_data['current_price'] = mid_price
+                elif price_status and price_status.bid_price:
+                    asset_data['current_price'] = float(price_status.bid_price)
+            except Exception:
+                pass
+            
+            # Determine current phase based on time and asset's phase configs
+            current_phase = None
+            phase_type = 'other'
+            
+            try:
+                phase_configs = AssetSessionPhaseConfig.objects.filter(
+                    asset=asset,
+                    enabled=True
+                ).order_by('start_time_utc')
+                
+                for config in phase_configs:
+                    start_time = config.start_time_utc
+                    end_time = config.end_time_utc
+                    
+                    # Handle phase that spans midnight
+                    if start_time <= end_time:
+                        # Normal case: start < end
+                        if start_time <= current_time_utc < end_time:
+                            current_phase = config.phase
+                            if config.is_trading_phase:
+                                phase_type = 'tradeable'
+                            elif config.is_range_build_phase:
+                                phase_type = 'range_building'
+                            else:
+                                phase_type = 'other'
+                            break
+                    else:
+                        # Spans midnight: start > end (e.g., 23:00 to 02:00)
+                        if current_time_utc >= start_time or current_time_utc < end_time:
+                            current_phase = config.phase
+                            if config.is_trading_phase:
+                                phase_type = 'tradeable'
+                            elif config.is_range_build_phase:
+                                phase_type = 'range_building'
+                            else:
+                                phase_type = 'other'
+                            break
+                
+                if not current_phase:
+                    current_phase = 'OTHER'
+                    phase_type = 'not_tradeable'
+                    
+            except Exception:
+                current_phase = 'OTHER'
+                phase_type = 'other'
+            
+            asset_data['current_phase'] = current_phase
+            asset_data['phase_type'] = phase_type
+            
+            # Get previous phase range data
+            try:
+                # Determine which range to show based on current phase
+                # For trading phases, show the reference range
+                reference_phase_mapping = {
+                    'LONDON_CORE': 'ASIA_RANGE',
+                    'US_CORE_TRADING': 'PRE_US_RANGE',
+                    'PRE_US_RANGE': 'LONDON_CORE',
+                    'EIA_PRE': 'PRE_US_RANGE',
+                    'EIA_POST': 'PRE_US_RANGE',
+                }
+                
+                reference_phase = reference_phase_mapping.get(current_phase)
+                
+                if reference_phase:
+                    range_data = BreakoutRange.objects.filter(
+                        asset=asset,
+                        phase=reference_phase
+                    ).order_by('-end_time').first()
+                    
+                    if range_data:
+                        asset_data['previous_range'] = {
+                            'high': float(range_data.high),
+                            'low': float(range_data.low),
+                            'phase': reference_phase,
+                        }
+                else:
+                    # For range building phases or other, show most recent range
+                    range_data = BreakoutRange.objects.filter(
+                        asset=asset
+                    ).order_by('-end_time').first()
+                    
+                    if range_data:
+                        asset_data['previous_range'] = {
+                            'high': float(range_data.high),
+                            'low': float(range_data.low),
+                            'phase': range_data.phase,
+                        }
+            except Exception:
+                pass
+            
+            result.append(asset_data)
+        
+        return JsonResponse({
+            'success': True,
+            'count': len(result),
+            'assets': result,
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching sidebar assets: {e}")
+        return JsonResponse({
+            'success': False,
+            'error': 'Fehler beim Laden der Assets',
+        }, status=500)

@@ -1187,6 +1187,257 @@
             grid-template-columns: repeat(2, 1fr);
         }
     }
+    
+    /* =========================================================
+     * Dashboard Layout with Sidebar
+     * ========================================================= */
+    .dashboard-layout {
+        display: flex;
+        gap: 1.5rem;
+        min-height: calc(100vh - 120px);
+    }
+    
+    /* Assets Sidebar */
+    .assets-sidebar {
+        width: 280px;
+        min-width: 280px;
+        background-color: var(--fiona-card-dark);
+        border: 1px solid var(--fiona-border);
+        border-radius: 12px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        position: sticky;
+        top: 1rem;
+        max-height: calc(100vh - 130px);
+    }
+    
+    .sidebar-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem 1rem;
+        background-color: var(--fiona-card-header);
+        border-bottom: 1px solid var(--fiona-border);
+    }
+    
+    .sidebar-header h5 {
+        margin: 0;
+        color: var(--fiona-text-light);
+        font-size: 0.875rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .sidebar-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 0.5rem;
+    }
+    
+    .sidebar-loading {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem 1rem;
+        color: var(--fiona-text-muted);
+        gap: 0.5rem;
+    }
+    
+    .sidebar-loading i {
+        font-size: 1.5rem;
+        animation: spin 2s linear infinite;
+    }
+    
+    /* Asset Item Card */
+    .asset-item {
+        background-color: rgba(0, 0, 0, 0.2);
+        border-radius: 8px;
+        padding: 0.75rem;
+        margin-bottom: 0.5rem;
+        border-left: 3px solid var(--fiona-border);
+        transition: all 0.2s ease;
+    }
+    
+    .asset-item:hover {
+        background-color: rgba(0, 0, 0, 0.3);
+        transform: translateX(2px);
+    }
+    
+    .asset-item:last-child {
+        margin-bottom: 0;
+    }
+    
+    .asset-item.phase-tradeable {
+        border-left-color: var(--signal-long);
+    }
+    
+    .asset-item.phase-range-building {
+        border-left-color: var(--confidence-medium);
+    }
+    
+    .asset-item.phase-other {
+        border-left-color: var(--fiona-text-muted);
+    }
+    
+    .asset-item.phase-not-tradeable {
+        border-left-color: var(--signal-short);
+        opacity: 0.7;
+    }
+    
+    .asset-item-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.5rem;
+    }
+    
+    .asset-name {
+        font-weight: 600;
+        color: var(--fiona-text-light);
+        font-size: 0.9rem;
+    }
+    
+    .asset-price {
+        font-family: 'Roboto Mono', monospace;
+        font-weight: 700;
+        color: #17a2b8;
+        font-size: 0.9rem;
+    }
+    
+    .asset-phase-info {
+        margin-bottom: 0.5rem;
+    }
+    
+    .asset-phase-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.2rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.7rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .asset-phase-badge.tradeable {
+        background-color: rgba(40, 167, 69, 0.2);
+        color: var(--signal-long);
+        border: 1px solid var(--signal-long);
+    }
+    
+    .asset-phase-badge.range-building {
+        background-color: rgba(255, 193, 7, 0.2);
+        color: var(--confidence-medium);
+        border: 1px solid var(--confidence-medium);
+    }
+    
+    .asset-phase-badge.other {
+        background-color: rgba(108, 117, 125, 0.2);
+        color: var(--fiona-text-muted);
+        border: 1px solid var(--fiona-border);
+    }
+    
+    .asset-phase-badge.not-tradeable {
+        background-color: rgba(220, 53, 69, 0.2);
+        color: var(--signal-short);
+        border: 1px solid var(--signal-short);
+    }
+    
+    .asset-range-info {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.5rem;
+        padding-top: 0.5rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .range-item {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .range-label {
+        font-size: 0.65rem;
+        color: var(--fiona-text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+    
+    .range-value {
+        font-family: 'Roboto Mono', monospace;
+        font-size: 0.8rem;
+        color: var(--fiona-text-light);
+    }
+    
+    .range-value.high {
+        color: var(--signal-long);
+    }
+    
+    .range-value.low {
+        color: var(--signal-short);
+    }
+    
+    /* Dashboard Main Content Area */
+    .dashboard-main {
+        flex: 1;
+        min-width: 0;
+    }
+    
+    /* Sidebar Empty State */
+    .sidebar-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem 1rem;
+        color: var(--fiona-text-muted);
+        text-align: center;
+    }
+    
+    .sidebar-empty i {
+        font-size: 2rem;
+        margin-bottom: 0.5rem;
+        opacity: 0.5;
+    }
+    
+    /* Responsive - Hide sidebar on mobile */
+    @media (max-width: 992px) {
+        .dashboard-layout {
+            flex-direction: column;
+        }
+        
+        .assets-sidebar {
+            width: 100%;
+            min-width: 100%;
+            max-height: 300px;
+            position: relative;
+            top: 0;
+        }
+        
+        .sidebar-content {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        
+        .asset-item {
+            flex: 1 1 calc(50% - 0.5rem);
+            min-width: 200px;
+            margin-bottom: 0;
+        }
+    }
+    
+    @media (max-width: 576px) {
+        .asset-item {
+            flex: 1 1 100%;
+        }
+    }
 </style>
 {% endblock %}
 
@@ -1220,6 +1471,28 @@
                 </a>
             </div>
         </div>
+        
+        <!-- Main Dashboard Layout with Sidebar -->
+        <div class="dashboard-layout">
+            <!-- Left Sidebar - Active Assets -->
+            <aside class="assets-sidebar" id="assets-sidebar">
+                <div class="sidebar-header">
+                    <h5><i class="bi bi-collection"></i> Aktive Assets</h5>
+                    <button class="refresh-btn" id="refresh-sidebar-btn" onclick="refreshAssetsSidebar()" title="Aktualisieren">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
+                <div class="sidebar-content" id="sidebar-assets-list">
+                    <!-- Asset items will be dynamically loaded -->
+                    <div class="sidebar-loading">
+                        <i class="bi bi-hourglass-split"></i>
+                        <span>Lädt Assets...</span>
+                    </div>
+                </div>
+            </aside>
+            
+            <!-- Main Content Area -->
+            <main class="dashboard-main">
         
         <!-- Account Info Card - Multi-Broker -->
         <div class="account-info-card" id="account-info">
@@ -1323,7 +1596,7 @@
                     <div class="worker-status-item">
                         <div class="worker-status-value" id="worker-epic">--</div>
                         <div class="worker-status-label">Epic</div>
-                    </div>                   
+                    </div>
                     <div class="worker-status-item">
                         <div class="worker-status-value" id="worker-setup-count">--</div>
                         <div class="worker-status-label">Setups gefunden</div>
@@ -1338,99 +1611,8 @@
                     <span class="countdown-label"><i class="bi bi-clock"></i> Nächster Lauf in</span>
                     <span class="countdown-value" id="worker-countdown-value">--</span>
                 </div>
-                        
             </div>
         </div>
-        
-        <!-- Breakout Range Diagnostics Card -->
-        <div class="range-diagnostics-card" id="range-diagnostics">
-            <div class="range-diagnostics-header">
-                <h5><i class="bi bi-arrows-expand"></i> Breakout Range Diagnose</h5>
-                <div class="d-flex align-items-center gap-2">
-                    <!-- Asset Selector -->
-                    <select id="range-asset-selector" class="form-select form-select-sm" style="width: auto; min-width: 120px; background-color: rgba(0, 0, 0, 0.3); border: 1px solid var(--fiona-border); color: var(--fiona-text-light); font-size: 0.75rem; padding: 0.25rem 0.5rem;" onchange="selectRangeAsset(this.value)">
-                        {% for asset in active_assets %}
-                        <option value="{{ asset.id }}" data-epic="{{ asset.epic }}">{{ asset.symbol }}</option>
-                        {% empty %}
-                        <option value="">Keine Assets</option>
-                        {% endfor %}
-                    </select>
-                    <div class="range-type-selector">
-                        <button class="range-type-btn active" data-range-type="asia" onclick="selectRangeType('asia')">Asia Range</button>
-                        <button class="range-type-btn" data-range-type="london_core" onclick="selectRangeType('london_core')">London Core</button>
-                        <button class="range-type-btn" data-range-type="pre_us" onclick="selectRangeType('pre_us')">Pre-US Range</button>
-                    </div>
-                    <button class="refresh-btn" id="refresh-range-btn" onclick="refreshRangeDiagnostics()" title="Aktualisieren">
-                        <i class="bi bi-arrow-clockwise"></i>
-                    </button>
-                </div>
-            </div>
-            <div id="range-diagnostics-content">
-                <div class="range-diagnostics-grid">
-                    <div class="range-diagnostics-item">
-                        <div class="range-diagnostics-value" id="range-high">--</div>
-                        <div class="range-diagnostics-label">Range High</div>
-                    </div>
-                    <div class="range-diagnostics-item">
-                        <div class="range-diagnostics-value" id="range-low">--</div>
-                        <div class="range-diagnostics-label">Range Low</div>
-                    </div>
-                    <div class="range-diagnostics-item">
-                        <div class="range-diagnostics-value" id="range-height">--</div>
-                        <div class="range-diagnostics-label">Range Höhe</div>
-                    </div>
-                    <div class="range-diagnostics-item">
-                        <div class="range-diagnostics-value" id="range-height-ticks">--</div>
-                        <div class="range-diagnostics-label">Ticks</div>
-                    </div>
-                    <div class="range-diagnostics-item">
-                        <div class="range-diagnostics-value" id="range-current-price">--</div>
-                        <div class="range-diagnostics-label">Aktueller Preis</div>
-                    </div>
-                    <div class="range-diagnostics-item">
-                        <div class="range-diagnostics-value" id="range-price-position">--</div>
-                        <div class="range-diagnostics-label">Position</div>
-                    </div>
-                </div>
-                
-                <!-- Status Badges Row -->
-                <div class="d-flex flex-wrap gap-2 mt-3 mb-2">
-                    <span id="range-validation-badge" class="range-status-indicator no-data">
-                        <i class="bi bi-circle-fill"></i>
-                        <span>--</span>
-                    </span>
-                    <span id="breakout-status-badge" class="range-status-indicator no-data">
-                        <i class="bi bi-lightning-fill"></i>
-                        <span>--</span>
-                    </span>
-                </div>
-                
-                <!-- Configuration Section (collapsible) -->
-                <div class="range-config-section" id="range-config-section">
-                    <div class="label">Konfiguration</div>
-                    <div class="range-config-grid">
-                        <div class="range-config-item">
-                            <span class="range-config-key">min_range_ticks</span>
-                            <span class="range-config-value" id="config-min-ticks">--</span>
-                        </div>
-                        <div class="range-config-item">
-                            <span class="range-config-key">max_range_ticks</span>
-                            <span class="range-config-value" id="config-max-ticks">--</span>
-                        </div>
-                        <div class="range-config-item">
-                            <span class="range-config-key">min_body_fraction</span>
-                            <span class="range-config-value" id="config-body-fraction">--</span>
-                        </div>
-                        <div class="range-config-item">
-                            <span class="range-config-key">tick_size</span>
-                            <span class="range-config-value" id="config-tick-size">--</span>
-                        </div>
-                    </div>
-                </div>
-               
-            </div>
-        </div>
-            
         
         <!-- Signal List Container (refreshable via HTMX) -->
         <div id="signal-list-container">
@@ -1559,6 +1741,10 @@
         </div>
         {% endif %}
         </div>
+            </main>
+            <!-- End Main Content Area -->
+        </div>
+        <!-- End Dashboard Layout -->
     </div>
 </div>
 {% endblock %}
@@ -2142,10 +2328,6 @@
                 <div class="worker-status-label">Epic</div>
             </div>
             <div class="worker-status-item">
-                <div class="worker-status-value" id="worker-price">--</div>
-                <div class="worker-status-label">Preis (Bid/Ask)</div>
-            </div>
-            <div class="worker-status-item">
                 <div class="worker-status-value" id="worker-setup-count">--</div>
                 <div class="worker-status-label">Setups gefunden</div>
             </div>
@@ -2157,26 +2339,6 @@
         <div class="worker-countdown" id="worker-countdown">
             <span class="countdown-label"><i class="bi bi-clock"></i> Nächster Lauf in</span>
             <span class="countdown-value" id="worker-countdown-value">--</span>
-        </div>
-        <div class="worker-diagnostic" id="worker-diagnostic">
-            <div class="label">Diagnose</div>
-            <div class="message" id="worker-diagnostic-message">--</div>
-        </div>
-        <div class="diagnostic-criteria" id="diagnostic-criteria">
-            <div class="diagnostic-criteria-header" onclick="toggleCriteriaAccordion()">
-                <div class="label">Kriterien-Prüfung</div>
-                <span class="diagnostic-criteria-toggle" id="criteria-toggle"><i class="bi bi-chevron-down"></i></span>
-            </div>
-            <div class="diagnostic-criteria-content" id="criteria-content">
-                <ul class="criteria-list" id="criteria-list">
-                    <li class="criteria-item">
-                        <span class="criteria-icon"><i class="bi bi-dash"></i></span>
-                        <span class="criteria-content">
-                            <span class="criteria-name">Keine Daten</span>
-                        </span>
-                    </li>
-                </ul>
-            </div>
         </div>
     `;
     
@@ -2246,46 +2408,14 @@
     });
     
     // ============================================================================
-    // Breakout Range Diagnostics
+    // Assets Sidebar
     // ============================================================================
     
-    let rangeRefreshInterval = null;
-    const RANGE_REFRESH_INTERVAL = 30000; // 30 seconds
-    let currentRangeType = 'asia';
-    let currentRangeAssetId = null;
+    let sidebarRefreshInterval = null;
+    const SIDEBAR_REFRESH_INTERVAL = 30000; // 30 seconds
     
-    // Initialize selected asset from the dropdown
-    function initializeRangeAssetSelector() {
-        const selector = document.getElementById('range-asset-selector');
-        if (selector && selector.options.length > 0) {
-            currentRangeAssetId = selector.value;
-        }
-    }
-    
-    function selectRangeAsset(assetId) {
-        currentRangeAssetId = assetId;
-        // Refresh diagnostics with new asset
-        refreshRangeDiagnostics();
-    }
-    
-    function selectRangeType(rangeType) {
-        currentRangeType = rangeType;
-        
-        // Update button states
-        document.querySelectorAll('.range-type-btn').forEach(btn => {
-            if (btn.dataset.rangeType === rangeType) {
-                btn.classList.add('active');
-            } else {
-                btn.classList.remove('active');
-            }
-        });
-        
-        // Refresh diagnostics with new type
-        refreshRangeDiagnostics();
-    }
-    
-    function setRangeRefreshButtonLoading(loading) {
-        const btn = document.getElementById('refresh-range-btn');
+    function setSidebarRefreshButtonLoading(loading) {
+        const btn = document.getElementById('refresh-sidebar-btn');
         if (!btn) return;
         
         if (loading) {
@@ -2297,214 +2427,117 @@
         }
     }
     
-    function updateRangeValidationBadge(validation) {
-        const badge = document.getElementById('range-validation-badge');
-        if (!badge) return;
-        
-        badge.classList.remove('valid', 'invalid', 'pending', 'no-data');
-        
-        let icon = 'circle-fill';
-        let text = '--';
-        let statusClass = 'no-data';
-        
-        if (validation === 'VALID') {
-            icon = 'check-circle-fill';
-            text = 'Range OK';
-            statusClass = 'valid';
-        } else if (validation === 'TOO_SMALL') {
-            icon = 'exclamation-triangle-fill';
-            text = 'Zu klein';
-            statusClass = 'invalid';
-        } else if (validation === 'TOO_LARGE') {
-            icon = 'exclamation-triangle-fill';
-            text = 'Zu groß';
-            statusClass = 'invalid';
-        } else if (validation === 'NOT_AVAILABLE') {
-            icon = 'x-circle-fill';
-            text = 'Keine Daten';
-            statusClass = 'no-data';
-        }
-        
-        badge.classList.add(statusClass);
-        badge.innerHTML = '<i class="bi bi-' + icon + '"></i> <span>' + text + '</span>';
+    function getPhaseDisplayName(phase) {
+        const phaseNames = {
+            'ASIA_RANGE': 'Asia Range',
+            'LONDON_CORE': 'London Core',
+            'PRE_US_RANGE': 'Pre-US Range',
+            'US_CORE_TRADING': 'US Core Trading',
+            'US_CORE': 'US Core',
+            'EIA_PRE': 'EIA Pre',
+            'EIA_POST': 'EIA Post',
+            'FRIDAY_LATE': 'Friday Late',
+            'OTHER': 'Other',
+        };
+        return phaseNames[phase] || phase || 'Unknown';
     }
     
-    function updateBreakoutStatusBadge(status, direction) {
-        const badge = document.getElementById('breakout-status-badge');
-        if (!badge) return;
-        
-        badge.classList.remove('valid', 'invalid', 'pending', 'no-data');
-        
-        let icon = 'lightning-fill';
-        let text = '--';
-        let statusClass = 'no-data';
-        
-        if (status === 'VALID_BREAKOUT') {
-            icon = 'lightning-charge-fill';
-            text = direction ? direction + ' Breakout!' : 'Breakout!';
-            statusClass = 'valid';
-        } else if (status === 'POTENTIAL_BREAKOUT') {
-            icon = 'lightning';
-            text = direction ? 'Pot. ' + direction : 'Potentiell';
-            statusClass = 'pending';
-        } else if (status === 'NO_BREAKOUT') {
-            icon = 'dash-circle';
-            text = 'Kein Breakout';
-            statusClass = 'no-data';
+    function getPhaseClass(phaseType) {
+        if (phaseType === 'tradeable') {
+            return 'tradeable';
+        } else if (phaseType === 'range_building') {
+            return 'range-building';
+        } else if (phaseType === 'not_tradeable') {
+            return 'not-tradeable';
         }
-        
-        badge.classList.add(statusClass);
-        badge.innerHTML = '<i class="bi bi-' + icon + '"></i> <span>' + text + '</span>';
+        return 'other';
     }
     
-    function updatePricePositionDisplay(position) {
-        const el = document.getElementById('range-price-position');
-        if (!el) return;
-        
-        el.classList.remove('above', 'inside', 'below');
-        
-        if (position === 'ABOVE') {
-            el.innerHTML = '<span class="price-position-badge above"><i class="bi bi-arrow-up"></i> Oberhalb</span>';
-        } else if (position === 'BELOW') {
-            el.innerHTML = '<span class="price-position-badge below"><i class="bi bi-arrow-down"></i> Unterhalb</span>';
-        } else if (position === 'INSIDE') {
-            el.innerHTML = '<span class="price-position-badge inside"><i class="bi bi-arrows-collapse"></i> Innerhalb</span>';
+    function formatAssetPrice(price) {
+        if (price === null || price === undefined || price === '--') return '--';
+        const num = parseFloat(price);
+        if (isNaN(num)) return '--';
+        // Adaptive decimal places based on price magnitude
+        if (num >= 1000) {
+            return num.toFixed(2);
+        } else if (num >= 10) {
+            return num.toFixed(3);
         } else {
-            el.textContent = '--';
+            return num.toFixed(4);
         }
     }
     
-    function formatPrice(value) {
-        if (value === null || value === undefined) return '--';
-        return parseFloat(value).toFixed(2);
-    }
-    
-    function updateRangeDiagnosticsUI(data) {
-        // Update range data
-        const rangeData = data.range_data || {};
-        document.getElementById('range-high').textContent = formatPrice(rangeData.high);
-        document.getElementById('range-low').textContent = formatPrice(rangeData.low);
-        document.getElementById('range-height').textContent = rangeData.height ? rangeData.height.toFixed(2) : '--';
-        document.getElementById('range-height-ticks').textContent = rangeData.height_ticks || '--';
+    function renderAssetItem(asset) {
+        const phaseClass = getPhaseClass(asset.phase_type);
+        const phaseName = getPhaseDisplayName(asset.current_phase);
         
-        // Update current market data
-        const currentMarket = data.current_market || {};
-        document.getElementById('range-current-price').textContent = formatPrice(currentMarket.price);
-        updatePricePositionDisplay(currentMarket.position);
-        
-        // Update validation badge
-        const validation = data.validation || {};
-        updateRangeValidationBadge(validation.range_validation);
-        
-        // Update breakout status badge
-        const breakoutStatus = data.breakout_status || {};
-        updateBreakoutStatusBadge(breakoutStatus.status, breakoutStatus.potential_direction);
-        
-        // Update config values
-        const config = data.config || {};
-        document.getElementById('config-min-ticks').textContent = config.min_range_ticks || '--';
-        document.getElementById('config-max-ticks').textContent = config.max_range_ticks || '--';
-        document.getElementById('config-body-fraction').textContent = config.min_breakout_body_fraction ? (config.min_breakout_body_fraction * 100).toFixed(0) + '%' : '--';
-        document.getElementById('config-tick-size').textContent = config.tick_size || '--';
-        
-        // Update diagnostic message
-        const diagnostics = data.diagnostics || {};
-        document.getElementById('range-diagnostic-message').textContent = diagnostics.message || 'Keine Diagnose verfügbar';
-    }
-    
-    function showRangeDiagnosticsError(errorMessage) {
-        const contentEl = document.getElementById('range-diagnostics-content');
-        if (contentEl) {
-            contentEl.innerHTML = '<div class="range-diagnostics-error"><i class="bi bi-exclamation-triangle"></i> ' + errorMessage + '</div>';
-        }
-    }
-    
-    // Range diagnostics grid template
-    const RANGE_DIAGNOSTICS_GRID_TEMPLATE = `
-        <div class="range-diagnostics-grid">
-            <div class="range-diagnostics-item">
-                <div class="range-diagnostics-value" id="range-high">--</div>
-                <div class="range-diagnostics-label">Range High</div>
-            </div>
-            <div class="range-diagnostics-item">
-                <div class="range-diagnostics-value" id="range-low">--</div>
-                <div class="range-diagnostics-label">Range Low</div>
-            </div>
-            <div class="range-diagnostics-item">
-                <div class="range-diagnostics-value" id="range-height">--</div>
-                <div class="range-diagnostics-label">Range Höhe</div>
-            </div>
-            <div class="range-diagnostics-item">
-                <div class="range-diagnostics-value" id="range-height-ticks">--</div>
-                <div class="range-diagnostics-label">Ticks</div>
-            </div>
-            <div class="range-diagnostics-item">
-                <div class="range-diagnostics-value" id="range-current-price">--</div>
-                <div class="range-diagnostics-label">Aktueller Preis</div>
-            </div>
-            <div class="range-diagnostics-item">
-                <div class="range-diagnostics-value" id="range-price-position">--</div>
-                <div class="range-diagnostics-label">Position</div>
-            </div>
-        </div>
-        
-        <div class="d-flex flex-wrap gap-2 mt-3 mb-2">
-            <span id="range-validation-badge" class="range-status-indicator no-data">
-                <i class="bi bi-circle-fill"></i>
-                <span>--</span>
-            </span>
-            <span id="breakout-status-badge" class="range-status-indicator no-data">
-                <i class="bi bi-lightning-fill"></i>
-                <span>--</span>
-            </span>
-        </div>
-        
-        <div class="range-config-section" id="range-config-section">
-            <div class="label">Konfiguration</div>
-            <div class="range-config-grid">
-                <div class="range-config-item">
-                    <span class="range-config-key">min_range_ticks</span>
-                    <span class="range-config-value" id="config-min-ticks">--</span>
+        let rangeHtml = '';
+        if (asset.previous_range && (asset.previous_range.high || asset.previous_range.low)) {
+            rangeHtml = `
+                <div class="asset-range-info">
+                    <div class="range-item">
+                        <span class="range-label">High</span>
+                        <span class="range-value high">${formatAssetPrice(asset.previous_range.high)}</span>
+                    </div>
+                    <div class="range-item">
+                        <span class="range-label">Low</span>
+                        <span class="range-value low">${formatAssetPrice(asset.previous_range.low)}</span>
+                    </div>
                 </div>
-                <div class="range-config-item">
-                    <span class="range-config-key">max_range_ticks</span>
-                    <span class="range-config-value" id="config-max-ticks">--</span>
-                </div>
-                <div class="range-config-item">
-                    <span class="range-config-key">min_body_fraction</span>
-                    <span class="range-config-value" id="config-body-fraction">--</span>
-                </div>
-                <div class="range-config-item">
-                    <span class="range-config-key">tick_size</span>
-                    <span class="range-config-value" id="config-tick-size">--</span>
-                </div>
-            </div>
-        </div>
-        
-        <div class="range-diagnostic-message" id="range-diagnostic-message-section">
-            <div class="label">Diagnose</div>
-            <div class="message" id="range-diagnostic-message">--</div>
-        </div>
-    `;
-    
-    function resetRangeDiagnosticsGrid() {
-        const contentEl = document.getElementById('range-diagnostics-content');
-        if (contentEl) {
-            contentEl.innerHTML = RANGE_DIAGNOSTICS_GRID_TEMPLATE;
-        }
-    }
-    
-    function refreshRangeDiagnostics() {
-        setRangeRefreshButtonLoading(true);
-        resetRangeDiagnosticsGrid();
-        
-        // Build the API URL with asset_id if available
-        let url = '/fiona/api/debug/breakout-range/?range_type=' + currentRangeType;
-        if (currentRangeAssetId) {
-            url += '&asset_id=' + currentRangeAssetId;
+            `;
         }
         
-        fetch(url, {
+        let phaseBadgeClass = phaseClass;
+        let phaseIcon = 'bi-circle-fill';
+        if (phaseClass === 'tradeable') {
+            phaseIcon = 'bi-lightning-charge-fill';
+        } else if (phaseClass === 'range-building') {
+            phaseIcon = 'bi-hourglass-split';
+        } else if (phaseClass === 'not-tradeable') {
+            phaseIcon = 'bi-x-circle-fill';
+        } else {
+            phaseIcon = 'bi-dash-circle';
+        }
+        
+        return `
+            <div class="asset-item phase-${phaseClass}">
+                <div class="asset-item-header">
+                    <span class="asset-name">${escapeHtml(asset.name)}</span>
+                    <span class="asset-price">${formatAssetPrice(asset.current_price)}</span>
+                </div>
+                <div class="asset-phase-info">
+                    <span class="asset-phase-badge ${phaseBadgeClass}">
+                        <i class="bi ${phaseIcon}"></i>
+                        ${escapeHtml(phaseName)}
+                    </span>
+                </div>
+                ${rangeHtml}
+            </div>
+        `;
+    }
+    
+    function renderSidebarContent(assets) {
+        const container = document.getElementById('sidebar-assets-list');
+        if (!container) return;
+        
+        if (!assets || assets.length === 0) {
+            container.innerHTML = `
+                <div class="sidebar-empty">
+                    <i class="bi bi-box-seam"></i>
+                    <span>Keine aktiven Assets</span>
+                </div>
+            `;
+            return;
+        }
+        
+        const html = assets.map(asset => renderAssetItem(asset)).join('');
+        container.innerHTML = html;
+    }
+    
+    function refreshAssetsSidebar() {
+        setSidebarRefreshButtonLoading(true);
+        
+        fetch('/fiona/api/sidebar/assets/', {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
@@ -2512,140 +2545,54 @@
         })
         .then(response => response.json())
         .then(data => {
-            setRangeRefreshButtonLoading(false);
+            setSidebarRefreshButtonLoading(false);
             
             if (data.success) {
-                updateRangeDiagnosticsUI(data.data);
+                renderSidebarContent(data.assets);
             } else {
-                showRangeDiagnosticsError(data.error || data.message || 'Fehler beim Laden der Range-Daten');
+                const container = document.getElementById('sidebar-assets-list');
+                if (container) {
+                    container.innerHTML = `
+                        <div class="sidebar-empty">
+                            <i class="bi bi-exclamation-triangle"></i>
+                            <span>${escapeHtml(data.error || 'Fehler beim Laden')}</span>
+                        </div>
+                    `;
+                }
             }
         })
         .catch(error => {
-            console.error('Range diagnostics error:', error);
-            setRangeRefreshButtonLoading(false);
-            showRangeDiagnosticsError('Verbindungsfehler');
+            console.error('Sidebar refresh error:', error);
+            setSidebarRefreshButtonLoading(false);
+            const container = document.getElementById('sidebar-assets-list');
+            if (container) {
+                container.innerHTML = `
+                    <div class="sidebar-empty">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        <span>Verbindungsfehler</span>
+                    </div>
+                `;
+            }
         });
     }
     
-    // Update startAutoRefresh to include range diagnostics
+    // Override startAutoRefresh to include sidebar
     const originalStartAutoRefresh = startAutoRefresh;
     startAutoRefresh = function() {
         originalStartAutoRefresh();
-        // Initialize asset selector
-        initializeRangeAssetSelector();
-        // Also refresh range diagnostics
-        refreshRangeDiagnostics();
-        rangeRefreshInterval = setInterval(refreshRangeDiagnostics, RANGE_REFRESH_INTERVAL);
+        // Also refresh sidebar
+        refreshAssetsSidebar();
+        sidebarRefreshInterval = setInterval(refreshAssetsSidebar, SIDEBAR_REFRESH_INTERVAL);
     };
     
-    // Update stopAutoRefresh to include range diagnostics
+    // Override stopAutoRefresh to include sidebar
     const originalStopAutoRefresh = stopAutoRefresh;
     stopAutoRefresh = function() {
         originalStopAutoRefresh();
-        if (rangeRefreshInterval) {
-            clearInterval(rangeRefreshInterval);
-            rangeRefreshInterval = null;
+        if (sidebarRefreshInterval) {
+            clearInterval(sidebarRefreshInterval);
+            sidebarRefreshInterval = null;
         }
-        if (priceRangeRefreshInterval) {
-            clearInterval(priceRangeRefreshInterval);
-            priceRangeRefreshInterval = null;
-        }
-    };
-    
-    // ============================================================================
-    // Price vs Range - Live Status
-    // ============================================================================
-    
-    let priceRangeRefreshInterval = null;
-    const PRICE_RANGE_REFRESH_INTERVAL = 30000; // 30 seconds
-    let currentPriceRangeAssetId = null;
-    let currentPriceRangePhase = 'ASIA_RANGE';
-    
-    // Initialize selected asset from the dropdown
-    function initializePriceRangeAssetSelector() {
-        const selector = document.getElementById('price-range-asset-selector');
-        if (selector && selector.options.length > 0) {
-            currentPriceRangeAssetId = selector.value;
-        }
-    }
-    
-    function selectPriceRangeAsset(assetId) {
-        currentPriceRangeAssetId = assetId;
-        // Sync with range diagnostics selector
-        const rangeDiagSelector = document.getElementById('range-asset-selector');
-        if (rangeDiagSelector) {
-            rangeDiagSelector.value = assetId;
-        }
-        // Refresh status
-        refreshPriceRangeStatus();
-    }
-    
-    function selectPriceRangePhase(phase) {
-        currentPriceRangePhase = phase;
-        
-        // Update button states
-        document.querySelectorAll('.phase-tab-btn').forEach(btn => {
-            if (btn.dataset.phase === phase) {
-                btn.classList.add('active');
-            } else {
-                btn.classList.remove('active');
-            }
-        });
-        
-        // Refresh status with new phase
-        refreshPriceRangeStatus();
-    }
-    
-    function setPriceRangeRefreshButtonLoading(loading) {
-        const btn = document.getElementById('refresh-price-range-btn');
-        if (!btn) return;
-        
-        if (loading) {
-            btn.classList.add('spinning');
-            btn.disabled = true;
-        } else {
-            btn.classList.remove('spinning');
-            btn.disabled = false;
-        }
-    }
-    
-    function refreshPriceRangeStatus() {
-        setPriceRangeRefreshButtonLoading(true);
-        
-        const contentEl = document.getElementById('price-range-status-content');
-        if (!contentEl) {
-            setPriceRangeRefreshButtonLoading(false);
-            return;
-        }
-        
-        // Build URL with current asset and phase
-        let url = '/fiona/htmx/price-range-status/?phase=' + currentPriceRangePhase;
-        if (currentPriceRangeAssetId) {
-            url += '&asset_id=' + currentPriceRangeAssetId;
-        }
-        
-        // Use HTMX to load the partial
-        htmx.ajax('GET', url, {
-            target: '#price-range-status-content',
-            swap: 'innerHTML'
-        }).then(function() {
-            setPriceRangeRefreshButtonLoading(false);
-        }).catch(function(error) {
-            console.error('Price range status error:', error);
-            setPriceRangeRefreshButtonLoading(false);
-            contentEl.innerHTML = '<div class="price-range-fallback"><i class="bi bi-exclamation-triangle"></i><span>Verbindungsfehler</span></div>';
-        });
-    }
-    
-    // Update startAutoRefresh to include price range status
-    const originalStartAutoRefresh2 = startAutoRefresh;
-    startAutoRefresh = function() {
-        originalStartAutoRefresh2();
-        // Initialize price range asset selector
-        initializePriceRangeAssetSelector();
-        // Also refresh price range status
-        refreshPriceRangeStatus();
-        priceRangeRefreshInterval = setInterval(refreshPriceRangeStatus, PRICE_RANGE_REFRESH_INTERVAL);
     };
     
     // ============================================================================
