@@ -5,6 +5,7 @@ Provides functions to get active broker configurations and create broker service
 Also provides a BrokerRegistry for caching and managing broker service instances.
 """
 import logging
+import threading
 from typing import Dict, Optional
 
 from django.core.exceptions import ImproperlyConfigured
@@ -25,6 +26,8 @@ class BrokerRegistry:
     multiple connections. Provides a central point for getting the
     appropriate broker service for an asset.
     
+    Thread-safe implementation using a lock for synchronized access.
+    
     Usage:
         >>> registry = BrokerRegistry()
         >>> broker = registry.get_broker_for_asset(asset)
@@ -32,17 +35,22 @@ class BrokerRegistry:
     """
     
     _instance: Optional['BrokerRegistry'] = None
+    _instance_lock: threading.Lock = threading.Lock()
     
     def __init__(self):
         """Initialize the broker registry."""
         self._brokers: Dict[str, BrokerService] = {}
         self._connected: Dict[str, bool] = {}
+        self._lock: threading.Lock = threading.Lock()
     
     @classmethod
     def get_instance(cls) -> 'BrokerRegistry':
-        """Get the singleton instance of the registry."""
+        """Get the singleton instance of the registry (thread-safe)."""
         if cls._instance is None:
-            cls._instance = cls()
+            with cls._instance_lock:
+                # Double-check locking pattern
+                if cls._instance is None:
+                    cls._instance = cls()
         return cls._instance
     
     def get_broker_for_asset(self, asset) -> BrokerService:
@@ -66,28 +74,29 @@ class BrokerRegistry:
         
         broker_type = asset.broker
         
-        # Return cached broker if available and connected
-        if broker_type in self._brokers and self._connected.get(broker_type, False):
-            return self._brokers[broker_type]
-        
-        # Create new broker service
-        if broker_type == TradingAsset.BrokerKind.IG:
-            broker = create_ig_broker_service()
-        elif broker_type == TradingAsset.BrokerKind.MEXC:
-            broker = create_mexc_broker_service()
-        else:
-            raise ValueError(f"Unsupported broker type: {broker_type}")
-        
-        # Connect the broker
-        broker.connect()
-        
-        # Cache the broker
-        self._brokers[broker_type] = broker
-        self._connected[broker_type] = True
-        
-        logger.info(f"Created and connected {broker_type} broker service")
-        
-        return broker
+        with self._lock:
+            # Return cached broker if available and connected
+            if broker_type in self._brokers and self._connected.get(broker_type, False):
+                return self._brokers[broker_type]
+            
+            # Create new broker service
+            if broker_type == TradingAsset.BrokerKind.IG:
+                broker = create_ig_broker_service()
+            elif broker_type == TradingAsset.BrokerKind.MEXC:
+                broker = create_mexc_broker_service()
+            else:
+                raise ValueError(f"Unsupported broker type: {broker_type}")
+            
+            # Connect the broker
+            broker.connect()
+            
+            # Cache the broker
+            self._brokers[broker_type] = broker
+            self._connected[broker_type] = True
+            
+            logger.info(f"Created and connected {broker_type} broker service")
+            
+            return broker
     
     def get_ig_broker(self) -> IgBrokerService:
         """
@@ -100,18 +109,19 @@ class BrokerRegistry:
         
         broker_type = TradingAsset.BrokerKind.IG
         
-        if broker_type in self._brokers and self._connected.get(broker_type, False):
-            return self._brokers[broker_type]
-        
-        broker = create_ig_broker_service()
-        broker.connect()
-        
-        self._brokers[broker_type] = broker
-        self._connected[broker_type] = True
-        
-        logger.info("Created and connected IG broker service")
-        
-        return broker
+        with self._lock:
+            if broker_type in self._brokers and self._connected.get(broker_type, False):
+                return self._brokers[broker_type]
+            
+            broker = create_ig_broker_service()
+            broker.connect()
+            
+            self._brokers[broker_type] = broker
+            self._connected[broker_type] = True
+            
+            logger.info("Created and connected IG broker service")
+            
+            return broker
     
     def get_mexc_broker(self) -> MexcBrokerService:
         """
@@ -124,42 +134,46 @@ class BrokerRegistry:
         
         broker_type = TradingAsset.BrokerKind.MEXC
         
-        if broker_type in self._brokers and self._connected.get(broker_type, False):
-            return self._brokers[broker_type]
-        
-        broker = create_mexc_broker_service()
-        broker.connect()
-        
-        self._brokers[broker_type] = broker
-        self._connected[broker_type] = True
-        
-        logger.info("Created and connected MEXC broker service")
-        
-        return broker
+        with self._lock:
+            if broker_type in self._brokers and self._connected.get(broker_type, False):
+                return self._brokers[broker_type]
+            
+            broker = create_mexc_broker_service()
+            broker.connect()
+            
+            self._brokers[broker_type] = broker
+            self._connected[broker_type] = True
+            
+            logger.info("Created and connected MEXC broker service")
+            
+            return broker
     
     def disconnect_all(self) -> None:
         """Disconnect all broker services."""
-        for broker_type, broker in self._brokers.items():
-            try:
-                if self._connected.get(broker_type, False):
-                    broker.disconnect()
-                    self._connected[broker_type] = False
-                    logger.info(f"Disconnected {broker_type} broker service")
-            except Exception as e:
-                logger.warning(f"Error disconnecting {broker_type} broker: {e}")
+        with self._lock:
+            for broker_type, broker in self._brokers.items():
+                try:
+                    if self._connected.get(broker_type, False):
+                        broker.disconnect()
+                        self._connected[broker_type] = False
+                        logger.info(f"Disconnected {broker_type} broker service")
+                except Exception as e:
+                    logger.warning(f"Error disconnecting {broker_type} broker: {e}")
     
     def clear(self) -> None:
         """Disconnect and clear all cached brokers."""
         self.disconnect_all()
-        self._brokers.clear()
-        self._connected.clear()
+        with self._lock:
+            self._brokers.clear()
+            self._connected.clear()
     
     @classmethod
     def reset_instance(cls) -> None:
         """Reset the singleton instance (useful for testing)."""
-        if cls._instance is not None:
-            cls._instance.clear()
-            cls._instance = None
+        with cls._instance_lock:
+            if cls._instance is not None:
+                cls._instance.clear()
+                cls._instance = None
 
 
 def get_active_ig_broker_config():

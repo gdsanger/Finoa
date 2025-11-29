@@ -290,10 +290,9 @@ class Command(BaseCommand):
             broker_service=None,  # Will use per-asset broker selection
             weaviate_service=self.weaviate_service,
             config=execution_config,
+            broker_registry=self.broker_registry,
+            shadow_only=shadow_only,
         )
-        # Store reference to registry and shadow_only flag for per-asset broker selection
-        self.execution_service._broker_registry = self.broker_registry
-        self.execution_service._shadow_only = shadow_only
         self.stdout.write(self.style.SUCCESS("    ✓ Execution Service created"))
         
         self.stdout.write(self.style.SUCCESS("\n✓ All services initialized successfully!"))
