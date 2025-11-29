@@ -103,6 +103,7 @@ class StrategyEngine:
         
         # Get range data for comprehensive logging
         asia_range = self.market_state.get_asia_range(epic)
+        london_core_range = self.market_state.get_london_core_range(epic)
         pre_us_range = self.market_state.get_pre_us_range(epic)
         
         logger.debug(
@@ -115,6 +116,8 @@ class StrategyEngine:
                     "current_price": current_price,
                     "asia_range_high": asia_range[0] if asia_range else None,
                     "asia_range_low": asia_range[1] if asia_range else None,
+                    "london_core_range_high": london_core_range[0] if london_core_range else None,
+                    "london_core_range_low": london_core_range[1] if london_core_range else None,
                     "pre_us_range_high": pre_us_range[0] if pre_us_range else None,
                     "pre_us_range_low": pre_us_range[1] if pre_us_range else None,
                 }
@@ -124,6 +127,7 @@ class StrategyEngine:
         # Define tradeable phases for logging
         tradeable_phases = [
             SessionPhase.LONDON_CORE,
+            SessionPhase.PRE_US_RANGE,
             SessionPhase.US_CORE_TRADING,
             SessionPhase.US_CORE,
             SessionPhase.EIA_POST,
@@ -134,7 +138,7 @@ class StrategyEngine:
         if not is_tradeable_phase:
             # Still log the price position relative to ranges for analysis
             price_analysis = self._analyze_price_position(
-                current_price, asia_range, pre_us_range
+                current_price, asia_range, london_core_range, pre_us_range
             )
             logger.debug(
                 "Phase is not tradeable - no breakout evaluation performed",
@@ -148,6 +152,8 @@ class StrategyEngine:
                         "current_price": current_price,
                         "asia_range_high": asia_range[0] if asia_range else None,
                         "asia_range_low": asia_range[1] if asia_range else None,
+                        "london_core_range_high": london_core_range[0] if london_core_range else None,
+                        "london_core_range_low": london_core_range[1] if london_core_range else None,
                         "pre_us_range_high": pre_us_range[0] if pre_us_range else None,
                         "pre_us_range_low": pre_us_range[1] if pre_us_range else None,
                         "price_analysis": price_analysis,
@@ -160,6 +166,11 @@ class StrategyEngine:
         # Evaluate breakout strategies based on phase
         if phase == SessionPhase.LONDON_CORE:
             breakout_candidates = self._evaluate_asia_breakout(epic, ts, phase)
+            candidates.extend(breakout_candidates)
+        
+        # Pre-US Range - allows breakouts based on London Core Range
+        if phase == SessionPhase.PRE_US_RANGE:
+            breakout_candidates = self._evaluate_london_core_breakout(epic, ts, phase)
             candidates.extend(breakout_candidates)
         
         # US Core Trading - allows breakouts based on Pre-US Range
@@ -205,7 +216,7 @@ class StrategyEngine:
                 reason = f"Phase {phase.value} is not a tradeable phase"
             
             price_analysis = self._analyze_price_position(
-                current_price, asia_range, pre_us_range
+                current_price, asia_range, london_core_range, pre_us_range
             )
             
             logger.debug(
@@ -219,6 +230,8 @@ class StrategyEngine:
                         "current_price": current_price,
                         "asia_range_high": asia_range[0] if asia_range else None,
                         "asia_range_low": asia_range[1] if asia_range else None,
+                        "london_core_range_high": london_core_range[0] if london_core_range else None,
+                        "london_core_range_low": london_core_range[1] if london_core_range else None,
                         "pre_us_range_high": pre_us_range[0] if pre_us_range else None,
                         "pre_us_range_low": pre_us_range[1] if pre_us_range else None,
                         "price_analysis": price_analysis,
@@ -233,6 +246,7 @@ class StrategyEngine:
         self,
         current_price: Optional[float],
         asia_range: Optional[tuple[float, float]],
+        london_core_range: Optional[tuple[float, float]],
         pre_us_range: Optional[tuple[float, float]],
     ) -> dict:
         """
@@ -244,6 +258,7 @@ class StrategyEngine:
         analysis = {
             "has_price": current_price is not None,
             "has_asia_range": asia_range is not None,
+            "has_london_core_range": london_core_range is not None,
             "has_pre_us_range": pre_us_range is not None,
         }
         
@@ -258,6 +273,18 @@ class StrategyEngine:
             else:
                 analysis["asia_position"] = "within_range"
                 analysis["asia_breakout_potential"] = None
+        
+        if current_price is not None and london_core_range is not None:
+            london_high, london_low = london_core_range
+            if current_price > london_high:
+                analysis["london_core_position"] = "above_high"
+                analysis["london_core_breakout_potential"] = "LONG"
+            elif current_price < london_low:
+                analysis["london_core_position"] = "below_low"
+                analysis["london_core_breakout_potential"] = "SHORT"
+            else:
+                analysis["london_core_position"] = "within_range"
+                analysis["london_core_breakout_potential"] = None
         
         if current_price is not None and pre_us_range is not None:
             pre_us_high, pre_us_low = pre_us_range
@@ -300,21 +327,12 @@ class StrategyEngine:
         # Check if phase is tradeable
         tradeable_phases = [
             SessionPhase.LONDON_CORE,
+            SessionPhase.PRE_US_RANGE,
             SessionPhase.US_CORE_TRADING,
             SessionPhase.US_CORE,  # Deprecated, kept for backwards compatibility
             SessionPhase.EIA_POST,
         ]
         phase_tradeable = phase in tradeable_phases
-        
-        # PRE_US_RANGE is explicitly not tradeable (range formation only)
-        if phase == SessionPhase.PRE_US_RANGE:
-            result.criteria.append(DiagnosticCriterion(
-                name="Phase is tradeable",
-                passed=False,
-                detail=f"{phase.value} is a range formation phase only - no breakouts allowed",
-            ))
-            result.summary = f"Phase {phase.value}: Collecting range, no setups"
-            return result
         
         result.criteria.append(DiagnosticCriterion(
             name="Phase is tradeable",
@@ -329,6 +347,8 @@ class StrategyEngine:
         # Evaluate based on phase
         if phase == SessionPhase.LONDON_CORE:
             self._evaluate_asia_breakout_with_diagnostics(epic, ts, phase, result)
+        elif phase == SessionPhase.PRE_US_RANGE:
+            self._evaluate_london_core_breakout_with_diagnostics(epic, ts, phase, result)
         elif phase in (SessionPhase.US_CORE_TRADING, SessionPhase.US_CORE):
             self._evaluate_us_breakout_with_diagnostics(epic, ts, phase, result)
         elif phase == SessionPhase.EIA_POST:
@@ -451,6 +471,126 @@ class StrategyEngine:
                 self.config.breakout.asia_range.min_breakout_body_fraction
             )
             min_body = self.config.breakout.asia_range.min_breakout_body_fraction * 100
+            result.criteria.append(DiagnosticCriterion(
+                name="Breakout candle quality (SHORT)",
+                passed=candle_valid,
+                detail=f"Body size: {latest_candle.body_size:.4f}, min fraction: {min_body:.0f}%",
+            ))
+            if candle_valid:
+                candidate = self._create_breakout_candidate(
+                    epic=epic, ts=ts, phase=phase, direction='SHORT',
+                    range_high=range_high, range_low=range_low,
+                    trigger_price=current_price,
+                )
+                result.setups.append(candidate)
+        else:
+            result.criteria.append(DiagnosticCriterion(
+                name="Price breakout",
+                passed=False,
+                detail=f"Price {current_price:.4f} within range ({range_low:.4f} - {range_high:.4f})",
+            ))
+
+    def _evaluate_london_core_breakout_with_diagnostics(
+        self,
+        epic: str,
+        ts: datetime,
+        phase: SessionPhase,
+        result: EvaluationResult,
+    ) -> None:
+        """Evaluate London Core Range breakout with diagnostic criteria."""
+        # Get London Core range
+        london_range = self.market_state.get_london_core_range(epic)
+        has_range = london_range is not None
+        
+        if not has_range:
+            result.criteria.append(DiagnosticCriterion(
+                name="London Core Range available",
+                passed=False,
+                detail="No London Core Range data available",
+            ))
+            return
+        
+        range_high, range_low = london_range
+        range_height = range_high - range_low
+        
+        result.criteria.append(DiagnosticCriterion(
+            name="London Core Range available",
+            passed=True,
+            detail=f"Range: {range_low:.4f} - {range_high:.4f}",
+        ))
+        
+        # Check range size constraints
+        range_valid = self._is_valid_range(range_height, self.config.breakout.london_core)
+        min_ticks = self.config.breakout.london_core.min_range_ticks
+        max_ticks = self.config.breakout.london_core.max_range_ticks
+        # Prevent division by zero
+        actual_ticks = range_height / self.config.tick_size if self.config.tick_size > 0 else 0
+        
+        result.criteria.append(DiagnosticCriterion(
+            name="Range size valid",
+            passed=range_valid,
+            detail=f"Range: {actual_ticks:.1f} ticks (valid: {min_ticks}-{max_ticks})",
+        ))
+        
+        if not range_valid:
+            return
+        
+        # Get recent candles
+        candles = self.market_state.get_recent_candles(epic, '1m', 10)
+        has_candles = candles is not None and len(candles) > 0
+        
+        result.criteria.append(DiagnosticCriterion(
+            name="Price data available",
+            passed=has_candles,
+            detail=f"{len(candles) if candles else 0} candles" if has_candles else "No candle data",
+        ))
+        
+        if not has_candles:
+            return
+        
+        latest_candle = candles[-1]
+        current_price = latest_candle.close
+        
+        # Check for breakout
+        broke_high = current_price > range_high
+        broke_low = current_price < range_low
+        
+        if broke_high:
+            result.criteria.append(DiagnosticCriterion(
+                name="Price broke London Core High",
+                passed=True,
+                detail=f"Price {current_price:.4f} > Range High {range_high:.4f}",
+            ))
+            # Check candle quality for long
+            candle_valid = self._is_valid_breakout_candle(
+                latest_candle, range_height, 'LONG',
+                self.config.breakout.london_core.min_breakout_body_fraction
+            )
+            min_body = self.config.breakout.london_core.min_breakout_body_fraction * 100
+            result.criteria.append(DiagnosticCriterion(
+                name="Breakout candle quality (LONG)",
+                passed=candle_valid,
+                detail=f"Body size: {latest_candle.body_size:.4f}, min fraction: {min_body:.0f}%",
+            ))
+            if candle_valid:
+                candidate = self._create_breakout_candidate(
+                    epic=epic, ts=ts, phase=phase, direction='LONG',
+                    range_high=range_high, range_low=range_low,
+                    trigger_price=current_price,
+                )
+                result.setups.append(candidate)
+        elif broke_low:
+            result.criteria.append(DiagnosticCriterion(
+                name="Price broke London Core Low",
+                passed=True,
+                detail=f"Price {current_price:.4f} < Range Low {range_low:.4f}",
+            ))
+            # Check candle quality for short
+            candle_valid = self._is_valid_breakout_candle(
+                latest_candle, range_height, 'SHORT',
+                self.config.breakout.london_core.min_breakout_body_fraction
+            )
+            min_body = self.config.breakout.london_core.min_breakout_body_fraction * 100
             result.criteria.append(DiagnosticCriterion(
                 name="Breakout candle quality (SHORT)",
                 passed=candle_valid,
@@ -885,6 +1025,217 @@ class StrategyEngine:
                         "timestamp": ts.isoformat(),
                         "phase": phase.value,
                         "evaluation_type": "asia_breakout",
+                        "result": "no_setup",
+                        "reason": "Price within range bounds",
+                        "current_price": current_price,
+                        "range_high": range_high,
+                        "range_low": range_low,
+                    }
+                }
+            )
+        
+        return candidates
+
+    def _evaluate_london_core_breakout(
+        self,
+        epic: str,
+        ts: datetime,
+        phase: SessionPhase
+    ) -> list[SetupCandidate]:
+        """
+        Evaluate London Core Range breakout during Pre-US Range session.
+        
+        This method evaluates breakouts against the London Core Range during
+        the PRE_US_RANGE phase. The logic mirrors the Asia breakout evaluation
+        but uses the London Core Range instead.
+        
+        Args:
+            epic: Market identifier.
+            ts: Current timestamp.
+            phase: Current session phase.
+            
+        Returns:
+            List of breakout SetupCandidate objects.
+        """
+        candidates: list[SetupCandidate] = []
+        
+        # Get London Core range
+        london_range = self.market_state.get_london_core_range(epic)
+        if not london_range:
+            logger.debug(
+                "London Core breakout evaluation: no range data",
+                extra={
+                    "strategy_data": {
+                        "epic": epic,
+                        "timestamp": ts.isoformat(),
+                        "phase": phase.value,
+                        "evaluation_type": "london_core_breakout",
+                        "result": "no_setup",
+                        "reason": "London Core range data not available",
+                    }
+                }
+            )
+            return candidates
+        
+        range_high, range_low = london_range
+        range_height = range_high - range_low
+        
+        # Check range size constraints
+        if not self._is_valid_range(range_height, self.config.breakout.london_core):
+            ticks = range_height / self.config.tick_size if self.config.tick_size > 0 else 0
+            logger.debug(
+                "London Core breakout evaluation: invalid range size",
+                extra={
+                    "strategy_data": {
+                        "epic": epic,
+                        "timestamp": ts.isoformat(),
+                        "phase": phase.value,
+                        "evaluation_type": "london_core_breakout",
+                        "result": "no_setup",
+                        "reason": "Range size out of valid bounds",
+                        "range_high": range_high,
+                        "range_low": range_low,
+                        "range_height": range_height,
+                        "range_ticks": ticks,
+                        "min_ticks": self.config.breakout.london_core.min_range_ticks,
+                        "max_ticks": self.config.breakout.london_core.max_range_ticks,
+                    }
+                }
+            )
+            return candidates
+        
+        # Get recent candles
+        candles = self.market_state.get_recent_candles(epic, '1m', 10)
+        if not candles:
+            logger.debug(
+                "London Core breakout evaluation: no candle data",
+                extra={
+                    "strategy_data": {
+                        "epic": epic,
+                        "timestamp": ts.isoformat(),
+                        "phase": phase.value,
+                        "evaluation_type": "london_core_breakout",
+                        "result": "no_setup",
+                        "reason": "No candle data available",
+                    }
+                }
+            )
+            return candidates
+        
+        # Check for breakout
+        latest_candle = candles[-1]
+        current_price = latest_candle.close
+        
+        # Long breakout: close above London Core high
+        if latest_candle.close > range_high:
+            if self._is_valid_breakout_candle(latest_candle, range_height, 'LONG', self.config.breakout.london_core.min_breakout_body_fraction):
+                candidate = self._create_breakout_candidate(
+                    epic=epic,
+                    ts=ts,
+                    phase=phase,
+                    direction='LONG',
+                    range_high=range_high,
+                    range_low=range_low,
+                    trigger_price=latest_candle.close,
+                )
+                candidates.append(candidate)
+                logger.debug(
+                    "London Core breakout evaluation: LONG setup detected",
+                    extra={
+                        "strategy_data": {
+                            "epic": epic,
+                            "timestamp": ts.isoformat(),
+                            "phase": phase.value,
+                            "evaluation_type": "london_core_breakout",
+                            "result": "setup_found",
+                            "direction": "LONG",
+                            "current_price": current_price,
+                            "range_high": range_high,
+                            "range_low": range_low,
+                            "candle_body_size": latest_candle.body_size,
+                        }
+                    }
+                )
+            else:
+                logger.debug(
+                    "London Core breakout evaluation: price above high but candle invalid",
+                    extra={
+                        "strategy_data": {
+                            "epic": epic,
+                            "timestamp": ts.isoformat(),
+                            "phase": phase.value,
+                            "evaluation_type": "london_core_breakout",
+                            "result": "no_setup",
+                            "reason": "Breakout candle body too small or wrong direction",
+                            "direction": "LONG",
+                            "current_price": current_price,
+                            "range_high": range_high,
+                            "candle_body_size": latest_candle.body_size,
+                            "min_body_fraction": self.config.breakout.london_core.min_breakout_body_fraction,
+                        }
+                    }
+                )
+        
+        # Short breakout: close below London Core low
+        if latest_candle.close < range_low:
+            if self._is_valid_breakout_candle(latest_candle, range_height, 'SHORT', self.config.breakout.london_core.min_breakout_body_fraction):
+                candidate = self._create_breakout_candidate(
+                    epic=epic,
+                    ts=ts,
+                    phase=phase,
+                    direction='SHORT',
+                    range_high=range_high,
+                    range_low=range_low,
+                    trigger_price=latest_candle.close,
+                )
+                candidates.append(candidate)
+                logger.debug(
+                    "London Core breakout evaluation: SHORT setup detected",
+                    extra={
+                        "strategy_data": {
+                            "epic": epic,
+                            "timestamp": ts.isoformat(),
+                            "phase": phase.value,
+                            "evaluation_type": "london_core_breakout",
+                            "result": "setup_found",
+                            "direction": "SHORT",
+                            "current_price": current_price,
+                            "range_high": range_high,
+                            "range_low": range_low,
+                            "candle_body_size": latest_candle.body_size,
+                        }
+                    }
+                )
+            else:
+                logger.debug(
+                    "London Core breakout evaluation: price below low but candle invalid",
+                    extra={
+                        "strategy_data": {
+                            "epic": epic,
+                            "timestamp": ts.isoformat(),
+                            "phase": phase.value,
+                            "evaluation_type": "london_core_breakout",
+                            "result": "no_setup",
+                            "reason": "Breakout candle body too small or wrong direction",
+                            "direction": "SHORT",
+                            "current_price": current_price,
+                            "range_low": range_low,
+                            "candle_body_size": latest_candle.body_size,
+                            "min_body_fraction": self.config.breakout.london_core.min_breakout_body_fraction,
+                        }
+                    }
+                )
+        
+        # Price within range
+        if range_low <= latest_candle.close <= range_high:
+            logger.debug(
+                "London Core breakout evaluation: price within range",
+                extra={
+                    "strategy_data": {
+                        "epic": epic,
+                        "timestamp": ts.isoformat(),
+                        "phase": phase.value,
+                        "evaluation_type": "london_core_breakout",
                         "result": "no_setup",
                         "reason": "Price within range bounds",
                         "current_price": current_price,

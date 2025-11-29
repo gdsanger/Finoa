@@ -327,6 +327,7 @@ class DummyMarketStateProvider(BaseMarketStateProvider):
         phase: SessionPhase = SessionPhase.OTHER,
         candles: list[Candle] = None,
         asia_range: tuple[float, float] = None,
+        london_core_range: tuple[float, float] = None,
         pre_us_range: tuple[float, float] = None,
         eia_timestamp: datetime = None,
         atr: float = None,
@@ -334,6 +335,7 @@ class DummyMarketStateProvider(BaseMarketStateProvider):
         self._phase = phase
         self._candles = candles or []
         self._asia_range = asia_range
+        self._london_core_range = london_core_range
         self._pre_us_range = pre_us_range
         self._eia_timestamp = eia_timestamp
         self._atr = atr
@@ -351,6 +353,9 @@ class DummyMarketStateProvider(BaseMarketStateProvider):
 
     def get_asia_range(self, epic: str) -> tuple[float, float] | None:
         return self._asia_range
+
+    def get_london_core_range(self, epic: str) -> tuple[float, float] | None:
+        return self._london_core_range
 
     def get_pre_us_range(self, epic: str) -> tuple[float, float] | None:
         return self._pre_us_range
@@ -1066,8 +1071,37 @@ class StrategyEngineDiagnosticsTest(TestCase):
 class UsCoreTradinSessionTest(TestCase):
     """Tests for the new US Core Trading session feature (PRE_US_RANGE and US_CORE_TRADING)."""
     
-    def test_pre_us_range_is_not_tradeable(self):
-        """Test that PRE_US_RANGE phase does not generate setups."""
+    def test_pre_us_range_uses_london_core_range(self):
+        """Test that PRE_US_RANGE phase generates setups using London Core range."""
+        ts = datetime(2025, 1, 15, 13, 30, tzinfo=timezone.utc)
+        
+        # Create a valid breakout candle above London Core range high
+        # Range is 0.20 (75.20 - 75.00), so min body is 0.10
+        candle = Candle(
+            timestamp=ts,
+            open=75.15,
+            high=75.35,
+            low=75.10,
+            close=75.30,  # Above London Core range high (75.20), body = 0.15
+        )
+        
+        # PRE_US_RANGE should generate setups using London Core range
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.PRE_US_RANGE,
+            candles=[candle],
+            london_core_range=(75.20, 75.00),  # 0.20 range = 20 ticks
+            atr=0.50,
+        )
+        engine = StrategyEngine(provider)
+        
+        candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
+        
+        # Should generate a LONG breakout setup from London Core range
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0].direction, "LONG")
+    
+    def test_pre_us_range_no_setup_without_london_core_range(self):
+        """Test that PRE_US_RANGE phase doesn't generate setups without London Core range."""
         ts = datetime(2025, 1, 15, 13, 30, tzinfo=timezone.utc)
         
         # Create a valid breakout candle
@@ -1076,21 +1110,22 @@ class UsCoreTradinSessionTest(TestCase):
             open=75.15,
             high=75.35,
             low=75.10,
-            close=75.30,  # Above range high
+            close=75.30,
         )
         
-        # PRE_US_RANGE should NOT generate setups
+        # PRE_US_RANGE without London Core range - no setups possible
         provider = DummyMarketStateProvider(
             phase=SessionPhase.PRE_US_RANGE,
             candles=[candle],
-            pre_us_range=(75.20, 75.00),  # 0.20 range = 20 ticks
+            london_core_range=None,  # No London Core range
+            pre_us_range=(75.20, 75.00),
             atr=0.50,
         )
         engine = StrategyEngine(provider)
         
         candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
         
-        # No setups in PRE_US_RANGE phase - it's range formation only
+        # No setups without London Core range data
         self.assertEqual(len(candidates), 0)
     
     def test_pre_us_range_diagnostics(self):
@@ -1100,18 +1135,18 @@ class UsCoreTradinSessionTest(TestCase):
         provider = DummyMarketStateProvider(
             phase=SessionPhase.PRE_US_RANGE,
             candles=[],
+            london_core_range=None,  # No London Core range
             pre_us_range=(75.20, 75.00),
         )
         engine = StrategyEngine(provider)
         
         result = engine.evaluate_with_diagnostics("CC.D.CL.UNC.IP", ts)
         
-        # No setups in PRE_US_RANGE
+        # No setups without London Core range data
         self.assertEqual(len(result.setups), 0)
         
-        # Summary should indicate range collection
-        self.assertIn("PRE_US_RANGE", result.summary)
-        self.assertIn("range", result.summary.lower())
+        # Summary should indicate London Core Range is not available
+        self.assertIn("London Core Range", result.summary)
     
     def test_us_core_trading_generates_setups(self):
         """Test that US_CORE_TRADING phase generates setups correctly."""
