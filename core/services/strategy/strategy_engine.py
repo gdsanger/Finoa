@@ -156,7 +156,7 @@ class StrategyEngine:
         if not is_tradeable_phase:
             # Still log the price position relative to ranges for analysis
             price_analysis = self._analyze_price_position(
-                current_price, asia_range, pre_us_range
+                current_price, asia_range, pre_us_range, london_core_range
             )
             logger.debug(
                 "Phase is not tradeable - no breakout evaluation performed",
@@ -229,7 +229,7 @@ class StrategyEngine:
                 reason = f"Phase {phase.value} is not a tradeable phase"
             
             price_analysis = self._analyze_price_position(
-                current_price, asia_range, pre_us_range
+                current_price, asia_range, pre_us_range, london_core_range
             )
             
             logger.debug(
@@ -260,6 +260,7 @@ class StrategyEngine:
         current_price: Optional[float],
         asia_range: Optional[tuple[float, float]],
         pre_us_range: Optional[tuple[float, float]],
+        london_core_range: Optional[tuple[float, float]] = None,
     ) -> dict:
         """
         Analyze current price position relative to ranges.
@@ -270,6 +271,7 @@ class StrategyEngine:
         analysis = {
             "has_price": current_price is not None,
             "has_asia_range": asia_range is not None,
+            "has_london_core_range": london_core_range is not None,
             "has_pre_us_range": pre_us_range is not None,
         }
         
@@ -284,6 +286,18 @@ class StrategyEngine:
             else:
                 analysis["asia_position"] = "within_range"
                 analysis["asia_breakout_potential"] = None
+        
+        if current_price is not None and london_core_range is not None:
+            london_high, london_low = london_core_range
+            if current_price > london_high:
+                analysis["london_core_position"] = "above_high"
+                analysis["london_core_breakout_potential"] = "LONG"
+            elif current_price < london_low:
+                analysis["london_core_position"] = "below_low"
+                analysis["london_core_breakout_potential"] = "SHORT"
+            else:
+                analysis["london_core_position"] = "within_range"
+                analysis["london_core_breakout_potential"] = None
         
         if current_price is not None and pre_us_range is not None:
             pre_us_high, pre_us_low = pre_us_range
