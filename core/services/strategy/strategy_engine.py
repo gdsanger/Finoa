@@ -101,9 +101,24 @@ class StrategyEngine:
         candles = self.market_state.get_recent_candles(epic, '1m', 1)
         current_price = candles[-1].close if candles else None
         
-        # Get range data for comprehensive logging
-        asia_range = self.market_state.get_asia_range(epic)
-        pre_us_range = self.market_state.get_pre_us_range(epic)
+        # Get range data only for the relevant phase to avoid misleading log messages
+        # According to the phase -> reference range mapping:
+        # - LONDON_CORE uses ASIA_RANGE
+        # - US_CORE_TRADING / US_CORE uses PRE_US_RANGE
+        # - Other phases don't need range data
+        asia_range = None
+        pre_us_range = None
+        
+        if phase == SessionPhase.LONDON_CORE:
+            # London Core trades based on Asia Range breakouts
+            asia_range = self.market_state.get_asia_range(epic)
+        elif phase in (SessionPhase.US_CORE_TRADING, SessionPhase.US_CORE):
+            # US Core Trading trades based on Pre-US Range breakouts
+            pre_us_range = self.market_state.get_pre_us_range(epic)
+        elif phase in (SessionPhase.EIA_PRE, SessionPhase.EIA_POST):
+            # EIA phases may need both ranges for analysis
+            asia_range = self.market_state.get_asia_range(epic)
+            pre_us_range = self.market_state.get_pre_us_range(epic)
         
         logger.debug(
             "Strategy evaluation started",
