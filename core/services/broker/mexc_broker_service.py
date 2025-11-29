@@ -48,6 +48,22 @@ class MexcBrokerService(BrokerService):
     DEFAULT_BASE_URL = "https://api.mexc.com"
     DEFAULT_FUTURES_BASE_URL = "https://contract.mexc.com"
     
+    # Futures API position type constants
+    POSITION_LONG = 1
+    POSITION_SHORT = 2
+    
+    # Futures API order side constants
+    ORDER_SIDE_OPEN_LONG = 1
+    ORDER_SIDE_CLOSE_LONG = 2
+    ORDER_SIDE_OPEN_SHORT = 3
+    ORDER_SIDE_CLOSE_SHORT = 4
+    
+    # Futures API order type constants
+    ORDER_TYPE_MARKET = 5
+    
+    # Futures API margin type constants
+    MARGIN_TYPE_ISOLATED = 1
+    
     def __init__(
         self,
         api_key: str,
@@ -260,30 +276,30 @@ class MexcBrokerService(BrokerService):
             BrokerError: If request fails.
         """
         url = f"{self._futures_base_url}{endpoint}"
-        params = params or {}
+        request_params = params if params else None
         timestamp = self._get_timestamp()
-        signature = self._sign_futures_request(timestamp, params if params else None)
+        signature = self._sign_futures_request(timestamp, request_params)
         headers = self._get_futures_headers(timestamp, signature)
         
         try:
             if method == "GET":
                 response = self._session.get(
                     url,
-                    params=params if params else None,
+                    params=request_params,
                     headers=headers,
                     timeout=self._timeout,
                 )
             elif method == "POST":
                 response = self._session.post(
                     url,
-                    params=params if params else None,
+                    params=request_params,
                     headers=headers,
                     timeout=self._timeout,
                 )
             elif method == "DELETE":
                 response = self._session.delete(
                     url,
-                    params=params if params else None,
+                    params=request_params,
                     headers=headers,
                     timeout=self._timeout,
                 )
@@ -556,7 +572,7 @@ class MexcBrokerService(BrokerService):
             if isinstance(positions_data, list):
                 for pos in positions_data:
                     symbol = pos.get('symbol', '')
-                    pos_type = pos.get('positionType', 1)  # 1=Long, 2=Short
+                    pos_type = pos.get('positionType', self.POSITION_LONG)
                     hold_vol = Decimal(str(pos.get('holdVol', '0')))
                     open_avg_price = Decimal(str(pos.get('openAvgPrice', '0')))
                     unrealised_pnl = Decimal(str(pos.get('unrealisedPnl', '0')))
@@ -572,7 +588,7 @@ class MexcBrokerService(BrokerService):
                         except Exception:
                             current_price = Decimal('0')
                         
-                        direction = OrderDirection.BUY if pos_type == 1 else OrderDirection.SELL
+                        direction = OrderDirection.BUY if pos_type == self.POSITION_LONG else OrderDirection.SELL
                         
                         position = Position(
                             position_id=f"futures_{symbol}_{pos_type}",
@@ -796,15 +812,18 @@ class MexcBrokerService(BrokerService):
                     
                     # Close position via Futures API
                     # The close direction is opposite to position type
-                    # Long (1) -> Close with Sell, Short (2) -> Close with Buy
-                    close_side = 2 if pos_type == 1 else 1  # 1=Open Long, 2=Close Long, 3=Open Short, 4=Close Short
+                    # Long -> Close Long, Short -> Close Short
+                    if pos_type == self.POSITION_LONG:
+                        close_side = self.ORDER_SIDE_CLOSE_LONG
+                    else:
+                        close_side = self.ORDER_SIDE_CLOSE_SHORT
                     
                     close_params = {
                         "symbol": symbol,
                         "vol": str(position_size),
                         "side": close_side,
-                        "type": 5,  # Market order
-                        "openType": 1,  # Isolated margin
+                        "type": self.ORDER_TYPE_MARKET,
+                        "openType": self.MARGIN_TYPE_ISOLATED,
                     }
                     
                     response = self._futures_request(
