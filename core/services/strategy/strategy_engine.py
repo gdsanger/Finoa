@@ -104,14 +104,19 @@ class StrategyEngine:
         # Get range data only for the relevant phase to avoid misleading log messages
         # According to the phase -> reference range mapping:
         # - LONDON_CORE uses ASIA_RANGE
+        # - PRE_US_RANGE uses LONDON_CORE range
         # - US_CORE_TRADING / US_CORE uses PRE_US_RANGE
         # - Other phases don't need range data
         asia_range = None
+        london_core_range = None
         pre_us_range = None
         
         if phase == SessionPhase.LONDON_CORE:
             # London Core trades based on Asia Range breakouts
             asia_range = self.market_state.get_asia_range(epic)
+        elif phase == SessionPhase.PRE_US_RANGE:
+            # Pre-US Range phase uses London Core range for reference
+            london_core_range = self.market_state.get_london_core_range(epic)
         elif phase in (SessionPhase.US_CORE_TRADING, SessionPhase.US_CORE):
             # US Core Trading trades based on Pre-US Range breakouts
             pre_us_range = self.market_state.get_pre_us_range(epic)
@@ -130,6 +135,8 @@ class StrategyEngine:
                     "current_price": current_price,
                     "asia_range_high": asia_range[0] if asia_range else None,
                     "asia_range_low": asia_range[1] if asia_range else None,
+                    "london_core_range_high": london_core_range[0] if london_core_range else None,
+                    "london_core_range_low": london_core_range[1] if london_core_range else None,
                     "pre_us_range_high": pre_us_range[0] if pre_us_range else None,
                     "pre_us_range_low": pre_us_range[1] if pre_us_range else None,
                 }
@@ -163,6 +170,8 @@ class StrategyEngine:
                         "current_price": current_price,
                         "asia_range_high": asia_range[0] if asia_range else None,
                         "asia_range_low": asia_range[1] if asia_range else None,
+                        "london_core_range_high": london_core_range[0] if london_core_range else None,
+                        "london_core_range_low": london_core_range[1] if london_core_range else None,
                         "pre_us_range_high": pre_us_range[0] if pre_us_range else None,
                         "pre_us_range_low": pre_us_range[1] if pre_us_range else None,
                         "price_analysis": price_analysis,
@@ -234,6 +243,8 @@ class StrategyEngine:
                         "current_price": current_price,
                         "asia_range_high": asia_range[0] if asia_range else None,
                         "asia_range_low": asia_range[1] if asia_range else None,
+                        "london_core_range_high": london_core_range[0] if london_core_range else None,
+                        "london_core_range_low": london_core_range[1] if london_core_range else None,
                         "pre_us_range_high": pre_us_range[0] if pre_us_range else None,
                         "pre_us_range_low": pre_us_range[1] if pre_us_range else None,
                         "price_analysis": price_analysis,
