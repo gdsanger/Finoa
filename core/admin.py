@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Account, Category, Booking, RecurringBooking, Payee, KIGateConfig, OpenAIConfig, DocumentUpload, TimeEntry, IgBrokerConfig
+from .models import Account, Category, Booking, RecurringBooking, Payee, KIGateConfig, OpenAIConfig, DocumentUpload, TimeEntry, IgBrokerConfig, MexcBrokerConfig
 
 
 @admin.register(Payee)
@@ -161,6 +161,30 @@ class IgBrokerConfigAdmin(admin.ModelAdmin):
         }),
         ('Trading Defaults', {
             'fields': ('default_oil_epic',)
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
+
+@admin.register(MexcBrokerConfig)
+class MexcBrokerConfigAdmin(admin.ModelAdmin):
+    list_display = ['name', 'account_type', 'is_active', 'updated_at']
+    list_filter = ['is_active', 'account_type']
+    search_fields = ['name']
+    readonly_fields = ['created_at', 'updated_at']
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('name', 'is_active', 'account_type')
+        }),
+        ('Authentication', {
+            'fields': ('api_key', 'api_secret'),
+            'description': 'Credentials for MEXC API access. Keep these secure!'
+        }),
+        ('Connection Settings', {
+            'fields': ('api_base_url', 'timeout_seconds')
         }),
         ('Timestamps', {
             'fields': ('created_at', 'updated_at'),

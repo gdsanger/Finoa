@@ -137,6 +137,11 @@ class TradingAsset(models.Model):
         ('DIAGNOSTIC', 'Diagnostic (Shadow Only, Relaxed Filters)'),
     ]
     
+    # Broker choices
+    class BrokerKind(models.TextChoices):
+        IG = "IG", "IG"
+        MEXC = "MEXC", "MEXC"
+    
     # Basic identification
     name = models.CharField(
         max_length=100,
@@ -150,6 +155,24 @@ class TradingAsset(models.Model):
         max_length=100,
         unique=True,
         help_text='Broker EPIC/Symbol for API calls (e.g., "CC.D.CL.UNC.IP")'
+    )
+    
+    # Broker configuration
+    broker = models.CharField(
+        max_length=16,
+        choices=BrokerKind.choices,
+        default=BrokerKind.IG,
+        help_text='Broker to use for trading this asset (IG or MEXC)'
+    )
+    broker_symbol = models.CharField(
+        max_length=64,
+        blank=True,
+        help_text='IG-EPIC or MEXC-Symbol (if different from epic field)'
+    )
+    quote_currency = models.CharField(
+        max_length=10,
+        default='USD',
+        help_text='Quote currency for this asset (e.g., USD, EUR, USDT)'
     )
     
     # Categorization
@@ -184,6 +207,32 @@ class TradingAsset(models.Model):
         validators=[MinValueValidator(Decimal('0.000001'))],
         help_text='Minimum price movement (e.g., 0.01 for WTI)'
     )
+    min_size = models.DecimalField(
+        max_digits=10,
+        decimal_places=5,
+        default=Decimal('1'),
+        help_text='Minimum order/position size'
+    )
+    max_size = models.DecimalField(
+        max_digits=10,
+        decimal_places=5,
+        null=True,
+        blank=True,
+        help_text='Maximum order/position size'
+    )
+    lot_size = models.DecimalField(
+        max_digits=10,
+        decimal_places=5,
+        null=True,
+        blank=True,
+        help_text='Lot size for this asset'
+    )
+    
+    # Crypto-specific flag
+    is_crypto = models.BooleanField(
+        default=False,
+        help_text='Whether this is a cryptocurrency asset'
+    )
     
     # Status
     is_active = models.BooleanField(
@@ -209,6 +258,15 @@ class TradingAsset(models.Model):
     def is_diagnostic_mode(self):
         """Check if asset is in diagnostic mode."""
         return self.trading_mode == 'DIAGNOSTIC'
+    
+    @property
+    def effective_broker_symbol(self):
+        """
+        Get the effective broker symbol.
+        
+        Returns broker_symbol if set, otherwise falls back to epic.
+        """
+        return self.broker_symbol if self.broker_symbol else self.epic
     
     def get_strategy_config(self):
         """

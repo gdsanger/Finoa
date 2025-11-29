@@ -18,7 +18,7 @@ from .services.chart_service import (
     SUPPORTED_TIME_WINDOWS,
 )
 
-from core.services.broker import create_ig_broker_service, BrokerError, AuthenticationError
+from core.services.broker import BrokerRegistry, BrokerError, AuthenticationError
 
 logger = logging.getLogger(__name__)
 
@@ -345,9 +345,9 @@ def api_account_state(request):
     - connected: Whether the broker is connected
     """
     try:
-        # Create and connect to broker
-        broker = create_ig_broker_service()
-        broker.connect()
+        # Use BrokerRegistry to get the IG broker (default for account state view)
+        registry = BrokerRegistry()
+        broker = registry.get_ig_broker()
         
         try:
             # Get account state
@@ -370,8 +370,8 @@ def api_account_state(request):
                 'connected': True,
             })
         finally:
-            # Always disconnect
-            broker.disconnect()
+            # Clean up registry connections
+            registry.disconnect_all()
             
     except ImproperlyConfigured as e:
         logger.warning(f"IG Broker not configured: {e}")
