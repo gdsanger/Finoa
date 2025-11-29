@@ -252,27 +252,27 @@ class MexcBrokerService(BrokerService):
         try:
             account_data = self._request("GET", "/api/v3/account", signed=True)
             
-            # Sum up all balances
-            total_balance = Decimal('0')
-            available = Decimal('0')
+            # Get USDT balance for account state
+            # Note: For proper multi-asset accounting, you'd need to convert all
+            # assets to a common base currency using current market prices.
+            # This implementation focuses on USDT as the primary quote currency.
+            usdt_balance = Decimal('0')
+            usdt_available = Decimal('0')
             
             for balance in account_data.get('balances', []):
-                free = Decimal(str(balance.get('free', '0')))
-                locked = Decimal(str(balance.get('locked', '0')))
-                # For simplicity, we're summing all assets
-                # In production, you'd want to convert to a common currency
                 if balance.get('asset') == 'USDT':
-                    total_balance = free + locked
-                    available = free
+                    usdt_balance = Decimal(str(balance.get('free', '0'))) + Decimal(str(balance.get('locked', '0')))
+                    usdt_available = Decimal(str(balance.get('free', '0')))
+                    break
             
             return AccountState(
                 account_id=str(account_data.get('accountType', 'SPOT')),
                 account_name=f"MEXC {self._account_type}",
-                balance=total_balance,
-                available=available,
-                equity=total_balance,
+                balance=usdt_balance,
+                available=usdt_available,
+                equity=usdt_balance,
                 margin_used=Decimal('0'),
-                margin_available=available,
+                margin_available=usdt_available,
                 unrealized_pnl=Decimal('0'),
                 currency='USDT',
                 timestamp=datetime.now(timezone.utc),
@@ -288,7 +288,7 @@ class MexcBrokerService(BrokerService):
         Get all currently open positions.
         
         For spot trading, this returns non-zero balances.
-        For margin trading, this returns actual positions.
+        For margin trading, this returns actual margin positions.
         
         Returns:
             List[Position]: List of all open positions.
@@ -299,9 +299,49 @@ class MexcBrokerService(BrokerService):
             positions = []
             
             if self._account_type == "MARGIN":
-                # Get margin positions
-                # Note: MEXC margin API may differ, adjust as needed
-                pass
+                # Get margin account details
+                # Note: MEXC margin API endpoint for positions
+                try:
+                    margin_data = self._request(
+                        "GET",
+                        "/api/v3/margin/isolated/account",
+                        signed=True
+                    )
+                    
+                    for asset_info in margin_data.get('assets', []):
+                        # Get position details from margin account
+                        base_asset = asset_info.get('baseAsset', {})
+                        quote_asset = asset_info.get('quoteAsset', {})
+                        symbol = asset_info.get('symbol', '')
+                        
+                        borrowed = Decimal(str(base_asset.get('borrowed', '0')))
+                        free = Decimal(str(base_asset.get('free', '0')))
+                        total = borrowed + free
+                        
+                        if total > 0:
+                            # Get current price
+                            try:
+                                price_data = self.get_symbol_price(symbol)
+                                current_price = price_data.mid_price
+                            except Exception:
+                                current_price = Decimal('0')
+                            
+                            position = Position(
+                                position_id=f"margin_{symbol}",
+                                deal_id=f"margin_{symbol}",
+                                epic=symbol,
+                                market_name=symbol,
+                                direction=OrderDirection.BUY if free > 0 else OrderDirection.SELL,
+                                size=total,
+                                open_price=Decimal('0'),
+                                current_price=current_price,
+                                unrealized_pnl=Decimal('0'),
+                                currency='USDT',
+                            )
+                            positions.append(position)
+                except BrokerError:
+                    # Margin API not available, return empty positions
+                    logger.warning("Margin account API not available, returning empty positions")
             else:
                 # For spot, get balances with non-zero values
                 account_data = self._request("GET", "/api/v3/account", signed=True)
@@ -509,15 +549,64 @@ class MexcBrokerService(BrokerService):
                 )
                 return self.place_order(order)
             
+            elif position_id.startswith("margin_"):
+                # Close a margin position by placing an opposite order
+                symbol = position_id.replace("margin_", "")
+                
+                # Get margin position details
+                try:
+                    margin_data = self._request(
+                        "GET",
+                        "/api/v3/margin/isolated/account",
+                        signed=True
+                    )
+                    
+                    position_size = Decimal('0')
+                    for asset_info in margin_data.get('assets', []):
+                        if asset_info.get('symbol') == symbol:
+                            base_asset = asset_info.get('baseAsset', {})
+                            position_size = Decimal(str(base_asset.get('free', '0')))
+                            break
+                    
+                    if position_size <= 0:
+                        return OrderResult(
+                            success=False,
+                            reason=f"No margin position to close for {symbol}",
+                            status=OrderStatus.REJECTED,
+                        )
+                    
+                    # Place opposite order to close
+                    order = OrderRequest(
+                        epic=symbol,
+                        direction=OrderDirection.SELL,
+                        size=position_size,
+                        order_type=OrderType.MARKET,
+                    )
+                    return self.place_order(order)
+                    
+                except BrokerError as e:
+                    return OrderResult(
+                        success=False,
+                        reason=f"Failed to get margin position: {e}",
+                        status=OrderStatus.REJECTED,
+                    )
+            
             else:
-                # Cancel an existing order
-                # Note: This doesn't close positions, just cancels pending orders
-                # For actual position closing, you'd need to place an opposite order
-                return OrderResult(
-                    success=False,
-                    reason="Direct order cancellation not supported. Use a counter-order to close.",
-                    status=OrderStatus.REJECTED,
-                )
+                # Try to cancel an order by ID
+                try:
+                    # This requires knowing the symbol, which we don't have
+                    # In practice, you'd need to query open orders first
+                    return OrderResult(
+                        success=False,
+                        reason="Order cancellation requires symbol. Use spot_ASSET or margin_SYMBOL format for positions.",
+                        status=OrderStatus.REJECTED,
+                    )
+                except Exception as e:
+                    return OrderResult(
+                        success=False,
+                        reason=f"Failed to cancel order: {e}",
+                        status=OrderStatus.REJECTED,
+                    )
                 
         except BrokerError:
             raise
