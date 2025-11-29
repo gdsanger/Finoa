@@ -101,9 +101,29 @@ class StrategyEngine:
         candles = self.market_state.get_recent_candles(epic, '1m', 1)
         current_price = candles[-1].close if candles else None
         
-        # Get range data for comprehensive logging
-        asia_range = self.market_state.get_asia_range(epic)
-        pre_us_range = self.market_state.get_pre_us_range(epic)
+        # Get range data only for the relevant phase to avoid misleading log messages
+        # According to the phase -> reference range mapping:
+        # - LONDON_CORE uses ASIA_RANGE
+        # - PRE_US_RANGE uses LONDON_CORE range
+        # - US_CORE_TRADING / US_CORE uses PRE_US_RANGE
+        # - Other phases don't need range data
+        asia_range = None
+        london_core_range = None
+        pre_us_range = None
+        
+        if phase == SessionPhase.LONDON_CORE:
+            # London Core trades based on Asia Range breakouts
+            asia_range = self.market_state.get_asia_range(epic)
+        elif phase == SessionPhase.PRE_US_RANGE:
+            # Pre-US Range phase uses London Core range for reference
+            london_core_range = self.market_state.get_london_core_range(epic)
+        elif phase in (SessionPhase.US_CORE_TRADING, SessionPhase.US_CORE):
+            # US Core Trading trades based on Pre-US Range breakouts
+            pre_us_range = self.market_state.get_pre_us_range(epic)
+        elif phase in (SessionPhase.EIA_PRE, SessionPhase.EIA_POST):
+            # EIA phases may need both ranges for analysis
+            asia_range = self.market_state.get_asia_range(epic)
+            pre_us_range = self.market_state.get_pre_us_range(epic)
         
         logger.debug(
             "Strategy evaluation started",
@@ -115,6 +135,8 @@ class StrategyEngine:
                     "current_price": current_price,
                     "asia_range_high": asia_range[0] if asia_range else None,
                     "asia_range_low": asia_range[1] if asia_range else None,
+                    "london_core_range_high": london_core_range[0] if london_core_range else None,
+                    "london_core_range_low": london_core_range[1] if london_core_range else None,
                     "pre_us_range_high": pre_us_range[0] if pre_us_range else None,
                     "pre_us_range_low": pre_us_range[1] if pre_us_range else None,
                 }
@@ -134,7 +156,7 @@ class StrategyEngine:
         if not is_tradeable_phase:
             # Still log the price position relative to ranges for analysis
             price_analysis = self._analyze_price_position(
-                current_price, asia_range, pre_us_range
+                current_price, asia_range, pre_us_range, london_core_range
             )
             logger.debug(
                 "Phase is not tradeable - no breakout evaluation performed",
@@ -148,6 +170,8 @@ class StrategyEngine:
                         "current_price": current_price,
                         "asia_range_high": asia_range[0] if asia_range else None,
                         "asia_range_low": asia_range[1] if asia_range else None,
+                        "london_core_range_high": london_core_range[0] if london_core_range else None,
+                        "london_core_range_low": london_core_range[1] if london_core_range else None,
                         "pre_us_range_high": pre_us_range[0] if pre_us_range else None,
                         "pre_us_range_low": pre_us_range[1] if pre_us_range else None,
                         "price_analysis": price_analysis,
@@ -205,7 +229,7 @@ class StrategyEngine:
                 reason = f"Phase {phase.value} is not a tradeable phase"
             
             price_analysis = self._analyze_price_position(
-                current_price, asia_range, pre_us_range
+                current_price, asia_range, pre_us_range, london_core_range
             )
             
             logger.debug(
@@ -219,6 +243,8 @@ class StrategyEngine:
                         "current_price": current_price,
                         "asia_range_high": asia_range[0] if asia_range else None,
                         "asia_range_low": asia_range[1] if asia_range else None,
+                        "london_core_range_high": london_core_range[0] if london_core_range else None,
+                        "london_core_range_low": london_core_range[1] if london_core_range else None,
                         "pre_us_range_high": pre_us_range[0] if pre_us_range else None,
                         "pre_us_range_low": pre_us_range[1] if pre_us_range else None,
                         "price_analysis": price_analysis,
@@ -234,6 +260,7 @@ class StrategyEngine:
         current_price: Optional[float],
         asia_range: Optional[tuple[float, float]],
         pre_us_range: Optional[tuple[float, float]],
+        london_core_range: Optional[tuple[float, float]] = None,
     ) -> dict:
         """
         Analyze current price position relative to ranges.
@@ -244,6 +271,7 @@ class StrategyEngine:
         analysis = {
             "has_price": current_price is not None,
             "has_asia_range": asia_range is not None,
+            "has_london_core_range": london_core_range is not None,
             "has_pre_us_range": pre_us_range is not None,
         }
         
@@ -258,6 +286,18 @@ class StrategyEngine:
             else:
                 analysis["asia_position"] = "within_range"
                 analysis["asia_breakout_potential"] = None
+        
+        if current_price is not None and london_core_range is not None:
+            london_high, london_low = london_core_range
+            if current_price > london_high:
+                analysis["london_core_position"] = "above_high"
+                analysis["london_core_breakout_potential"] = "LONG"
+            elif current_price < london_low:
+                analysis["london_core_position"] = "below_low"
+                analysis["london_core_breakout_potential"] = "SHORT"
+            else:
+                analysis["london_core_position"] = "within_range"
+                analysis["london_core_breakout_potential"] = None
         
         if current_price is not None and pre_us_range is not None:
             pre_us_high, pre_us_low = pre_us_range
