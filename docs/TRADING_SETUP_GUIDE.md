@@ -1,3 +1,7 @@
+
+
+
+
 # Fiona Trading System – Einrichtung & Betrieb
 
 Dieses Dokument beschreibt die Einrichtung und den Betrieb des Trading-Systems in Fiona (IG Broker Integration).
@@ -305,52 +309,7 @@ Häufig verwendete IG Market EPICs:
 | `BrokerError` | API-Fehler von IG | Error-Code analysieren |
 | `ImproperlyConfigured` | Keine aktive Konfiguration | `is_active` setzen |
 
-### 8.2 Debug-Logging aktivieren
-
-Das Trading-System verwendet strukturiertes Debug-Logging für die Analyse von Signalen, Risiko-Entscheidungen und Ausführungen.
-
-**Debug-Logging global aktivieren:**
-
-```bash
-# Environment-Variable setzen
-export FIONA_LOG_LEVEL=DEBUG
-
-# Dann Django-Server oder Worker starten
-python manage.py runserver
-```
-
-**Wichtig:** Standardmäßig ist das Log-Level auf `INFO` gesetzt. Für die Analyse von:
-- Warum ein Setup nicht generiert wurde
-- Welche Risiko-Checks fehlschlagen
-- Execution-Entscheidungen
-
-muss `FIONA_LOG_LEVEL=DEBUG` gesetzt werden.
-
-**Debug-Log-Ausgabe enthält strukturierte Daten:**
-
-```
-2025-11-28 10:00:00 [DEBUG] core.services.strategy.strategy_engine: Strategy evaluation started
-  - epic: CC.D.CL.UNC.IP
-  - phase: ASIA_RANGE
-  - current_price: 67.50
-  - asia_range_high: 72.50
-  - asia_range_low: 68.50
-  - price_analysis:
-      - asia_position: below_low
-      - asia_breakout_potential: SHORT
-  - reason: Phase ASIA_RANGE is not in tradeable phases
-```
-
-**Log-Level Optionen:**
-
-| Level | Beschreibung |
-|-------|--------------|
-| `DEBUG` | Detaillierte Analyse (empfohlen für Debugging) |
-| `INFO` | Standard-Betriebsmeldungen (Default) |
-| `WARNING` | Warnungen |
-| `ERROR` | Fehlermeldungen |
-
-**Legacy: Programmatisches Logging:**
+### 8.2 Logging aktivieren
 
 ```python
 import logging
