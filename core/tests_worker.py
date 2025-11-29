@@ -253,12 +253,14 @@ class IGMarketStateProviderTest(TestCase):
         self.assertIsNone(provider.get_asia_range("CC.D.CL.UNC.IP"))
         self.assertIsNone(provider.get_pre_us_range("CC.D.CL.UNC.IP"))
 
-    def test_update_candle_from_price_with_custom_broker(self):
-        """Test that update_candle_from_price uses the provided broker instead of default.
+    def test_update_candle_from_price_with_broker_registry(self):
+        """Test that update_candle_from_price uses the BrokerRegistry to get the correct broker.
         
-        This tests the fix for the MEXC/IG broker mixing issue where the worker
-        should use the asset-specific broker for candle updates, not the default IG broker.
+        This tests the fix for the MEXC/IG broker mixing issue where the provider
+        should use the asset-specific broker via BrokerRegistry for candle updates.
         """
+        from trading.models import TradingAsset
+        
         # Create a default broker (simulating IG)
         default_broker = MagicMock()
         default_broker_price = SymbolPrice(
@@ -285,13 +287,36 @@ class IGMarketStateProviderTest(TestCase):
         )
         mexc_broker.get_symbol_price.return_value = mexc_price
         
-        # Initialize provider with default broker
-        provider = IGMarketStateProvider(broker_service=default_broker)
+        # Create a mock BrokerRegistry that returns the MEXC broker
+        mock_registry = MagicMock()
+        mock_registry.get_broker_for_asset.return_value = mexc_broker
         
-        # Update candle using the alternate (MEXC) broker
-        provider.update_candle_from_price("ETHUSDT", broker=mexc_broker)
+        # Create a test asset for MEXC
+        asset = TradingAsset.objects.create(
+            name="ETH/USDT",
+            symbol="ETH/USDT",
+            epic="ETHUSDT",
+            broker=TradingAsset.BrokerKind.MEXC,
+            broker_symbol="ETHUSDT",
+            category="crypto",
+            tick_size="0.01",
+            is_active=True,
+        )
         
-        # Verify that the MEXC broker was used, not the default
+        # Initialize provider with default broker and registry
+        provider = IGMarketStateProvider(
+            broker_service=default_broker,
+            broker_registry=mock_registry,
+        )
+        
+        # Set the current asset (this tells the provider which asset we're working with)
+        provider.set_current_asset(asset)
+        
+        # Update candle - should automatically use MEXC broker via registry
+        provider.update_candle_from_price()
+        
+        # Verify that the registry was used to get the MEXC broker
+        mock_registry.get_broker_for_asset.assert_called_once_with(asset)
         mexc_broker.get_symbol_price.assert_called_once_with("ETHUSDT")
         default_broker.get_symbol_price.assert_not_called()
         
@@ -301,10 +326,10 @@ class IGMarketStateProviderTest(TestCase):
         self.assertEqual(candles[0].close, 3000.05)  # mid_price of mexc_price
 
     def test_update_candle_from_price_default_broker_fallback(self):
-        """Test that update_candle_from_price falls back to default broker when no broker is provided."""
+        """Test that update_candle_from_price falls back to default broker when no registry/asset is set."""
         provider = IGMarketStateProvider(broker_service=self.mock_broker)
         
-        # Update candle without specifying a broker (should use default)
+        # Update candle with epic - should use default broker
         provider.update_candle_from_price("CC.D.CL.UNC.IP")
         
         # Verify the default broker was used
