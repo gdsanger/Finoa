@@ -1626,11 +1626,21 @@
 
     .chart-modal-meta .meta-item span {
         font-size: 0.75rem;
-        color: var(--fiona-text-muted);
+        color: #cfd6e4;
+        letter-spacing: 0.01em;
     }
 
     .chart-modal-meta .meta-item strong {
         font-size: 1rem;
+        color: #f8fafc;
+    }
+
+    .chart-modal-meta .meta-item .phase-label {
+        color: #93c5fd;
+    }
+
+    .chart-modal-meta .meta-item .current-price {
+        color: #38bdf8;
     }
 
     .chart-modal-canvas {
@@ -1655,7 +1665,7 @@
     }
 
     .info-tile .label {
-        color: var(--fiona-text-muted);
+        color: #d0d7e2;
         font-size: 0.72rem;
         display: block;
         margin-bottom: 0.25rem;
@@ -1664,6 +1674,24 @@
     .info-tile .value {
         font-size: 0.95rem;
         font-weight: 700;
+        color: #f1f5f9;
+        letter-spacing: 0.01em;
+    }
+
+    .chart-modal-info-grid .value.price-high,
+    .chart-modal-info-grid .value.breakout-long,
+    .chart-modal-info-grid .value.distance-high {
+        color: var(--signal-long);
+    }
+
+    .chart-modal-info-grid .value.price-low,
+    .chart-modal-info-grid .value.breakout-short,
+    .chart-modal-info-grid .value.distance-low {
+        color: var(--signal-short);
+    }
+
+    .chart-modal-info-grid .value.emphasis {
+        color: #a5f3fc;
     }
 
     .chart-loading,
@@ -2046,7 +2074,7 @@
                 </div>
                 <div class="meta-item">
                     <span>Phase</span>
-                    <strong id="asset-chart-phase">--</strong>
+                    <strong id="asset-chart-phase" class="phase-label">--</strong>
                 </div>
                 <div class="meta-item">
                     <span>Fenster</span>
@@ -2054,42 +2082,42 @@
                 </div>
                 <div class="meta-item">
                     <span>Preis</span>
-                    <strong id="asset-chart-current-price">--</strong>
+                    <strong id="asset-chart-current-price" class="current-price">--</strong>
                 </div>
             </div>
             <div id="asset-chart-container" class="chart-modal-canvas"></div>
             <div class="chart-modal-info-grid">
                 <div class="info-tile">
                     <span class="label">Referenz-Range</span>
-                    <span class="value" id="asset-chart-reference">--</span>
+                    <span class="value emphasis" id="asset-chart-reference">--</span>
                 </div>
                 <div class="info-tile">
                     <span class="label">Range High</span>
-                    <span class="value" id="asset-chart-range-high">--</span>
+                    <span class="value price-high" id="asset-chart-range-high">--</span>
                 </div>
                 <div class="info-tile">
                     <span class="label">Range Low</span>
-                    <span class="value" id="asset-chart-range-low">--</span>
+                    <span class="value price-low" id="asset-chart-range-low">--</span>
                 </div>
                 <div class="info-tile">
                     <span class="label">Breakout Long</span>
-                    <span class="value" id="asset-chart-breakout-long">--</span>
+                    <span class="value breakout-long" id="asset-chart-breakout-long">--</span>
                 </div>
                 <div class="info-tile">
                     <span class="label">Breakout Short</span>
-                    <span class="value" id="asset-chart-breakout-short">--</span>
+                    <span class="value breakout-short" id="asset-chart-breakout-short">--</span>
                 </div>
                 <div class="info-tile">
                     <span class="label">Distance High</span>
-                    <span class="value" id="asset-chart-distance-high">--</span>
+                    <span class="value distance-high" id="asset-chart-distance-high">--</span>
                 </div>
                 <div class="info-tile">
                     <span class="label">Distance Low</span>
-                    <span class="value" id="asset-chart-distance-low">--</span>
+                    <span class="value distance-low" id="asset-chart-distance-low">--</span>
                 </div>
                 <div class="info-tile">
                     <span class="label">Status</span>
-                    <span class="value" id="asset-chart-range-status">--</span>
+                    <span class="value emphasis" id="asset-chart-range-status">--</span>
                 </div>
             </div>
         </div>

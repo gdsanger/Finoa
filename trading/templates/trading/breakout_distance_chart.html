@@ -699,7 +699,7 @@
             // Use the new Market Data Layer API for candles (broker-agnostic, Redis-backed)
             // Also load breakout context and session ranges for overlay data
             const [candlesRes, contextRes, rangesRes] = await Promise.all([
-                fetch(`/fiona/api/breakout-distance-candles?asset_id=${currentAssetId}&timeframe=${currentTimeframe}&window=${currentHours}`),
+                fetch(`/fiona/api/breakout-distance-candles?asset_id=${currentAssetId}&timeframe=${currentTimeframe}&window=${currentHours}&force_refresh=1`),
                 fetch(`/fiona/api/chart/${currentAsset}/breakout-context`),
                 fetch(`/fiona/api/chart/${currentAsset}/session-ranges?hours=${currentHours}`),
             ]);
