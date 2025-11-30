@@ -1143,7 +1143,7 @@ class StrategyEngine:
 
             self._set_status(f"US breakout evaluation: price {price_position}")
             logger.debug(
-                "US breakout evaluation: no breakout signal",
+                f"US breakout evaluation: no breakout signal {current_price} ({range_high} - {range_low})", 
                 extra={
                     "strategy_data": {
                         "epic": epic,
