@@ -277,23 +277,23 @@ class MarketDataStreamManager:
             
             registry = BrokerRegistry()
             broker = registry.get_broker_for_asset(asset)
-            
+
             try:
-                # Convert timeframe to IG resolution format
-                resolution = self._timeframe_to_ig_resolution(timeframe)
-                
                 # Calculate number of candles needed
                 tf_minutes = TimeframeConfig.to_minutes(timeframe)
                 num_points = int(window_hours * 60 / tf_minutes)
-                
-                # Get broker symbol
+
+                # Get broker symbols/identifiers
                 epic = getattr(asset, 'epic', asset.symbol)
-                
+                symbol = getattr(asset, 'effective_broker_symbol', epic)
+
                 # Fetch historical prices
                 if hasattr(broker, 'get_historical_prices'):
-                    price_data = broker.get_historical_prices(
+                    price_data = self._fetch_historical_prices(
+                        broker,
+                        symbol=symbol,
                         epic=epic,
-                        resolution=resolution,
+                        timeframe=timeframe,
                         num_points=num_points,
                     )
                     
@@ -355,8 +355,59 @@ class MarketDataStreamManager:
             '1w': 'WEEK',
             '1M': 'MONTH',
         }
-        
+
         return mapping.get(timeframe, 'MINUTE_5')
+
+    def _timeframe_to_mexc_interval(self, timeframe: str) -> str:
+        """Convert timeframe to MEXC API interval format."""
+        timeframe = timeframe.lower().strip()
+
+        valid_intervals = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w', '1M']
+
+        if timeframe in valid_intervals:
+            return timeframe
+
+        mapping = {
+            '2m': '5m',
+            '3m': '5m',
+            '10m': '15m',
+            '2h': '4h',
+            '3h': '4h',
+        }
+
+        return mapping.get(timeframe, '5m')
+
+    def _fetch_historical_prices(
+        self,
+        broker,
+        symbol: str,
+        epic: str,
+        timeframe: str,
+        num_points: int,
+    ) -> List[dict]:
+        """Call the broker's historical price API with broker-specific parameters."""
+
+        try:
+            from core.services.broker.mexc_broker_service import MexcBrokerService
+            from core.services.broker.ig_broker_service import IgBrokerService
+        except Exception:
+            # Fallback to generic call if broker modules cannot be loaded
+            return broker.get_historical_prices(epic=epic, num_points=num_points)
+
+        # MEXC uses symbol/interval/limit
+        if isinstance(broker, MexcBrokerService):
+            interval = self._timeframe_to_mexc_interval(timeframe)
+            limit = min(num_points, 1000)  # MEXC API limit
+            return broker.get_historical_prices(symbol=symbol, interval=interval, limit=limit)
+
+        # IG uses epic/resolution/num_points
+        if isinstance(broker, IgBrokerService):
+            resolution = self._timeframe_to_ig_resolution(timeframe)
+            capped_points = min(num_points, 1000)  # Reduce allowance usage
+            return broker.get_historical_prices(epic=epic, resolution=resolution, num_points=capped_points)
+
+        # Generic fallback
+        return broker.get_historical_prices(epic=epic, num_points=num_points)
     
     def get_stream_status(
         self,
