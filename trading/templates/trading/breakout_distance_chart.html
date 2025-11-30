@@ -711,20 +711,22 @@
                 updateDataStatus({ status: 'OFFLINE', error: candlesData.error });
             }
 
-            if (candlesData.success && candlesData.candles && candlesData.candles.length > 0) {
+            const sanitizedCandles = sanitizeCandles(candlesData.candles);
+
+            if (candlesData.success && sanitizedCandles.length > 0) {
                 if (!chart) {
                     createChartAndSeries();
                 }
 
                 // Update candle cache and chart without destroying the existing view
-                updateCandles(candlesData.candles);
+                updateCandles(sanitizedCandles);
 
                 if (firstLoad && chart) {
                     chart.timeScale().fitContent();
                 }
 
                 // Update info panel with candle count
-                document.getElementById('info-candle-count').textContent = `${candlesData.candle_count} Candles`;
+                document.getElementById('info-candle-count').textContent = `${sanitizedCandles.length} Candles`;
             } else {
                 if (firstLoad) {
                     showError(candlesData.error || 'Keine Kerzen-Daten verfügbar');
@@ -754,6 +756,50 @@
                 showError('Fehler beim Laden der Chart-Daten');
             }
         }
+    }
+
+    function sanitizeCandles(candles) {
+        if (!Array.isArray(candles)) {
+            return [];
+        }
+
+        const validCandles = [];
+
+        for (const candle of candles) {
+            if (!candle) continue;
+
+            const requiredFields = ['time', 'open', 'high', 'low', 'close'];
+            if (requiredFields.some((key) => candle[key] === null || candle[key] === undefined)) {
+                continue;
+            }
+
+            const normalizedCandle = {
+                time: Number(candle.time),
+                open: Number(candle.open),
+                high: Number(candle.high),
+                low: Number(candle.low),
+                close: Number(candle.close),
+            };
+
+            if (Object.values(normalizedCandle).some((value) => Number.isNaN(value))) {
+                continue;
+            }
+
+            if (candle.volume !== null && candle.volume !== undefined) {
+                const volume = Number(candle.volume);
+                if (!Number.isNaN(volume)) {
+                    normalizedCandle.volume = volume;
+                }
+            }
+
+            if (candle.complete === false) {
+                normalizedCandle.complete = false;
+            }
+
+            validCandles.push(normalizedCandle);
+        }
+
+        return validCandles;
     }
 
     // Update candles in place to avoid full chart reloads
