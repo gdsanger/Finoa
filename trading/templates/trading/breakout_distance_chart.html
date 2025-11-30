@@ -590,6 +590,7 @@
     let rangeMarkers = {};
     let resizeListenerAdded = false;
     let refreshInterval = null;
+    let currentCandles = [];
 
     // Configuration
     const REFRESH_INTERVAL_MS = 30000;  // Auto-refresh every 30 seconds
@@ -684,7 +685,11 @@
             return;
         }
 
-        showLoading();
+        const firstLoad = !chart || currentCandles.length === 0;
+
+        if (firstLoad) {
+            showLoading();
+        }
 
         try {
             // Use the new Market Data Layer API for candles (broker-agnostic, Redis-backed)
@@ -707,19 +712,23 @@
             }
 
             if (candlesData.success && candlesData.candles && candlesData.candles.length > 0) {
-                // Recreate chart after loading overlay destroyed it
-                createChartAndSeries();
-                
-                // Set candle data
-                candlestickSeries.setData(candlesData.candles);
-                
-                // Fit content with some margin
-                chart.timeScale().fitContent();
-                
+                if (!chart) {
+                    createChartAndSeries();
+                }
+
+                // Update candle cache and chart without destroying the existing view
+                updateCandles(candlesData.candles);
+
+                if (firstLoad && chart) {
+                    chart.timeScale().fitContent();
+                }
+
                 // Update info panel with candle count
                 document.getElementById('info-candle-count').textContent = `${candlesData.candle_count} Candles`;
             } else {
-                showError(candlesData.error || 'Keine Kerzen-Daten verfügbar');
+                if (firstLoad) {
+                    showError(candlesData.error || 'Keine Kerzen-Daten verfügbar');
+                }
                 return;
             }
 
@@ -741,8 +750,29 @@
         } catch (error) {
             console.error('Error loading chart data:', error);
             updateDataStatus({ status: 'OFFLINE', error: error.message });
-            showError('Fehler beim Laden der Chart-Daten');
+            if (firstLoad) {
+                showError('Fehler beim Laden der Chart-Daten');
+            }
         }
+    }
+
+    // Update candles in place to avoid full chart reloads
+    function updateCandles(newCandles) {
+        if (!newCandles || newCandles.length === 0 || !candlestickSeries) {
+            return;
+        }
+
+        if (!currentCandles.length) {
+            currentCandles = [...newCandles];
+        } else {
+            const candleMap = new Map(currentCandles.map(c => [c.time, c]));
+            for (const candle of newCandles) {
+                candleMap.set(candle.time, candle);
+            }
+            currentCandles = Array.from(candleMap.values()).sort((a, b) => a.time - b.time);
+        }
+
+        candlestickSeries.setData(currentCandles);
     }
 
     // Update data status indicator
@@ -977,6 +1007,7 @@
     function changeAsset(symbol, assetId) {
         currentAsset = symbol;
         currentAssetId = assetId;
+        currentCandles = [];
         // Update tick size display
         document.getElementById('info-asset').textContent = symbol;
         if (chart) {
@@ -989,7 +1020,8 @@
     // Change time window
     function changeTimeWindow(hours) {
         currentHours = hours;
-        
+        currentCandles = [];
+
         // Update button states
         document.querySelectorAll('.time-btn').forEach(btn => {
             if (parseInt(btn.dataset.hours) === hours) {
