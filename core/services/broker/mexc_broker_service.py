@@ -873,9 +873,11 @@ class MexcBrokerService(BrokerService):
     
     def get_historical_prices(
         self,
-        symbol: str,
+        symbol: Optional[str] = None,
         interval: str = "5m",
         limit: int = 100,
+        epic: Optional[str] = None,
+        **_: object,
     ) -> List[dict]:
         """
         Get historical price data (klines/candlesticks) for a market.
@@ -884,12 +886,19 @@ class MexcBrokerService(BrokerService):
             symbol: Market symbol (e.g., 'BTCUSDT').
             interval: Kline interval (1m, 5m, 15m, 30m, 1h, 4h, 1d, etc.).
             limit: Number of klines to retrieve (max 1000).
-        
+            epic: Optional alias for symbol for compatibility with other broker interfaces.
+
         Returns:
             List of kline data dictionaries.
         """
         self._ensure_connected()
-        
+
+        # Accept both symbol and epic for compatibility with broker-agnostic callers
+        symbol = symbol or epic
+
+        if not symbol:
+            raise BrokerError("Symbol is required to fetch historical prices")
+
         try:
             response = self._request(
                 "GET",
