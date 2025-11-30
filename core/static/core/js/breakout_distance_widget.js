@@ -454,10 +454,16 @@
                 return '--';
             }
             const num = Number(value);
-            if (Math.abs(num) >= 1000) {
-                return num.toFixed(2);
+            const absValue = Math.abs(num);
+            let fractionDigits = 2;
+
+            if (absValue < 10) {
+                fractionDigits = 4;
+            } else if (absValue < 100) {
+                fractionDigits = 3;
             }
-            return num.toFixed(4);
+
+            return num.toFixed(fractionDigits);
         }
 
         _formatTicks(value) {
