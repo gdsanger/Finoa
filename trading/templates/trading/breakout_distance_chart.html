@@ -591,6 +591,9 @@
     let resizeListenerAdded = false;
     let refreshInterval = null;
 
+    // Configuration
+    const REFRESH_INTERVAL_MS = 30000;  // Auto-refresh every 30 seconds
+
     // Current settings
     let currentAsset = '{{ selected_asset.symbol|default:"" }}';
     let currentAssetId = '{{ selected_asset.id|default:"" }}';
@@ -714,7 +717,7 @@
                 chart.timeScale().fitContent();
                 
                 // Update info panel with candle count
-                document.getElementById('info-candle-count').textContent = candlesData.candle_count + ' Candles';
+                document.getElementById('info-candle-count').textContent = `${candlesData.candle_count} Candles`;
             } else {
                 showError(candlesData.error || 'Keine Kerzen-Daten verfügbar');
                 return;
@@ -909,13 +912,13 @@
         
         // Update distances
         if (context.distance_to_high_ticks !== null) {
-            document.getElementById('info-distance-high').textContent = context.distance_to_high_ticks + ' Ticks';
+            document.getElementById('info-distance-high').textContent = `${context.distance_to_high_ticks} Ticks`;
         } else {
             document.getElementById('info-distance-high').textContent = '-- Ticks';
         }
         
         if (context.distance_to_low_ticks !== null) {
-            document.getElementById('info-distance-low').textContent = context.distance_to_low_ticks + ' Ticks';
+            document.getElementById('info-distance-low').textContent = `${context.distance_to_low_ticks} Ticks`;
         } else {
             document.getElementById('info-distance-low').textContent = '-- Ticks';
         }
@@ -997,7 +1000,7 @@
         });
         
         // Update info panel
-        document.getElementById('info-window').textContent = hours + 'h';
+        document.getElementById('info-window').textContent = `${hours}h`;
         
         loadChartData();
     }
@@ -1013,14 +1016,14 @@
         loadChartData();
     }
 
-    // Start auto-refresh (every 30 seconds)
+    // Start auto-refresh
     function startAutoRefresh() {
         if (refreshInterval) {
             clearInterval(refreshInterval);
         }
         refreshInterval = setInterval(() => {
             loadChartData();
-        }, 30000);  // 30 seconds
+        }, REFRESH_INTERVAL_MS);
     }
 
     // Stop auto-refresh
