@@ -239,8 +239,8 @@ def get_breakout_distance_chart_data(
         return result
     
     # Populate range data
-    result.range_high = range_data.high
-    result.range_low = range_data.low
+    result.range_high = range_data.effective_high
+    result.range_low = range_data.effective_low
     
     # Get min breakout distance from asset config
     min_breakout_ticks = 1  # Default

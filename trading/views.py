@@ -1236,19 +1236,19 @@ def api_breakout_range_diagnostics(request):
             def get_asia_range(self, epic):
                 range_data = self._persisted_ranges.get('ASIA_RANGE')
                 if range_data:
-                    return (float(range_data.high), float(range_data.low))
+                    return (float(range_data.effective_high), float(range_data.effective_low))
                 return None
             
             def get_london_core_range(self, epic):
                 range_data = self._persisted_ranges.get('LONDON_CORE')
                 if range_data:
-                    return (float(range_data.high), float(range_data.low))
+                    return (float(range_data.effective_high), float(range_data.effective_low))
                 return None
             
             def get_pre_us_range(self, epic):
                 range_data = self._persisted_ranges.get('PRE_US_RANGE')
                 if range_data:
-                    return (float(range_data.high), float(range_data.low))
+                    return (float(range_data.effective_high), float(range_data.effective_low))
                 return None
             
             def get_atr(self, epic, timeframe, period):
@@ -2577,8 +2577,8 @@ def api_sidebar_assets(request):
                     
                     if range_data:
                         asset_data['previous_range'] = {
-                            'high': float(range_data.high),
-                            'low': float(range_data.low),
+                            'high': float(range_data.effective_high),
+                            'low': float(range_data.effective_low),
                             'phase': reference_phase,
                         }
                 else:
@@ -2589,8 +2589,8 @@ def api_sidebar_assets(request):
                     
                     if range_data:
                         asset_data['previous_range'] = {
-                            'high': float(range_data.high),
-                            'low': float(range_data.low),
+                            'high': float(range_data.effective_high),
+                            'low': float(range_data.effective_low),
                             'phase': range_data.phase,
                         }
             except Exception:

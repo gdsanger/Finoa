@@ -614,8 +614,8 @@ def get_session_ranges_for_asset(
         )
 
         if range_data:
-            session_range.high = float(range_data.high)
-            session_range.low = float(range_data.low)
+            session_range.high = float(range_data.effective_high)
+            session_range.low = float(range_data.effective_low)
             session_range.start_time = int(range_data.start_time.timestamp()) if range_data.start_time else None
             session_range.end_time = int(range_data.end_time.timestamp()) if range_data.end_time else None
             session_range.is_valid = range_data.is_valid
@@ -680,8 +680,8 @@ def get_breakout_context_for_asset(
         context.error = f"No {reference_phase} range data available"
         return context
 
-    context.range_high = float(range_data.high)
-    context.range_low = float(range_data.low)
+    context.range_high = float(range_data.effective_high)
+    context.range_low = float(range_data.effective_low)
 
     # Calculate breakout levels
     min_breakout_ticks = 1
