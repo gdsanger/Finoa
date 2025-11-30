@@ -453,7 +453,21 @@
                     { time: zoneEnd, value: zoneHigh },
                 ];
 
-            this.rangeZoneSeries.setData(dataPoints);
+            const sanitizedPoints = dataPoints.filter(point =>
+                Number.isFinite(point.time) && Number.isFinite(point.value)
+            );
+
+            if (!sanitizedPoints.length) {
+                this.rangeZoneSeries.setData([]);
+                return;
+            }
+
+            try {
+                this.rangeZoneSeries.setData(sanitizedPoints);
+            } catch (error) {
+                console.warn('Failed to render reference zone', error, sanitizedPoints);
+                this.rangeZoneSeries.setData([]);
+            }
         }
 
         _drawBreakoutContext(context) {
