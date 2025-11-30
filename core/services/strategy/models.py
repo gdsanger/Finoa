@@ -33,6 +33,15 @@ class SessionPhase(str, Enum):
     OTHER = "OTHER"
 
 
+class BreakoutSignal(str, Enum):
+    """Breakout signal classification including fakeouts."""
+
+    LONG_BREAKOUT = "LONG_BREAKOUT"
+    SHORT_BREAKOUT = "SHORT_BREAKOUT"
+    FAILED_LONG_BREAKOUT = "FAILED_LONG_BREAKOUT"
+    FAILED_SHORT_BREAKOUT = "FAILED_SHORT_BREAKOUT"
+
+
 @dataclass
 class BreakoutContext:
     """
@@ -44,6 +53,7 @@ class BreakoutContext:
         range_height: Height of the range (high - low).
         trigger_price: Price that triggered the breakout.
         direction: Direction of the breakout (LONG or SHORT).
+        signal_type: Breakout signal classification (including fakeouts).
         atr: Average True Range (optional volatility measure).
         vwap: Volume Weighted Average Price (optional).
         volume_spike: Whether a volume spike was detected (optional).
@@ -53,6 +63,7 @@ class BreakoutContext:
     range_height: float
     trigger_price: float
     direction: Literal["LONG", "SHORT"]
+    signal_type: Optional['BreakoutSignal'] = None
     atr: Optional[float] = None
     vwap: Optional[float] = None
     volume_spike: Optional[bool] = None
@@ -65,6 +76,7 @@ class BreakoutContext:
             'range_height': self.range_height,
             'trigger_price': self.trigger_price,
             'direction': self.direction,
+            'signal_type': self.signal_type.value if self.signal_type else None,
             'atr': self.atr,
             'vwap': self.vwap,
             'volume_spike': self.volume_spike,
@@ -232,12 +244,17 @@ class SetupCandidate:
         breakout = None
         if data.get('breakout'):
             breakout_data = data['breakout']
+            signal_type = breakout_data.get('signal_type')
+            if isinstance(signal_type, str):
+                signal_type = BreakoutSignal(signal_type)
+
             breakout = BreakoutContext(
                 range_high=breakout_data['range_high'],
                 range_low=breakout_data['range_low'],
                 range_height=breakout_data['range_height'],
                 trigger_price=breakout_data['trigger_price'],
                 direction=breakout_data['direction'],
+                signal_type=signal_type,
                 atr=breakout_data.get('atr'),
                 vwap=breakout_data.get('vwap'),
                 volume_spike=breakout_data.get('volume_spike'),
