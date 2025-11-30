@@ -685,8 +685,12 @@
             return;
         }
 
-        const firstLoad = !chart || currentCandles.length === 0;
+        const firstLoad = !chart;
 
+        // Only replace the container with a loading spinner when the chart
+        // doesn't exist yet. For existing charts (e.g., switching assets or
+        // time windows), keep the chart DOM intact so Lightweight Charts keeps
+        // its canvas mounted and we can update the data in place.
         if (firstLoad) {
             showLoading();
         }
