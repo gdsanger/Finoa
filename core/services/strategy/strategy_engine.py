@@ -13,6 +13,7 @@ from typing import Literal, Optional
 from .config import StrategyConfig
 from .models import (
     BreakoutContext,
+    BreakoutSignal,
     Candle,
     EiaContext,
     SessionPhase,
@@ -468,56 +469,38 @@ class StrategyEngine:
         latest_candle = candles[-1]
         current_price = latest_candle.close
         
-        # Check for breakout
-        broke_high = current_price > range_high
-        broke_low = current_price < range_low
-        
-        if broke_high:
+        breakout_signal = self._detect_breakout_signal(latest_candle, range_high, range_low)
+
+        if breakout_signal:
+            validation_direction, trade_direction = self._map_breakout_signal_directions(breakout_signal)
             result.criteria.append(DiagnosticCriterion(
-                name="Price broke Asia High",
+                name="Price broke Asia High" if validation_direction == 'LONG' else "Price broke Asia Low",
                 passed=True,
-                detail=f"Price {current_price:.4f} > Range High {range_high:.4f}",
+                detail=(
+                    f"High {latest_candle.high:.4f} > Range High {range_high:.4f}"
+                    if validation_direction == 'LONG'
+                    else f"Low {latest_candle.low:.4f} < Range Low {range_low:.4f}"
+                ) + f" ({breakout_signal.value})",
             ))
-            # Check candle quality for long
+
             candle_valid = self._is_valid_breakout_candle(
-                latest_candle, range_height, 'LONG',
+                latest_candle,
+                range_height,
+                validation_direction,
                 self.config.breakout.asia_range.min_breakout_body_fraction
             )
             min_body = self.config.breakout.asia_range.min_breakout_body_fraction * 100
             result.criteria.append(DiagnosticCriterion(
-                name="Breakout candle quality (LONG)",
+                name="Breakout candle quality (LONG)" if validation_direction == 'LONG' else "Breakout candle quality (SHORT)",
                 passed=candle_valid,
                 detail=f"Body size: {latest_candle.body_size:.4f}, min fraction: {min_body:.0f}%",
             ))
             if candle_valid:
                 candidate = self._create_breakout_candidate(
-                    epic=epic, ts=ts, phase=phase, direction='LONG',
+                    epic=epic, ts=ts, phase=phase, direction=trade_direction,
                     range_high=range_high, range_low=range_low,
                     trigger_price=current_price,
-                )
-                result.setups.append(candidate)
-        elif broke_low:
-            result.criteria.append(DiagnosticCriterion(
-                name="Price broke Asia Low",
-                passed=True,
-                detail=f"Price {current_price:.4f} < Range Low {range_low:.4f}",
-            ))
-            # Check candle quality for short
-            candle_valid = self._is_valid_breakout_candle(
-                latest_candle, range_height, 'SHORT',
-                self.config.breakout.asia_range.min_breakout_body_fraction
-            )
-            min_body = self.config.breakout.asia_range.min_breakout_body_fraction * 100
-            result.criteria.append(DiagnosticCriterion(
-                name="Breakout candle quality (SHORT)",
-                passed=candle_valid,
-                detail=f"Body size: {latest_candle.body_size:.4f}, min fraction: {min_body:.0f}%",
-            ))
-            if candle_valid:
-                candidate = self._create_breakout_candidate(
-                    epic=epic, ts=ts, phase=phase, direction='SHORT',
-                    range_high=range_high, range_low=range_low,
-                    trigger_price=current_price,
+                    signal_type=breakout_signal,
                 )
                 result.setups.append(candidate)
         else:
@@ -588,54 +571,36 @@ class StrategyEngine:
         latest_candle = candles[-1]
         current_price = latest_candle.close
         
-        # Check for breakout
-        broke_high = current_price > range_high
-        broke_low = current_price < range_low
-        
-        if broke_high:
+        breakout_signal = self._detect_breakout_signal(latest_candle, range_high, range_low)
+
+        if breakout_signal:
+            validation_direction, trade_direction = self._map_breakout_signal_directions(breakout_signal)
             result.criteria.append(DiagnosticCriterion(
-                name="Price broke Pre-US High",
+                name="Price broke Pre-US High" if validation_direction == 'LONG' else "Price broke Pre-US Low",
                 passed=True,
-                detail=f"Price {current_price:.4f} > Range High {range_high:.4f}",
+                detail=(
+                    f"High {latest_candle.high:.4f} > Range High {range_high:.4f}"
+                    if validation_direction == 'LONG'
+                    else f"Low {latest_candle.low:.4f} < Range Low {range_low:.4f}"
+                ) + f" ({breakout_signal.value})",
             ))
+
             candle_valid = self._is_valid_breakout_candle(
-                latest_candle, range_height, 'LONG',
+                latest_candle, range_height, validation_direction,
                 self.config.breakout.us_core.min_breakout_body_fraction
             )
             min_body = self.config.breakout.us_core.min_breakout_body_fraction * 100
             result.criteria.append(DiagnosticCriterion(
-                name="Breakout candle quality (LONG)",
+                name="Breakout candle quality (LONG)" if validation_direction == 'LONG' else "Breakout candle quality (SHORT)",
                 passed=candle_valid,
                 detail=f"Body size: {latest_candle.body_size:.4f}, min fraction: {min_body:.0f}%",
             ))
             if candle_valid:
                 candidate = self._create_breakout_candidate(
-                    epic=epic, ts=ts, phase=phase, direction='LONG',
+                    epic=epic, ts=ts, phase=phase, direction=trade_direction,
                     range_high=range_high, range_low=range_low,
                     trigger_price=current_price,
-                )
-                result.setups.append(candidate)
-        elif broke_low:
-            result.criteria.append(DiagnosticCriterion(
-                name="Price broke Pre-US Low",
-                passed=True,
-                detail=f"Price {current_price:.4f} < Range Low {range_low:.4f}",
-            ))
-            candle_valid = self._is_valid_breakout_candle(
-                latest_candle, range_height, 'SHORT',
-                self.config.breakout.us_core.min_breakout_body_fraction
-            )
-            min_body = self.config.breakout.us_core.min_breakout_body_fraction * 100
-            result.criteria.append(DiagnosticCriterion(
-                name="Breakout candle quality (SHORT)",
-                passed=candle_valid,
-                detail=f"Body size: {latest_candle.body_size:.4f}, min fraction: {min_body:.0f}%",
-            ))
-            if candle_valid:
-                candidate = self._create_breakout_candidate(
-                    epic=epic, ts=ts, phase=phase, direction='SHORT',
-                    range_high=range_high, range_low=range_low,
-                    trigger_price=current_price,
+                    signal_type=breakout_signal,
                 )
                 result.setups.append(candidate)
         else:
@@ -834,23 +799,42 @@ class StrategyEngine:
         # Check for breakout
         latest_candle = candles[-1]
         current_price = latest_candle.close
-        
-        # Long breakout: close above Asia high
-        if latest_candle.close > range_high:
-            if self._is_valid_breakout_candle(latest_candle, range_height, 'LONG', self.config.breakout.asia_range.min_breakout_body_fraction):
+
+        breakout_signal = self._detect_breakout_signal(latest_candle, range_high, range_low)
+
+        if breakout_signal:
+            validation_direction, trade_direction = self._map_breakout_signal_directions(breakout_signal)
+            min_body_fraction = self.config.breakout.asia_range.min_breakout_body_fraction
+            if self._is_valid_breakout_candle(
+                latest_candle, range_height, validation_direction, min_body_fraction
+            ):
                 candidate = self._create_breakout_candidate(
                     epic=epic,
                     ts=ts,
                     phase=phase,
-                    direction='LONG',
+                    direction=trade_direction,
                     range_high=range_high,
                     range_low=range_low,
                     trigger_price=latest_candle.close,
+                    signal_type=breakout_signal,
                 )
                 candidates.append(candidate)
-                self._set_status("Asia breakout evaluation: LONG setup detected")
+
+                if breakout_signal in (
+                    BreakoutSignal.FAILED_LONG_BREAKOUT,
+                    BreakoutSignal.FAILED_SHORT_BREAKOUT,
+                ):
+                    self._set_status(
+                        "BREAKOUT FAILED: candle returned into range "
+                        f"({trade_direction} signal)"
+                    )
+                else:
+                    self._set_status(
+                        f"Asia breakout evaluation: {trade_direction} setup detected"
+                    )
+
                 logger.debug(
-                    "Asia breakout evaluation: LONG setup detected",
+                    "Asia breakout evaluation: breakout signal detected",
                     extra={
                         "strategy_data": {
                             "epic": epic,
@@ -858,7 +842,8 @@ class StrategyEngine:
                             "phase": phase.value,
                             "evaluation_type": "asia_breakout",
                             "result": "setup_found",
-                            "direction": "LONG",
+                            "direction": trade_direction,
+                            "signal_type": breakout_signal.value,
                             "current_price": current_price,
                             "range_high": range_high,
                             "range_low": range_low,
@@ -867,9 +852,11 @@ class StrategyEngine:
                     }
                 )
             else:
-                self._set_status("Asia breakout evaluation: price above high but candle invalid")
+                self._set_status(
+                    "Asia breakout evaluation: breakout detected but candle invalid"
+                )
                 logger.debug(
-                    "Asia breakout evaluation: price above high but candle invalid",
+                    "Asia breakout evaluation: breakout detected but candle invalid",
                     extra={
                         "strategy_data": {
                             "epic": epic,
@@ -878,69 +865,18 @@ class StrategyEngine:
                             "evaluation_type": "asia_breakout",
                             "result": "no_setup",
                             "reason": "Breakout candle body too small or wrong direction",
-                            "direction": "LONG",
-                            "current_price": current_price,
-                            "range_high": range_high,
-                            "candle_body_size": latest_candle.body_size,
-                            "min_body_fraction": self.config.breakout.asia_range.min_breakout_body_fraction,
-                        }
-                    }
-                )
-        
-        # Short breakout: close below Asia low
-        if latest_candle.close < range_low:
-            if self._is_valid_breakout_candle(latest_candle, range_height, 'SHORT', self.config.breakout.asia_range.min_breakout_body_fraction):
-                candidate = self._create_breakout_candidate(
-                    epic=epic,
-                    ts=ts,
-                    phase=phase,
-                    direction='SHORT',
-                    range_high=range_high,
-                    range_low=range_low,
-                    trigger_price=latest_candle.close,
-                )
-                candidates.append(candidate)
-                self._set_status("Asia breakout evaluation: SHORT setup detected")
-                logger.debug(
-                    "Asia breakout evaluation: SHORT setup detected",
-                    extra={
-                        "strategy_data": {
-                            "epic": epic,
-                            "timestamp": ts.isoformat(),
-                            "phase": phase.value,
-                            "evaluation_type": "asia_breakout",
-                            "result": "setup_found",
-                            "direction": "SHORT",
+                            "direction": validation_direction,
+                            "signal_type": breakout_signal.value,
                             "current_price": current_price,
                             "range_high": range_high,
                             "range_low": range_low,
                             "candle_body_size": latest_candle.body_size,
+                            "min_body_fraction": min_body_fraction,
                         }
                     }
                 )
-            else:
-                self._set_status("Asia breakout evaluation: price below low but candle invalid")
-                logger.debug(
-                    "Asia breakout evaluation: price below low but candle invalid",
-                    extra={
-                        "strategy_data": {
-                            "epic": epic,
-                            "timestamp": ts.isoformat(),
-                            "phase": phase.value,
-                            "evaluation_type": "asia_breakout",
-                            "result": "no_setup",
-                            "reason": "Breakout candle body too small or wrong direction",
-                            "direction": "SHORT",
-                            "current_price": current_price,
-                            "range_low": range_low,
-                            "candle_body_size": latest_candle.body_size,
-                            "min_body_fraction": self.config.breakout.asia_range.min_breakout_body_fraction,
-                        }
-                    }
-                )
-        
-        # Price within range
-        if range_low <= latest_candle.close <= range_high:
+        else:
+            # Price within range
             self._set_status("Asia breakout evaluation: price within range")
             logger.debug(
                 "Asia breakout evaluation: price within range",
@@ -1049,23 +985,42 @@ class StrategyEngine:
         # Check for breakout
         latest_candle = candles[-1]
         current_price = latest_candle.close
-        
-        # Long breakout: close above range high
-        if latest_candle.close > range_high:
-            if self._is_valid_breakout_candle(latest_candle, range_height, 'LONG', self.config.breakout.us_core.min_breakout_body_fraction):
+
+        breakout_signal = self._detect_breakout_signal(latest_candle, range_high, range_low)
+
+        if breakout_signal:
+            validation_direction, trade_direction = self._map_breakout_signal_directions(breakout_signal)
+            min_body_fraction = self.config.breakout.us_core.min_breakout_body_fraction
+            if self._is_valid_breakout_candle(
+                latest_candle, range_height, validation_direction, min_body_fraction
+            ):
                 candidate = self._create_breakout_candidate(
                     epic=epic,
                     ts=ts,
                     phase=phase,
-                    direction='LONG',
+                    direction=trade_direction,
                     range_high=range_high,
                     range_low=range_low,
                     trigger_price=latest_candle.close,
+                    signal_type=breakout_signal,
                 )
                 candidates.append(candidate)
-                self._set_status("US breakout evaluation: LONG setup detected")
+
+                if breakout_signal in (
+                    BreakoutSignal.FAILED_LONG_BREAKOUT,
+                    BreakoutSignal.FAILED_SHORT_BREAKOUT,
+                ):
+                    self._set_status(
+                        "BREAKOUT FAILED: candle returned into range "
+                        f"({trade_direction} signal)"
+                    )
+                else:
+                    self._set_status(
+                        f"US breakout evaluation: {trade_direction} setup detected"
+                    )
+
                 logger.debug(
-                    "US breakout evaluation: LONG setup detected",
+                    "US breakout evaluation: breakout signal detected",
                     extra={
                         "strategy_data": {
                             "epic": epic,
@@ -1073,7 +1028,8 @@ class StrategyEngine:
                             "phase": phase.value,
                             "evaluation_type": "us_breakout",
                             "result": "setup_found",
-                            "direction": "LONG",
+                            "direction": trade_direction,
+                            "signal_type": breakout_signal.value,
                             "current_price": current_price,
                             "range_high": range_high,
                             "range_low": range_low,
@@ -1082,9 +1038,11 @@ class StrategyEngine:
                     }
                 )
             else:
-                self._set_status("US breakout evaluation: price above high but candle invalid")
+                self._set_status(
+                    "US breakout evaluation: breakout detected but candle invalid"
+                )
                 logger.debug(
-                    "US breakout evaluation: price above high but candle invalid",
+                    "US breakout evaluation: breakout detected but candle invalid",
                     extra={
                         "strategy_data": {
                             "epic": epic,
@@ -1093,69 +1051,18 @@ class StrategyEngine:
                             "evaluation_type": "us_breakout",
                             "result": "no_setup",
                             "reason": "Breakout candle body too small or wrong direction",
-                            "direction": "LONG",
-                            "current_price": current_price,
-                            "range_high": range_high,
-                            "candle_body_size": latest_candle.body_size,
-                            "min_body_fraction": self.config.breakout.us_core.min_breakout_body_fraction,
-                        }
-                    }
-                )
-        
-        # Short breakout: close below range low
-        if latest_candle.close < range_low:
-            if self._is_valid_breakout_candle(latest_candle, range_height, 'SHORT', self.config.breakout.us_core.min_breakout_body_fraction):
-                candidate = self._create_breakout_candidate(
-                    epic=epic,
-                    ts=ts,
-                    phase=phase,
-                    direction='SHORT',
-                    range_high=range_high,
-                    range_low=range_low,
-                    trigger_price=latest_candle.close,
-                )
-                candidates.append(candidate)
-                self._set_status("US breakout evaluation: SHORT setup detected")
-                logger.debug(
-                    "US breakout evaluation: SHORT setup detected",
-                    extra={
-                        "strategy_data": {
-                            "epic": epic,
-                            "timestamp": ts.isoformat(),
-                            "phase": phase.value,
-                            "evaluation_type": "us_breakout",
-                            "result": "setup_found",
-                            "direction": "SHORT",
+                            "direction": validation_direction,
+                            "signal_type": breakout_signal.value,
                             "current_price": current_price,
                             "range_high": range_high,
                             "range_low": range_low,
                             "candle_body_size": latest_candle.body_size,
+                            "min_body_fraction": min_body_fraction,
                         }
                     }
                 )
-            else:
-                self._set_status("US breakout evaluation: price below low but candle invalid")
-                logger.debug(
-                    "US breakout evaluation: price below low but candle invalid",
-                    extra={
-                        "strategy_data": {
-                            "epic": epic,
-                            "timestamp": ts.isoformat(),
-                            "phase": phase.value,
-                            "evaluation_type": "us_breakout",
-                            "result": "no_setup",
-                            "reason": "Breakout candle body too small or wrong direction",
-                            "direction": "SHORT",
-                            "current_price": current_price,
-                            "range_low": range_low,
-                            "candle_body_size": latest_candle.body_size,
-                            "min_body_fraction": self.config.breakout.us_core.min_breakout_body_fraction,
-                        }
-                    }
-                )
-        
-        # Price within range
-        if range_low <= latest_candle.close <= range_high:
+        else:
+            # Price within range
             self._set_status("US breakout evaluation: price within range")
             logger.debug(
                 "US breakout evaluation: price within range",
@@ -1577,6 +1484,36 @@ class StrategyEngine:
         ticks = range_height / self.config.tick_size
         return config.min_range_ticks <= ticks <= config.max_range_ticks
 
+    def _detect_breakout_signal(
+        self, candle: Candle, range_high: float, range_low: float
+    ) -> Optional[BreakoutSignal]:
+        """Detect breakout or fakeout signal for a candle relative to a range."""
+
+        if candle.high > range_high:
+            if candle.close > range_high:
+                return BreakoutSignal.LONG_BREAKOUT
+            return BreakoutSignal.FAILED_LONG_BREAKOUT
+
+        if candle.low < range_low:
+            if candle.close < range_low:
+                return BreakoutSignal.SHORT_BREAKOUT
+            return BreakoutSignal.FAILED_SHORT_BREAKOUT
+
+        return None
+
+    def _map_breakout_signal_directions(
+        self, signal: BreakoutSignal
+    ) -> tuple[Literal["LONG", "SHORT"], Literal["LONG", "SHORT"]]:
+        """Map breakout signal to validation and trade directions."""
+
+        if signal == BreakoutSignal.LONG_BREAKOUT:
+            return "LONG", "LONG"
+        if signal == BreakoutSignal.SHORT_BREAKOUT:
+            return "SHORT", "SHORT"
+        if signal == BreakoutSignal.FAILED_LONG_BREAKOUT:
+            return "LONG", "SHORT"
+        return "SHORT", "LONG"
+
     def _is_valid_breakout_candle(
         self,
         candle: Candle,
@@ -1615,16 +1552,18 @@ class StrategyEngine:
         range_high: float,
         range_low: float,
         trigger_price: float,
+        signal_type: Optional[BreakoutSignal] = None,
     ) -> SetupCandidate:
         """Create a breakout SetupCandidate."""
         atr = self.market_state.get_atr(epic, '1h', 14)
-        
+
         breakout_context = BreakoutContext(
             range_high=range_high,
             range_low=range_low,
             range_height=range_high - range_low,
             trigger_price=trigger_price,
             direction=direction,
+            signal_type=signal_type,
             atr=atr,
         )
         

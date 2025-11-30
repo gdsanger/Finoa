@@ -9,6 +9,7 @@ from .models import (
     SCHEMA_VERSION,
     SetupKind,
     SessionPhase,
+    BreakoutSignal,
     BreakoutContext,
     EiaContext,
     Candle,
@@ -53,6 +54,7 @@ __all__ = [
     # Data models
     'SetupKind',
     'SessionPhase',
+    'BreakoutSignal',
     'BreakoutContext',
     'EiaContext',
     'Candle',
