@@ -469,7 +469,13 @@ class StrategyEngine:
         latest_candle = candles[-1]
         current_price = latest_candle.close
         
-        breakout_signal = self._detect_breakout_signal(latest_candle, range_high, range_low)
+        breakout_signal = self._detect_breakout_signal(
+            latest_candle,
+            range_high,
+            range_low,
+            range_height,
+            self.config.breakout.asia_range.min_breakout_body_fraction,
+        )
 
         if breakout_signal:
             validation_direction, trade_direction = self._map_breakout_signal_directions(breakout_signal)
@@ -571,7 +577,13 @@ class StrategyEngine:
         latest_candle = candles[-1]
         current_price = latest_candle.close
         
-        breakout_signal = self._detect_breakout_signal(latest_candle, range_high, range_low)
+        breakout_signal = self._detect_breakout_signal(
+            latest_candle,
+            range_high,
+            range_low,
+            range_height,
+            self.config.breakout.us_core.min_breakout_body_fraction,
+        )
 
         if breakout_signal:
             validation_direction, trade_direction = self._map_breakout_signal_directions(breakout_signal)
@@ -800,7 +812,13 @@ class StrategyEngine:
         latest_candle = candles[-1]
         current_price = latest_candle.close
 
-        breakout_signal = self._detect_breakout_signal(latest_candle, range_high, range_low)
+        breakout_signal = self._detect_breakout_signal(
+            latest_candle,
+            range_high,
+            range_low,
+            range_height,
+            self.config.breakout.asia_range.min_breakout_body_fraction,
+        )
 
         if breakout_signal:
             validation_direction, trade_direction = self._map_breakout_signal_directions(breakout_signal)
@@ -819,6 +837,18 @@ class StrategyEngine:
                     signal_type=breakout_signal,
                 )
                 candidates.append(candidate)
+
+                logger.info(
+                    "[STRATEGY] BREAKOUT detected",
+                    extra={
+                        "strategy_data": {
+                            "epic": epic,
+                            "phase": phase.value,
+                            "breakout_type": breakout_signal.value,
+                            "direction": trade_direction,
+                        }
+                    },
+                )
 
                 if breakout_signal in (
                     BreakoutSignal.FAILED_LONG_BREAKOUT,
@@ -986,7 +1016,13 @@ class StrategyEngine:
         latest_candle = candles[-1]
         current_price = latest_candle.close
 
-        breakout_signal = self._detect_breakout_signal(latest_candle, range_high, range_low)
+        breakout_signal = self._detect_breakout_signal(
+            latest_candle,
+            range_high,
+            range_low,
+            range_height,
+            self.config.breakout.us_core.min_breakout_body_fraction,
+        )
 
         if breakout_signal:
             validation_direction, trade_direction = self._map_breakout_signal_directions(breakout_signal)
@@ -1005,6 +1041,18 @@ class StrategyEngine:
                     signal_type=breakout_signal,
                 )
                 candidates.append(candidate)
+
+                logger.info(
+                    "[STRATEGY] BREAKOUT detected",
+                    extra={
+                        "strategy_data": {
+                            "epic": epic,
+                            "phase": phase.value,
+                            "breakout_type": breakout_signal.value,
+                            "direction": trade_direction,
+                        }
+                    },
+                )
 
                 if breakout_signal in (
                     BreakoutSignal.FAILED_LONG_BREAKOUT,
@@ -1485,21 +1533,73 @@ class StrategyEngine:
         return config.min_range_ticks <= ticks <= config.max_range_ticks
 
     def _detect_breakout_signal(
-        self, candle: Candle, range_high: float, range_low: float
+        self,
+        candle: Candle,
+        range_high: float,
+        range_low: float,
+        range_height: float,
+        min_body_fraction: float,
     ) -> Optional[BreakoutSignal]:
         """Detect breakout or fakeout signal for a candle relative to a range."""
 
         if candle.high > range_high:
+            if not self._passes_breakout_filters(
+                candle,
+                range_height,
+                "LONG",
+                range_high,
+                range_low,
+                min_body_fraction,
+            ):
+                return None
             if candle.close > range_high:
                 return BreakoutSignal.LONG_BREAKOUT
             return BreakoutSignal.FAILED_LONG_BREAKOUT
 
         if candle.low < range_low:
+            if not self._passes_breakout_filters(
+                candle,
+                range_height,
+                "SHORT",
+                range_high,
+                range_low,
+                min_body_fraction,
+            ):
+                return None
             if candle.close < range_low:
                 return BreakoutSignal.SHORT_BREAKOUT
             return BreakoutSignal.FAILED_SHORT_BREAKOUT
 
         return None
+
+    def _passes_breakout_filters(
+        self,
+        candle: Candle,
+        range_height: float,
+        validation_direction: Literal["LONG", "SHORT"],
+        range_high: float,
+        range_low: float,
+        min_body_fraction: float,
+    ) -> bool:
+        """Apply existing breakout quality filters before classifying signals."""
+
+        if not self._is_valid_breakout_candle(
+            candle, range_height, validation_direction, min_body_fraction
+        ):
+            return False
+
+        # Enforce minimum breakout distance using configured ticks.
+        min_ticks = self.config.breakout.min_breakout_distance_ticks
+        if min_ticks and self.config.tick_size > 0:
+            tick_distance = (
+                candle.high - range_high
+                if validation_direction == "LONG"
+                else range_low - candle.low
+            )
+            if tick_distance / self.config.tick_size < min_ticks:
+                return False
+
+        return True
 
     def _map_breakout_signal_directions(
         self, signal: BreakoutSignal
