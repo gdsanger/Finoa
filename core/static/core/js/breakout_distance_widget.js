@@ -87,17 +87,7 @@
             this.assetId = assetId;
             this.currentCandles = [];
 
-            // Reset chart visuals immediately when switching assets to avoid stale views
-            if (this.candlestickSeries) {
-                this.candlestickSeries.setData([]);
-            }
-
-            for (const key in this.priceLines) {
-                try {
-                    this.candlestickSeries?.removePriceLine(this.priceLines[key]);
-                } catch (e) {}
-                delete this.priceLines[key];
-            }
+            this._resetChartState();
 
             this.lastAssetKey = `${symbol}|${assetId}`;
             this.activeRequestToken++;
@@ -115,6 +105,29 @@
         setRangeVisibility(rangeKey, isVisible) {
             this.rangeVisibility[rangeKey] = isVisible;
             this.refresh();
+        }
+
+        _resetChartState() {
+            // Reset chart visuals immediately when switching assets to avoid stale views
+            if (this.candlestickSeries) {
+                this.candlestickSeries.setData([]);
+            }
+
+            for (const key in this.priceLines) {
+                try {
+                    this.candlestickSeries?.removePriceLine(this.priceLines[key]);
+                } catch (e) {}
+                delete this.priceLines[key];
+            }
+
+            // Fully recreate the chart container on the next load to avoid detached canvases
+            if (this.chart) {
+                try {
+                    this.chart.remove();
+                } catch (e) {}
+                this.chart = null;
+                this.candlestickSeries = null;
+            }
         }
 
         refresh() {
