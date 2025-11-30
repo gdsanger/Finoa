@@ -163,7 +163,7 @@ def configure_logging() -> dict:
                 'datefmt': date_format,
             },
             'verbose': {
-                'format': '%(asctime)s [%(levelname)s] %(name)s (%(process)d:%(thread)d): %(message)s',
+                'format': '%(asctime)s [%(levelname)s] %(name)s (%(process)d:%(thread)d): %(message)s %(strategy_data)s',
                 'datefmt': date_format,
             },
         },
