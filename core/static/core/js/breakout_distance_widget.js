@@ -28,7 +28,6 @@
 
             this.currentCandles = [];
             this.priceLines = {};
-            this.rangeZoneSeries = null;
             this.chart = null;
             this.candlestickSeries = null;
             this.refreshInterval = null;
@@ -42,11 +41,6 @@
                 breakoutShort: '#ef4444',
                 rangeHigh: '#fbbf24',
                 rangeLow: '#fb923c',
-                zones: {
-                    ASIA_RANGE: 'rgba(59,130,246,0.20)',
-                    LONDON_CORE: 'rgba(251,191,36,0.20)',
-                    PRE_US_RANGE: 'rgba(16,185,129,0.20)',
-                },
             };
 
             this.resizeHandler = this._handleResize.bind(this);
@@ -76,7 +70,6 @@
             this.chart = null;
             this.candlestickSeries = null;
             this.priceLines = {};
-            this.rangeZoneSeries = null;
             this.currentCandles = [];
             this.initialized = false;
         }
@@ -219,21 +212,6 @@
                     timeVisible: true,
                     secondsVisible: false,
                 },
-            });
-
-            this.rangeZoneSeries = this.chart.addBaselineSeries({
-                baseValue: { type: 'price', price: 0 },
-                topLineColor: 'rgba(0,0,0,0)',
-                topLineWidth: 1,
-                topFillColor1: 'rgba(0,0,0,0)',
-                topFillColor2: 'rgba(0,0,0,0)',
-                bottomLineColor: 'rgba(0,0,0,0)',
-                bottomLineWidth: 1,
-                bottomFillColor1: 'rgba(0,0,0,0)',
-                bottomFillColor2: 'rgba(0,0,0,0)',
-                priceLineVisible: false,
-                lastValueVisible: false,
-                crosshairMarkerVisible: false,
             });
 
             this.candlestickSeries = this.chart.addCandlestickSeries({
@@ -385,89 +363,7 @@
                 });
             }
 
-            this._drawReferenceZone(ranges, context);
-        }
-
-        _drawReferenceZone(ranges, context) {
-            if (!this.rangeZoneSeries || !context) return;
-
-            const highlightMapping = {
-                'US_CORE_TRADING': 'PRE_US_RANGE',
-                'PRE_US_RANGE': 'LONDON_CORE',
-                'LONDON_CORE': 'ASIA_RANGE',
-            };
-
-            const referencePhase = highlightMapping[context.phase];
-
-            if (!referencePhase) {
-                this.rangeZoneSeries.setData([]);
-                return;
-            }
-
-            const rangeData = ranges[referencePhase];
-            const zoneHigh = Number(rangeData?.high);
-            const zoneLow = Number(rangeData?.low);
-
-            const hasValidRange = Number.isFinite(zoneHigh) && Number.isFinite(zoneLow);
-
-            if (!rangeData || !rangeData.is_valid || !hasValidRange) {
-                this.rangeZoneSeries.setData([]);
-                return;
-            }
-
-            const startTime = rangeData.start_time || (this.currentCandles[0]?.time ?? null);
-            const endTime = rangeData.end_time || (this.currentCandles[this.currentCandles.length - 1]?.time ?? null);
-
-            if (!startTime || !endTime) {
-                this.rangeZoneSeries.setData([]);
-                return;
-            }
-
-            const color = this.colors.zones[referencePhase] || 'rgba(0,0,0,0)';
-
-            this.rangeZoneSeries.applyOptions({
-                baseValue: { type: 'price', price: zoneLow },
-                topFillColor1: color,
-                topFillColor2: color,
-                topLineColor: 'rgba(0,0,0,0)',
-                bottomFillColor1: 'rgba(0,0,0,0)',
-                bottomFillColor2: 'rgba(0,0,0,0)',
-                bottomLineColor: 'rgba(0,0,0,0)',
-                priceLineVisible: false,
-                lastValueVisible: false,
-                crosshairMarkerVisible: false,
-            });
-
-            const zoneStart = Number(startTime);
-            const zoneEnd = Number(endTime);
-
-            if (!Number.isFinite(zoneStart) || !Number.isFinite(zoneEnd)) {
-                this.rangeZoneSeries.setData([]);
-                return;
-            }
-
-            const dataPoints = zoneStart === zoneEnd
-                ? [{ time: zoneStart, value: zoneHigh }]
-                : [
-                    { time: zoneStart, value: zoneHigh },
-                    { time: zoneEnd, value: zoneHigh },
-                ];
-
-            const sanitizedPoints = dataPoints.filter(point =>
-                Number.isFinite(point.time) && Number.isFinite(point.value)
-            );
-
-            if (!sanitizedPoints.length) {
-                this.rangeZoneSeries.setData([]);
-                return;
-            }
-
-            try {
-                this.rangeZoneSeries.setData(sanitizedPoints);
-            } catch (error) {
-                console.warn('Failed to render reference zone', error, sanitizedPoints);
-                this.rangeZoneSeries.setData([]);
-            }
+            // Only draw range high/low lines; background zones removed for clarity
         }
 
         _drawBreakoutContext(context) {
