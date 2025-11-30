@@ -117,6 +117,35 @@
         align-items: center;
         gap: 0.5rem;
     }
+
+    .breakout-type-badge {
+        font-size: 0.95rem;
+        padding: 0.35rem 0.85rem;
+        border-radius: 8px;
+        font-weight: 700;
+        letter-spacing: 0.3px;
+        text-transform: uppercase;
+    }
+
+    .breakout-LONG_BREAKOUT {
+        background-color: #198754;
+        color: #e9ecef;
+    }
+
+    .breakout-SHORT_BREAKOUT {
+        background-color: #dc3545;
+        color: #f8f9fa;
+    }
+
+    .breakout-FAILED_LONG_BREAKOUT {
+        background-color: #fd7e14;
+        color: #1a1d21;
+    }
+
+    .breakout-FAILED_SHORT_BREAKOUT {
+        background-color: #0dcaf0;
+        color: #0b0f14;
+    }
     
     .direction-LONG {
         background-color: var(--signal-long);
@@ -396,6 +425,11 @@
                                     {{ signal.session_phase }}
                                 {% endif %}
                             </span>
+                            {% if signal.breakout_type %}
+                                <span class="breakout-type-badge breakout-{{ signal.breakout_type }}">
+                                    {{ signal.breakout_type|replace:"_"," "|upper }}
+                                </span>
+                            {% endif %}
                             <span class="direction-badge-lg direction-{{ signal.direction }}">
                                 {% if signal.direction == 'LONG' %}
                                     <i class="bi bi-arrow-up-circle-fill"></i> LONG

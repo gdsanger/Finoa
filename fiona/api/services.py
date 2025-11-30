@@ -210,7 +210,12 @@ class SignalService:
         # Get setup kind as string
         setup_kind = setup.setup_kind.value if hasattr(setup.setup_kind, 'value') else str(setup.setup_kind)
         phase = setup.phase.value if hasattr(setup.phase, 'value') else str(setup.phase)
-        
+        breakout_type = None
+        if getattr(setup, 'breakout', None) and setup.breakout.signal_type:
+            breakout_type = setup.breakout.signal_type.value
+        elif session.meta:
+            breakout_type = session.meta.get('breakout_type')
+
         return SignalSummaryDTO(
             id=session.id,
             epic=setup.epic,
@@ -219,6 +224,7 @@ class SignalService:
             createdAt=created_at,
             direction=setup.direction,
             referencePrice=float(setup.reference_price),
+            breakoutType=breakout_type,
             ki=ki_info,
             risk=risk_info,
         )
@@ -254,7 +260,12 @@ class SignalService:
         # Get setup kind as string
         setup_kind = setup.setup_kind.value if hasattr(setup.setup_kind, 'value') else str(setup.setup_kind)
         phase = setup.phase.value if hasattr(setup.phase, 'value') else str(setup.phase)
-        
+        breakout_type = None
+        if getattr(setup, 'breakout', None) and setup.breakout.signal_type:
+            breakout_type = setup.breakout.signal_type.value
+        elif session.meta:
+            breakout_type = session.meta.get('breakout_type')
+
         # Build risk evaluation DTO
         risk_evaluation_dto = None
         if risk_eval:
@@ -296,6 +307,7 @@ class SignalService:
             setupKind=setup_kind,
             phase=phase,
             createdAt=created_at,
+            breakoutType=breakout_type,
             setup=setup.to_dict(),
             kiEvaluation=ki_eval.to_dict() if ki_eval else None,
             riskEvaluation=risk_evaluation_dto,

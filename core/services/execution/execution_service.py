@@ -202,6 +202,11 @@ class ExecutionService:
                 'setup_kind': setup.setup_kind.value if isinstance(setup.setup_kind, Enum) else str(setup.setup_kind),
                 'direction': setup.direction,
                 'reference_price': setup.reference_price,
+                'breakout_type': (
+                    setup.breakout.signal_type.value
+                    if setup.breakout and setup.breakout.signal_type
+                    else None
+                ),
             },
         )
         

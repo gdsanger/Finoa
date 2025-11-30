@@ -162,6 +162,7 @@ class SignalSummaryDTO:
     createdAt: str  # ISO format
     direction: str
     referencePrice: float
+    breakoutType: Optional[str] = None
     ki: KiInfoDTO
     risk: RiskInfoDTO
 
@@ -175,6 +176,7 @@ class SignalSummaryDTO:
             'createdAt': self.createdAt,
             'direction': self.direction,
             'referencePrice': self.referencePrice,
+            'breakoutType': self.breakoutType,
             'ki': self.ki.to_dict(),
             'risk': self.risk.to_dict(),
         }
@@ -203,6 +205,7 @@ class SignalDetailDTO:
     setupKind: str
     phase: str
     createdAt: str
+    breakoutType: Optional[str] = None
     setup: dict  # Serialized SetupCandidate
     kiEvaluation: Optional[dict] = None  # Serialized KiEvaluationResult
     riskEvaluation: Optional[RiskEvaluationDTO] = None
@@ -216,6 +219,7 @@ class SignalDetailDTO:
             'setupKind': self.setupKind,
             'phase': self.phase,
             'createdAt': self.createdAt,
+            'breakoutType': self.breakoutType,
             'setup': self.setup,
             'kiEvaluation': self.kiEvaluation,
             'riskEvaluation': self.riskEvaluation.to_dict() if self.riskEvaluation else None,

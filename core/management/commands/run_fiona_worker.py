@@ -976,7 +976,25 @@ class Command(BaseCommand):
         self.stdout.write(
             f"\n  Setup: {setup.setup_kind.value} {setup.direction} @ {setup.reference_price}"
         )
-        
+
+        breakout_type = None
+        if getattr(setup, 'breakout', None) and setup.breakout.signal_type:
+            breakout_type = setup.breakout.signal_type.value
+            self.stdout.write(
+                f"    Breakout Type: {breakout_type} → Entry Direction: {setup.direction}"
+            )
+            logger.info(
+                "Processing breakout setup",
+                extra={
+                    "worker_data": {
+                        "setup_id": setup.id,
+                        "breakout_type": breakout_type,
+                        "direction": setup.direction,
+                        "phase": getattr(setup, 'phase', None).value if getattr(setup, 'phase', None) else None,
+                    }
+                },
+            )
+
         # Store setup in Weaviate
         try:
             self.weaviate_service.store_setup(setup)
