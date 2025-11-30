@@ -135,15 +135,22 @@
             }
 
             try {
-                const [candlesRes, contextRes, rangesRes] = await Promise.all([
-                    fetch(`/fiona/api/breakout-distance-candles?asset_id=${this.assetId}&timeframe=${this.timeframe}&window=${this.hours}&force_refresh=1`),
-                    fetch(`/fiona/api/chart/${this.assetSymbol}/breakout-context`),
-                    fetch(`/fiona/api/chart/${this.assetSymbol}/session-ranges?hours=${this.hours}`),
-                ]);
+                const candlesPromise = fetch(`/fiona/api/breakout-distance-candles?asset_id=${this.assetId}&timeframe=${this.timeframe}&window=${this.hours}&force_refresh=1`);
+                const contextPromise = fetch(`/fiona/api/chart/${this.assetSymbol}/breakout-context`);
+                const rangesPromise = fetch(`/fiona/api/chart/${this.assetSymbol}/session-ranges?hours=${this.hours}`);
+
+                const [candlesRes, contextRes] = await Promise.all([candlesPromise, contextPromise]);
 
                 const candlesData = await candlesRes.json();
                 const contextData = await contextRes.json();
-                const rangesData = await rangesRes.json();
+                let rangesData = { success: false };
+
+                try {
+                    const rangesRes = await rangesPromise;
+                    rangesData = await rangesRes.json();
+                } catch (rangeError) {
+                    console.warn('Session ranges fetch failed:', rangeError);
+                }
 
                 if (candlesData.success && candlesData.status) {
                     this.updateDataStatus(candlesData.status);
