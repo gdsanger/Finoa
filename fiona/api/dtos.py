@@ -162,9 +162,9 @@ class SignalSummaryDTO:
     createdAt: str  # ISO format
     direction: str
     referencePrice: float
-    breakoutType: Optional[str] = None
     ki: KiInfoDTO
     risk: RiskInfoDTO
+    breakoutType: Optional[str] = None
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
@@ -205,11 +205,11 @@ class SignalDetailDTO:
     setupKind: str
     phase: str
     createdAt: str
-    breakoutType: Optional[str] = None
     setup: dict  # Serialized SetupCandidate
     kiEvaluation: Optional[dict] = None  # Serialized KiEvaluationResult
     riskEvaluation: Optional[RiskEvaluationDTO] = None
     executionState: Optional[ExecutionStateDTO] = None
+    breakoutType: Optional[str] = None
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
