@@ -17,13 +17,19 @@ from datetime import timedelta
 
 from django.utils import timezone
 
-from ..models import TradingAsset, BreakoutRange, AssetPriceStatus, PriceSnapshot
+from ..models import (
+    AssetSessionPhaseConfig,
+    TradingAsset,
+    BreakoutRange,
+    AssetPriceStatus,
+    PriceSnapshot,
+)
 
 
 # Trend type alias
 TrendType = Literal["up", "down", "sideways"]
 
-# Reference phase mapping: which phase's range to use for each trading phase
+# Reference phase fallback mapping: used when no per-asset config is available
 REFERENCE_PHASE_MAPPING = {
     'LONDON_CORE': 'ASIA_RANGE',
     'US_CORE_TRADING': 'PRE_US_RANGE',
@@ -91,16 +97,69 @@ class BreakoutDistanceChartData:
         }
 
 
-def get_reference_phase(phase: str) -> Optional[str]:
+def _time_to_minutes(time_str: str) -> Optional[int]:
+    """Convert HH:MM time string to minutes since midnight."""
+
+    try:
+        hours, minutes = map(int, time_str.split(":"))
+        return hours * 60 + minutes
+    except Exception:
+        return None
+
+
+def get_reference_phase(asset: TradingAsset, phase: str) -> Optional[str]:
     """
     Get the reference phase for a given trading phase.
-    
+
+    Prefers the asset's configured session phases (with custom time windows)
+    to determine the most recent range-building phase before the current one.
+    Falls back to the default REFERENCE_PHASE_MAPPING when no configuration is
+    available for the asset or phase.
+
     Args:
+        asset: TradingAsset instance for which the phase mapping is evaluated
         phase: Current trading phase (e.g., 'LONDON_CORE', 'US_CORE_TRADING')
-        
+
     Returns:
         Reference phase code (e.g., 'ASIA_RANGE', 'PRE_US_RANGE') or None
     """
+
+    if phase not in REFERENCE_PHASE_MAPPING:
+        return None
+
+    try:
+        phase_configs = list(AssetSessionPhaseConfig.get_enabled_phases_for_asset(asset))
+    except Exception:
+        phase_configs = []
+
+    if not phase_configs:
+        return REFERENCE_PHASE_MAPPING.get(phase)
+
+    current_config = next((cfg for cfg in phase_configs if cfg.phase == phase), None)
+    if not current_config:
+        return REFERENCE_PHASE_MAPPING.get(phase)
+
+    def sort_key(cfg: AssetSessionPhaseConfig) -> int:
+        minutes = _time_to_minutes(cfg.start_time_utc)
+        return minutes if minutes is not None else (24 * 60 + 1)
+
+    sorted_configs = sorted(phase_configs, key=sort_key)
+
+    try:
+        current_index = sorted_configs.index(current_config)
+    except ValueError:
+        return REFERENCE_PHASE_MAPPING.get(phase)
+
+    total_configs = len(sorted_configs)
+    for offset in range(1, total_configs + 1):
+        previous_config = sorted_configs[(current_index - offset) % total_configs]
+        if (
+            previous_config.is_range_build_phase
+            and previous_config.enabled
+            and previous_config.phase != phase
+        ):
+            return previous_config.phase
+
     return REFERENCE_PHASE_MAPPING.get(phase)
 
 
@@ -165,7 +224,7 @@ def get_breakout_distance_chart_data(
     )
     
     # Get reference phase
-    reference_phase = get_reference_phase(phase)
+    reference_phase = get_reference_phase(asset, phase)
     result.reference_phase = reference_phase
     
     if reference_phase is None:

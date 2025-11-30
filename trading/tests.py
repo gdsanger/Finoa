@@ -6,7 +6,15 @@ from datetime import timedelta
 from unittest.mock import MagicMock, patch
 import uuid
 
-from .models import Signal, Trade, WorkerStatus, TradingAsset, AssetBreakoutConfig, AssetEventConfig
+from .models import (
+    Signal,
+    Trade,
+    WorkerStatus,
+    TradingAsset,
+    AssetBreakoutConfig,
+    AssetEventConfig,
+    AssetSessionPhaseConfig,
+)
 
 
 class SignalModelTest(TestCase):
@@ -3486,24 +3494,32 @@ class BreakoutDistanceChartServiceTest(TestCase):
             asset=self.asset,
             min_breakout_distance_ticks=2,
         )
-    
+
+        AssetSessionPhaseConfig.create_default_phases_for_asset(self.asset)
+
     def test_get_reference_phase_london_core(self):
         """Test reference phase mapping for LONDON_CORE."""
         from trading.services.breakout_distance_chart import get_reference_phase
-        
-        self.assertEqual(get_reference_phase('LONDON_CORE'), 'ASIA_RANGE')
-    
+
+        self.assertEqual(get_reference_phase(self.asset, 'LONDON_CORE'), 'ASIA_RANGE')
+
     def test_get_reference_phase_us_core_trading(self):
         """Test reference phase mapping for US_CORE_TRADING."""
         from trading.services.breakout_distance_chart import get_reference_phase
-        
-        self.assertEqual(get_reference_phase('US_CORE_TRADING'), 'PRE_US_RANGE')
-    
+
+        self.assertEqual(get_reference_phase(self.asset, 'US_CORE_TRADING'), 'PRE_US_RANGE')
+
+    def test_get_reference_phase_pre_us_uses_london_range(self):
+        """PRE_US should reference the most recent range phase (London Core)."""
+        from trading.services.breakout_distance_chart import get_reference_phase
+
+        self.assertEqual(get_reference_phase(self.asset, 'PRE_US_RANGE'), 'LONDON_CORE')
+
     def test_get_reference_phase_invalid(self):
         """Test reference phase mapping for invalid phase."""
         from trading.services.breakout_distance_chart import get_reference_phase
-        
-        self.assertIsNone(get_reference_phase('INVALID_PHASE'))
+
+        self.assertIsNone(get_reference_phase(self.asset, 'INVALID_PHASE'))
     
     def test_compute_trend_up(self):
         """Test trend computation when prices are up."""
