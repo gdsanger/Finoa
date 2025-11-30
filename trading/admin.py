@@ -1,5 +1,167 @@
+import logging
+
+from django import forms
 from django.contrib import admin
-from .models import TradingAsset, AssetBreakoutConfig, AssetEventConfig, Signal, Trade, WorkerStatus, AssetPriceStatus
+from django.utils import timezone
+
+from .models import (
+    TradingAsset,
+    AssetBreakoutConfig,
+    AssetEventConfig,
+    BreakoutRange,
+    Signal,
+    Trade,
+    WorkerStatus,
+    AssetPriceStatus,
+)
+
+
+logger = logging.getLogger(__name__)
+
+
+class BreakoutRangeForm(forms.ModelForm):
+    """Form to allow manual overrides for session highs/lows."""
+
+    class Meta:
+        model = BreakoutRange
+        fields = [
+            'asset',
+            'phase',
+            'start_time',
+            'end_time',
+            'high',
+            'low',
+            'manual_high',
+            'manual_low',
+            'height_ticks',
+            'height_points',
+            'candle_count',
+            'atr',
+            'valid_flags',
+            'is_valid',
+            'reference_range',
+            'last_adjusted_by',
+            'last_adjusted_at',
+        ]
+
+    def clean_manual_high(self):
+        value = self.cleaned_data.get('manual_high')
+        if value is not None and value <= 0:
+            raise forms.ValidationError('Manual high must be a positive price.')
+        return value
+
+    def clean_manual_low(self):
+        value = self.cleaned_data.get('manual_low')
+        if value is not None and value <= 0:
+            raise forms.ValidationError('Manual low must be a positive price.')
+        return value
+
+    def clean(self):
+        cleaned_data = super().clean()
+        manual_high = cleaned_data.get('manual_high')
+        manual_low = cleaned_data.get('manual_low')
+
+        if manual_high is not None and manual_low is not None and manual_high <= manual_low:
+            raise forms.ValidationError('Manual high must be greater than manual low.')
+
+        return cleaned_data
+
+
+@admin.register(BreakoutRange)
+class BreakoutRangeAdmin(admin.ModelAdmin):
+    """Admin to view and adjust breakout ranges, including manual overrides."""
+
+    form = BreakoutRangeForm
+    list_display = [
+        'asset',
+        'phase',
+        'start_time',
+        'end_time',
+        'high',
+        'low',
+        'manual_high',
+        'manual_low',
+        'effective_high',
+        'effective_low',
+        'last_adjusted_by',
+        'last_adjusted_at',
+    ]
+    readonly_fields = [
+        'asset',
+        'phase',
+        'start_time',
+        'end_time',
+        'high',
+        'low',
+        'height_ticks',
+        'height_points',
+        'candle_count',
+        'created_at',
+        'updated_at',
+        'last_adjusted_by',
+        'last_adjusted_at',
+    ]
+    fieldsets = (
+        (
+            'Range Window',
+            {
+                'fields': (
+                    ('asset', 'phase'),
+                    ('start_time', 'end_time'),
+                )
+            },
+        ),
+        (
+            'Computed Range (read-only)',
+            {
+                'fields': (
+                    ('high', 'low'),
+                    ('height_ticks', 'height_points'),
+                    'candle_count',
+                )
+            },
+        ),
+        (
+            'Manual Overrides',
+            {
+                'fields': (
+                    ('manual_high', 'manual_low'),
+                    ('last_adjusted_by', 'last_adjusted_at'),
+                ),
+                'description': 'Provide manual overrides when automatic highs/lows need correction.',
+            },
+        ),
+        (
+            'Validation & Links',
+            {
+                'fields': ('is_valid', 'atr', 'valid_flags', 'reference_range'),
+            },
+        ),
+        (
+            'Timestamps',
+            {
+                'fields': ('created_at', 'updated_at'),
+                'classes': ('collapse',),
+            },
+        ),
+    )
+
+    def save_model(self, request, obj, form, change):
+        manual_fields_changed = {'manual_high', 'manual_low'} & set(form.changed_data)
+
+        if manual_fields_changed:
+            obj.last_adjusted_by = request.user
+            obj.last_adjusted_at = timezone.now()
+            logger.info(
+                'Manual override updated for %s (%s): high=%s low=%s by %s',
+                obj.asset,
+                obj.phase,
+                obj.manual_high,
+                obj.manual_low,
+                request.user,
+            )
+
+        super().save_model(request, obj, form, change)
 
 
 class AssetBreakoutConfigInline(admin.StackedInline):

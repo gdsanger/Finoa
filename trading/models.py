@@ -1,3 +1,6 @@
+import logging
+
+from django.conf import settings
 from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.utils import timezone
@@ -9,6 +12,9 @@ import uuid
 # =============================================================================
 # Reason Codes for Diagnostics
 # =============================================================================
+
+logger = logging.getLogger(__name__)
+
 
 class ReasonCode:
     """
@@ -1245,6 +1251,20 @@ class BreakoutRange(models.Model):
         decimal_places=6,
         help_text='Lowest price during the range period'
     )
+    manual_high = models.DecimalField(
+        max_digits=12,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        help_text='Optional manual override for the range high'
+    )
+    manual_low = models.DecimalField(
+        max_digits=12,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        help_text='Optional manual override for the range low'
+    )
     height_ticks = models.PositiveIntegerField(
         default=0,
         help_text='Range height in ticks'
@@ -1293,6 +1313,21 @@ class BreakoutRange(models.Model):
         related_name='dependent_ranges',
         help_text='Reference range used for trading (for US Core Trading phase)'
     )
+
+    # Manual adjustments
+    last_adjusted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='adjusted_breakout_ranges',
+        help_text='User who last adjusted the manual high/low'
+    )
+    last_adjusted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='Timestamp of the last manual adjustment'
+    )
     
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
@@ -1309,6 +1344,16 @@ class BreakoutRange(models.Model):
     
     def __str__(self):
         return f"{self.asset.symbol} - {self.phase} ({self.end_time.strftime('%Y-%m-%d %H:%M')})"
+
+    @property
+    def effective_high(self):
+        """Return the manual high if set, otherwise the computed high."""
+        return self.manual_high if self.manual_high is not None else self.high
+
+    @property
+    def effective_low(self):
+        """Return the manual low if set, otherwise the computed low."""
+        return self.manual_low if self.manual_low is not None else self.low
     
     @classmethod
     def get_latest_for_asset_phase(cls, asset, phase):
@@ -1417,6 +1462,10 @@ class BreakoutRange(models.Model):
             'end_time': self.end_time.isoformat() if self.end_time else None,
             'high': str(self.high),
             'low': str(self.low),
+            'manual_high': str(self.manual_high) if self.manual_high is not None else None,
+            'manual_low': str(self.manual_low) if self.manual_low is not None else None,
+            'effective_high': str(self.effective_high) if self.effective_high is not None else None,
+            'effective_low': str(self.effective_low) if self.effective_low is not None else None,
             'height_ticks': self.height_ticks,
             'height_points': str(self.height_points),
             'candle_count': self.candle_count,
@@ -1424,8 +1473,37 @@ class BreakoutRange(models.Model):
             'valid_flags': self.valid_flags,
             'is_valid': self.is_valid,
             'reference_range_id': self.reference_range_id,
+            'last_adjusted_by': self.last_adjusted_by.username if self.last_adjusted_by else None,
+            'last_adjusted_at': self.last_adjusted_at.isoformat() if self.last_adjusted_at else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }
+
+    def save(self, *args, **kwargs):
+        manual_fields_changed = False
+        if self.pk:
+            previous = BreakoutRange.objects.filter(pk=self.pk).values('manual_high', 'manual_low').first()
+            if previous:
+                manual_fields_changed = (
+                    previous.get('manual_high') != self.manual_high
+                    or previous.get('manual_low') != self.manual_low
+                )
+        else:
+            manual_fields_changed = self.manual_high is not None or self.manual_low is not None
+
+        if manual_fields_changed and not self.last_adjusted_at:
+            self.last_adjusted_at = timezone.now()
+
+        if manual_fields_changed:
+            logger.info(
+                "Manual breakout range override for %s (%s): high=%s low=%s user=%s",
+                self.asset_id,
+                self.phase,
+                self.manual_high,
+                self.manual_low,
+                getattr(self.last_adjusted_by, 'username', None),
+            )
+
+        super().save(*args, **kwargs)
 
 
 class AssetDiagnostics(models.Model):

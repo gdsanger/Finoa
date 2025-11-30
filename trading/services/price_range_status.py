@@ -139,8 +139,8 @@ def compute_price_range_status(
         return status
     
     # Populate range data
-    status.range_high = range_data.high
-    status.range_low = range_data.low
+    status.range_high = range_data.effective_high
+    status.range_low = range_data.effective_low
     status.range_ticks = range_data.height_ticks
     
     # Get current price from asset-specific price status (multi-asset support)
