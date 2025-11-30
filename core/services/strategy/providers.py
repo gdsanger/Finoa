@@ -120,9 +120,25 @@ class MarketStateProvider(Protocol):
     def get_eia_timestamp(self) -> Optional[datetime]:
         """
         Get the expected/actual EIA release timestamp.
-        
+
         Returns:
             EIA release timestamp or None if not applicable.
+        """
+        ...
+
+    def is_phase_tradeable(self, phase: SessionPhase) -> bool:
+        """
+        Determine if a given session phase is tradeable.
+
+        Implementations can use asset-specific configuration to override the
+        default behavior. By default, only the historically tradeable phases are
+        enabled (London Core, US Core Trading, US Core, EIA Post).
+
+        Args:
+            phase: SessionPhase to evaluate.
+
+        Returns:
+            True if the phase is tradeable, False otherwise.
         """
         ...
 
@@ -178,3 +194,13 @@ class BaseMarketStateProvider(ABC):
     def get_eia_timestamp(self) -> Optional[datetime]:
         """Get the expected/actual EIA release timestamp."""
         return None
+
+    def is_phase_tradeable(self, phase: SessionPhase) -> bool:
+        """Default tradeability based on historical behavior."""
+        tradeable_phases = {
+            SessionPhase.LONDON_CORE,
+            SessionPhase.US_CORE_TRADING,
+            SessionPhase.US_CORE,
+            SessionPhase.EIA_POST,
+        }
+        return phase in tradeable_phases

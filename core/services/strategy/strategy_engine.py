@@ -86,6 +86,27 @@ class StrategyEngine:
         """Record the latest status message for external consumers."""
         self.last_status_message = message
 
+    def _is_phase_tradeable(self, phase: SessionPhase) -> tuple[bool, list[str]]:
+        """Determine if the given phase is tradeable for the current asset."""
+        tradeable_phases = [
+            SessionPhase.LONDON_CORE,
+            SessionPhase.US_CORE_TRADING,
+            SessionPhase.US_CORE,
+            SessionPhase.EIA_POST,
+        ]
+
+        phase_tradeable = phase in tradeable_phases
+        try:
+            if hasattr(self.market_state, "is_phase_tradeable"):
+                phase_tradeable = bool(self.market_state.is_phase_tradeable(phase))
+        except Exception as exc:  # pragma: no cover - defensive guard
+            logger.debug(
+                "Failed to read asset-specific phase tradeability; using defaults", 
+                extra={"strategy_data": {"phase": phase.value, "error": str(exc)}}
+            )
+
+        return phase_tradeable, tradeable_phases
+
     def evaluate(self, epic: str, ts: datetime) -> list[SetupCandidate]:
         """
         Analyze the current market state and generate setup candidates.
@@ -123,6 +144,7 @@ class StrategyEngine:
         elif phase == SessionPhase.PRE_US_RANGE:
             # Pre-US Range phase uses London Core range for reference
             london_core_range = self.market_state.get_london_core_range(epic)
+            pre_us_range = self.market_state.get_pre_us_range(epic)
         elif phase in (SessionPhase.US_CORE_TRADING, SessionPhase.US_CORE):
             # US Core Trading trades based on Pre-US Range breakouts
             pre_us_range = self.market_state.get_pre_us_range(epic)
@@ -150,13 +172,7 @@ class StrategyEngine:
         )
         
         # Define tradeable phases for logging
-        tradeable_phases = [
-            SessionPhase.LONDON_CORE,
-            SessionPhase.US_CORE_TRADING,
-            SessionPhase.US_CORE,
-            SessionPhase.EIA_POST,
-        ]
-        is_tradeable_phase = phase in tradeable_phases
+        is_tradeable_phase, default_tradeable_phases = self._is_phase_tradeable(phase)
         
         # Log if phase is not tradeable with detailed market data
         if not is_tradeable_phase:
@@ -173,7 +189,7 @@ class StrategyEngine:
                         "timestamp": ts.isoformat(),
                         "phase": phase.value,
                         "is_tradeable_phase": False,
-                        "tradeable_phases": [p.value for p in tradeable_phases],
+                        "tradeable_phases": [p.value for p in default_tradeable_phases],
                         "current_price": current_price,
                         "asia_range_high": asia_range[0] if asia_range else None,
                         "asia_range_low": asia_range[1] if asia_range else None,
@@ -187,6 +203,7 @@ class StrategyEngine:
                     }
                 }
             )
+            return candidates
         
         # Evaluate breakout strategies based on phase
         if phase == SessionPhase.LONDON_CORE:
@@ -194,7 +211,7 @@ class StrategyEngine:
             candidates.extend(breakout_candidates)
         
         # US Core Trading - allows breakouts based on Pre-US Range
-        if phase == SessionPhase.US_CORE_TRADING:
+        if phase in (SessionPhase.US_CORE_TRADING, SessionPhase.PRE_US_RANGE):
             breakout_candidates = self._evaluate_us_breakout(epic, ts, phase)
             candidates.extend(breakout_candidates)
         
@@ -346,30 +363,17 @@ class StrategyEngine:
             detail=f"Current phase: {phase.value}",
         ))
         
-        # Check if phase is tradeable
-        tradeable_phases = [
-            SessionPhase.LONDON_CORE,
-            SessionPhase.US_CORE_TRADING,
-            SessionPhase.US_CORE,  # Deprecated, kept for backwards compatibility
-            SessionPhase.EIA_POST,
-        ]
-        phase_tradeable = phase in tradeable_phases
-        
-        # PRE_US_RANGE is explicitly not tradeable (range formation only)
-        if phase == SessionPhase.PRE_US_RANGE:
-            result.criteria.append(DiagnosticCriterion(
-                name="Phase is tradeable",
-                passed=False,
-                detail=f"{phase.value} is a range formation phase only - no breakouts allowed",
-            ))
-            result.summary = f"Phase {phase.value}: Collecting range, no setups"
-            self._set_status(result.summary)
-            return result
-        
+        # Check if phase is tradeable using provider (falls back to defaults)
+        phase_tradeable, default_tradeable_phases = self._is_phase_tradeable(phase)
+
         result.criteria.append(DiagnosticCriterion(
             name="Phase is tradeable",
             passed=phase_tradeable,
-            detail=f"{phase.value} {'is' if phase_tradeable else 'is not'} a tradeable phase",
+            detail=(
+                f"{phase.value} {'is' if phase_tradeable else 'is not'} a tradeable phase"
+                if phase_tradeable or default_tradeable_phases else
+                f"{phase.value} tradeability unknown"
+            ),
         ))
 
         if not phase_tradeable:
@@ -380,7 +384,7 @@ class StrategyEngine:
         # Evaluate based on phase
         if phase == SessionPhase.LONDON_CORE:
             self._evaluate_asia_breakout_with_diagnostics(epic, ts, phase, result)
-        elif phase in (SessionPhase.US_CORE_TRADING, SessionPhase.US_CORE):
+        elif phase in (SessionPhase.US_CORE_TRADING, SessionPhase.US_CORE, SessionPhase.PRE_US_RANGE):
             self._evaluate_us_breakout_with_diagnostics(epic, ts, phase, result)
         elif phase == SessionPhase.EIA_POST:
             self._evaluate_eia_with_diagnostics(epic, ts, phase, result)

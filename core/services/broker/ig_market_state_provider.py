@@ -243,6 +243,35 @@ class IGMarketStateProvider(BaseMarketStateProvider):
     def clear_current_asset(self) -> None:
         """Clear the current asset association."""
         self._current_asset = None
+
+    def is_phase_tradeable(self, phase: SessionPhase) -> bool:
+        """Return whether the current phase is tradeable for the active asset."""
+        # If an asset is set, prefer its per-phase configuration
+        if self._current_asset:
+            try:
+                from trading.models import AssetSessionPhaseConfig
+
+                phase_config = (
+                    AssetSessionPhaseConfig.objects
+                    .filter(asset=self._current_asset, phase=phase.value, enabled=True)
+                    .first()
+                )
+                if phase_config:
+                    return phase_config.is_trading_phase
+            except Exception as exc:  # pragma: no cover - defensive logging
+                logger.debug(
+                    "Failed to read phase tradeability from AssetSessionPhaseConfig",\
+                    extra={
+                        "strategy_data": {
+                            "epic": getattr(self._current_asset, "epic", None),
+                            "phase": phase.value,
+                            "error": str(exc),
+                        }
+                    },
+                )
+
+        # Fallback to legacy defaults
+        return super().is_phase_tradeable(phase)
     
     def get_candle_count_for_epic(self, epic: str) -> int:
         """
