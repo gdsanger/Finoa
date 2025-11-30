@@ -1,4 +1,5 @@
 {% extends 'core/base.html' %}
+{% load static %}
 
 {% block title %}Fiona - Signal Dashboard{% endblock %}
 
@@ -1487,6 +1488,207 @@
         opacity: 0.6;
     }
 
+    .asset-actions {
+        margin-left: auto;
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+    }
+
+    .asset-chart-btn {
+        padding: 0.35rem 0.65rem;
+        border-radius: 8px;
+        background: rgba(46, 120, 214, 0.12);
+        border: 1px solid rgba(46, 120, 214, 0.4);
+        color: var(--fiona-text-light);
+        font-size: 0.8rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+    }
+
+    .asset-chart-btn:hover {
+        background: rgba(46, 120, 214, 0.2);
+        border-color: rgba(46, 120, 214, 0.6);
+        color: white;
+    }
+
+    /* Data Status Indicator (shared with chart component) */
+    .data-status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.35rem 0.65rem;
+        border-radius: 6px;
+        font-size: 0.7rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .data-status-badge i {
+        font-size: 0.5rem;
+    }
+
+    .data-status-badge.live {
+        background-color: rgba(34, 197, 94, 0.2);
+        color: #22c55e;
+        border: 1px solid #22c55e;
+    }
+
+    .data-status-badge.poll {
+        background-color: rgba(59, 130, 246, 0.2);
+        color: #3b82f6;
+        border: 1px solid #3b82f6;
+    }
+
+    .data-status-badge.cached {
+        background-color: rgba(255, 193, 7, 0.2);
+        color: #ffc107;
+        border: 1px solid #ffc107;
+    }
+
+    .data-status-badge.offline {
+        background-color: rgba(239, 68, 68, 0.2);
+        color: #ef4444;
+        border: 1px solid #ef4444;
+    }
+
+    /* Modal for realtime chart */
+    .chart-modal {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.6);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 2000;
+        backdrop-filter: blur(2px);
+        padding: 1rem;
+    }
+
+    .chart-modal.open {
+        display: flex;
+    }
+
+    .chart-modal-dialog {
+        width: 75vw;
+        height: 75vh;
+        max-width: 1200px;
+        background: linear-gradient(180deg, rgba(46, 120, 214, 0.12), rgba(26, 188, 156, 0.04)), var(--fiona-card-dark);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 16px;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+        overflow: hidden;
+    }
+
+    .chart-modal-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.9rem 1.25rem;
+        border-bottom: 1px solid var(--fiona-border);
+        background: rgba(255, 255, 255, 0.02);
+    }
+
+    .chart-modal-title {
+        margin: 0;
+        color: var(--fiona-text-light);
+        font-size: 1.05rem;
+    }
+
+    .chart-modal-body {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        padding: 1rem 1.25rem 1.25rem;
+        overflow: hidden;
+    }
+
+    .chart-modal-meta {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 0.75rem;
+    }
+
+    .chart-modal-meta .meta-item {
+        background: rgba(0, 0, 0, 0.24);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 10px;
+        padding: 0.65rem 0.75rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+    }
+
+    .chart-modal-meta .meta-item span {
+        font-size: 0.75rem;
+        color: var(--fiona-text-muted);
+    }
+
+    .chart-modal-meta .meta-item strong {
+        font-size: 1rem;
+    }
+
+    .chart-modal-canvas {
+        flex: 1;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(0, 0, 0, 0.22);
+        min-height: 320px;
+    }
+
+    .chart-modal-info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 0.75rem;
+    }
+
+    .info-tile {
+        background: rgba(0, 0, 0, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 10px;
+        padding: 0.65rem 0.75rem;
+    }
+
+    .info-tile .label {
+        color: var(--fiona-text-muted);
+        font-size: 0.72rem;
+        display: block;
+        margin-bottom: 0.25rem;
+    }
+
+    .info-tile .value {
+        font-size: 0.95rem;
+        font-weight: 700;
+    }
+
+    .chart-loading,
+    .chart-error {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        height: 100%;
+        color: var(--fiona-text-muted);
+        flex-direction: column;
+        text-align: center;
+    }
+
+    .chart-error p {
+        margin: 0;
+    }
+
+    @media (max-width: 992px) {
+        .chart-modal-dialog {
+            width: 95vw;
+            height: 80vh;
+        }
+    }
+
     /* Responsive - Hide sidebar on mobile */
     @media (max-width: 992px) {
         .dashboard-layout {
@@ -1821,9 +2023,83 @@
         <!-- End Dashboard Layout -->
     </div>
 </div>
+
+<div id="asset-chart-modal" class="chart-modal" aria-hidden="true">
+    <div class="chart-modal-dialog" role="dialog" aria-modal="true">
+        <div class="chart-modal-header">
+            <div>
+                <h5 class="chart-modal-title" id="asset-chart-title"><i class="bi bi-graph-up"></i> Realtime Chart</h5>
+                <small class="text-muted" id="asset-chart-subtitle">Breakout Distance Dashboard</small>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <span id="asset-chart-status" class="data-status-badge offline">
+                    <i class="bi bi-circle-fill"></i> <span id="asset-chart-status-text">OFFLINE</span>
+                </span>
+                <button type="button" class="btn-close btn-close-white" aria-label="Close" onclick="closeAssetChartModal()"></button>
+            </div>
+        </div>
+        <div class="chart-modal-body">
+            <div class="chart-modal-meta">
+                <div class="meta-item">
+                    <span>Asset</span>
+                    <strong id="asset-chart-asset">--</strong>
+                </div>
+                <div class="meta-item">
+                    <span>Phase</span>
+                    <strong id="asset-chart-phase">--</strong>
+                </div>
+                <div class="meta-item">
+                    <span>Fenster</span>
+                    <strong id="asset-chart-window">--</strong>
+                </div>
+                <div class="meta-item">
+                    <span>Preis</span>
+                    <strong id="asset-chart-current-price">--</strong>
+                </div>
+            </div>
+            <div id="asset-chart-container" class="chart-modal-canvas"></div>
+            <div class="chart-modal-info-grid">
+                <div class="info-tile">
+                    <span class="label">Referenz-Range</span>
+                    <span class="value" id="asset-chart-reference">--</span>
+                </div>
+                <div class="info-tile">
+                    <span class="label">Range High</span>
+                    <span class="value" id="asset-chart-range-high">--</span>
+                </div>
+                <div class="info-tile">
+                    <span class="label">Range Low</span>
+                    <span class="value" id="asset-chart-range-low">--</span>
+                </div>
+                <div class="info-tile">
+                    <span class="label">Breakout Long</span>
+                    <span class="value" id="asset-chart-breakout-long">--</span>
+                </div>
+                <div class="info-tile">
+                    <span class="label">Breakout Short</span>
+                    <span class="value" id="asset-chart-breakout-short">--</span>
+                </div>
+                <div class="info-tile">
+                    <span class="label">Distance High</span>
+                    <span class="value" id="asset-chart-distance-high">--</span>
+                </div>
+                <div class="info-tile">
+                    <span class="label">Distance Low</span>
+                    <span class="value" id="asset-chart-distance-low">--</span>
+                </div>
+                <div class="info-tile">
+                    <span class="label">Status</span>
+                    <span class="value" id="asset-chart-range-status">--</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
+<script src="{% static 'core/js/lightweight-charts.standalone.production.js' %}"></script>
+<script src="{% static 'core/js/breakout_distance_widget.js' %}"></script>
 <script>
     function getCookie(name) {
         let cookieValue = null;
@@ -1839,6 +2115,10 @@
         }
         return cookieValue;
     }
+
+    const ASSET_CHART_WINDOW_HOURS = 6;
+    const ASSET_CHART_REFRESH_MS = 5000;
+    let assetChartWidget = null;
     
     function executeTrade(signalId, tradeType) {
         const url = tradeType === 'live' 
@@ -2465,8 +2745,16 @@
     document.addEventListener('visibilitychange', function() {
         if (document.hidden) {
             stopAutoRefresh();
+            if (assetChartWidget) {
+                assetChartWidget.stopAutoRefresh();
+            }
         } else {
             startAutoRefresh();
+            const modal = document.getElementById('asset-chart-modal');
+            if (modal && modal.classList.contains('open') && assetChartWidget) {
+                assetChartWidget.refresh();
+                assetChartWidget.startAutoRefresh();
+            }
         }
     });
     
@@ -2647,12 +2935,19 @@
                     </div>
                     <span class="badge rounded-pill price-badge ${pricePositionClass}">${priceValue}${currency}</span>
                 </div>
-                <div class="d-flex align-items-center gap-2 mt-2 flex-wrap">
-                    <span class="phase-pill ${phaseClass}">
-                        <i class="bi ${phaseIcon}"></i>
-                        ${escapeHtml(phaseName)}
-                    </span>
-                    ${rangeHtml}
+                <div class="d-flex align-items-center gap-2 mt-2 flex-wrap justify-content-between">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span class="phase-pill ${phaseClass}">
+                            <i class="bi ${phaseIcon}"></i>
+                            ${escapeHtml(phaseName)}
+                        </span>
+                        ${rangeHtml}
+                    </div>
+                    <div class="asset-actions">
+                        <button class="asset-chart-btn" data-asset-id="${asset.id}" data-symbol="${escapeHtml(asset.symbol || '')}" onclick="openAssetChartModalFromButton(this)">
+                            <i class="bi bi-graph-up"></i> Chart
+                        </button>
+                    </div>
                 </div>
                 <div class="asset-status mt-1">
                     <small><i class="bi bi-info-circle"></i> ${escapeHtml(asset.status_message || 'Kein Status')}</small>
@@ -2745,7 +3040,99 @@
             sidebarRefreshInterval = null;
         }
     };
-    
+
+    function getAssetChartWidget() {
+        if (!window.BreakoutDistanceChartWidget) {
+            console.warn('BreakoutDistanceChartWidget not available');
+            return null;
+        }
+
+        if (!assetChartWidget) {
+            assetChartWidget = new BreakoutDistanceChartWidget({
+                chartContainer: 'asset-chart-container',
+                assetSymbol: '',
+                assetId: '',
+                hours: ASSET_CHART_WINDOW_HOURS,
+                refreshMs: ASSET_CHART_REFRESH_MS,
+                dataStatusBadge: '#asset-chart-status',
+                dataStatusText: '#asset-chart-status-text',
+                infoSelectors: {
+                    asset: '#asset-chart-asset',
+                    phase: '#asset-chart-phase',
+                    referencePhase: '#asset-chart-reference',
+                    rangeHigh: '#asset-chart-range-high',
+                    rangeLow: '#asset-chart-range-low',
+                    breakoutLong: '#asset-chart-breakout-long',
+                    breakoutShort: '#asset-chart-breakout-short',
+                    currentPrice: '#asset-chart-current-price',
+                    window: '#asset-chart-window',
+                    distanceHigh: '#asset-chart-distance-high',
+                    distanceLow: '#asset-chart-distance-low',
+                    status: '#asset-chart-range-status',
+                },
+            });
+            assetChartWidget.init();
+        }
+
+        return assetChartWidget;
+    }
+
+    function openAssetChartModalFromButton(button) {
+        if (!button) return;
+        const { symbol, assetId } = button.dataset;
+        openAssetChartModal(symbol, assetId);
+    }
+
+    function openAssetChartModal(symbol, assetId) {
+        if (!symbol || !assetId) return;
+        const modal = document.getElementById('asset-chart-modal');
+        const widget = getAssetChartWidget();
+
+        if (!modal || !widget) return;
+
+        modal.classList.add('open');
+        modal.setAttribute('aria-hidden', 'false');
+        document.body.style.overflow = 'hidden';
+
+        widget.setAsset(symbol, assetId);
+        widget.setHours(ASSET_CHART_WINDOW_HOURS);
+        widget.refresh();
+        widget.startAutoRefresh();
+        setTimeout(() => widget.resizeToContainer(), 100);
+
+        const titleEl = document.getElementById('asset-chart-title');
+        if (titleEl) {
+            titleEl.innerHTML = `<i class="bi bi-graph-up"></i> ${escapeHtml(symbol)} Realtime Chart`;
+        }
+    }
+
+    function closeAssetChartModal() {
+        const modal = document.getElementById('asset-chart-modal');
+        if (modal) {
+            modal.classList.remove('open');
+            modal.setAttribute('aria-hidden', 'true');
+        }
+        document.body.style.overflow = '';
+        if (assetChartWidget) {
+            assetChartWidget.stopAutoRefresh();
+        }
+    }
+
+    const assetChartModalEl = document.getElementById('asset-chart-modal');
+    if (assetChartModalEl) {
+        assetChartModalEl.addEventListener('click', function(event) {
+            if (event.target === assetChartModalEl) {
+                closeAssetChartModal();
+            }
+        });
+    }
+
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape') {
+            closeAssetChartModal();
+        }
+    });
+
     // ============================================================================
     // Signal Polling & Desktop Notifications
     // ============================================================================
