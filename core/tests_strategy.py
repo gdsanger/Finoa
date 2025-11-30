@@ -330,6 +330,7 @@ class DummyMarketStateProvider(BaseMarketStateProvider):
         pre_us_range: tuple[float, float] = None,
         eia_timestamp: datetime = None,
         atr: float = None,
+        tradeable: bool | None = None,
     ):
         self._phase = phase
         self._candles = candles or []
@@ -337,6 +338,7 @@ class DummyMarketStateProvider(BaseMarketStateProvider):
         self._pre_us_range = pre_us_range
         self._eia_timestamp = eia_timestamp
         self._atr = atr
+        self._tradeable = tradeable
 
     def get_phase(self, ts: datetime) -> SessionPhase:
         return self._phase
@@ -357,6 +359,18 @@ class DummyMarketStateProvider(BaseMarketStateProvider):
 
     def get_eia_timestamp(self) -> datetime | None:
         return self._eia_timestamp
+
+    def is_phase_tradeable(self, phase: SessionPhase) -> bool:
+        if self._tradeable is not None:
+            return self._tradeable
+
+        tradeable_phases = {
+            SessionPhase.LONDON_CORE,
+            SessionPhase.US_CORE_TRADING,
+            SessionPhase.US_CORE,
+            SessionPhase.EIA_POST,
+        }
+        return phase in tradeable_phases
 
     def get_atr(
         self,
@@ -1089,9 +1103,36 @@ class UsCoreTradinSessionTest(TestCase):
         engine = StrategyEngine(provider)
         
         candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
-        
+
         # No setups in PRE_US_RANGE phase - it's range formation only
         self.assertEqual(len(candidates), 0)
+
+    def test_pre_us_range_can_be_tradeable_via_config(self):
+        """PRE_US_RANGE should generate setups when explicitly marked tradeable."""
+        ts = datetime(2025, 1, 15, 13, 30, tzinfo=timezone.utc)
+
+        candle = Candle(
+            timestamp=ts,
+            open=75.18,
+            high=75.55,
+            low=75.12,
+            close=75.42,
+        )
+
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.PRE_US_RANGE,
+            candles=[candle],
+            pre_us_range=(75.20, 75.00),
+            atr=0.50,
+            tradeable=True,
+        )
+
+        engine = StrategyEngine(provider)
+        candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
+
+        self.assertGreaterEqual(len(candidates), 1)
+        for candidate in candidates:
+            self.assertEqual(candidate.phase, SessionPhase.PRE_US_RANGE)
     
     def test_pre_us_range_diagnostics(self):
         """Test that PRE_US_RANGE phase shows informative diagnostics."""
