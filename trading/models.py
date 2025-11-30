@@ -1117,6 +1117,13 @@ class AssetPriceStatus(models.Model):
         blank=True,
         help_text='Current spread'
     )
+
+    # Last strategy status message for UI display
+    last_strategy_status = models.TextField(
+        blank=True,
+        default='',
+        help_text='Latest strategy engine status message for this asset'
+    )
     
     # Timestamp
     updated_at = models.DateTimeField(
@@ -1132,7 +1139,14 @@ class AssetPriceStatus(models.Model):
         return f"{self.asset.symbol}: {self.bid_price}/{self.ask_price}"
     
     @classmethod
-    def update_price(cls, asset, bid_price=None, ask_price=None, spread=None):
+    def update_price(
+        cls,
+        asset,
+        bid_price=None,
+        ask_price=None,
+        spread=None,
+        status_message: str | None = None,
+    ):
         """
         Update or create the price status for an asset.
         
@@ -1156,6 +1170,7 @@ class AssetPriceStatus(models.Model):
                 'bid_price': Decimal(str(bid_price)) if bid_price is not None else None,
                 'ask_price': Decimal(str(ask_price)) if ask_price is not None else None,
                 'spread': Decimal(str(spread)) if spread is not None else None,
+                'last_strategy_status': status_message or '',
             }
         )
         return price_status

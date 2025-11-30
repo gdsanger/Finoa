@@ -1438,6 +1438,32 @@
         color: var(--signal-short);
     }
 
+    .range-distance {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.15rem;
+        padding: 0.1rem 0.4rem;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.06);
+        font-size: 0.72rem;
+        color: var(--fiona-text-light);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .range-distance.negative {
+        border-color: rgba(220, 53, 69, 0.35);
+        color: var(--signal-short);
+    }
+
+    .range-distance.positive {
+        border-color: rgba(40, 167, 69, 0.35);
+        color: var(--signal-long);
+    }
+
+    .asset-status {
+        color: var(--fiona-text-muted);
+    }
+
     /* Dashboard Main Content Area */
     .dashboard-main {
         flex: 1;
@@ -2534,6 +2560,30 @@
 
         return 'within-range';
     }
+
+    function formatDistance(value) {
+        if (value === null || value === undefined) return '--';
+        const num = parseFloat(value);
+        if (isNaN(num)) return '--';
+        const sign = num > 0 ? '+' : num < 0 ? '-' : '';
+        const magnitude = Math.abs(num);
+        let formatted;
+        if (magnitude >= 1000) {
+            formatted = magnitude.toFixed(2);
+        } else if (magnitude >= 10) {
+            formatted = magnitude.toFixed(3);
+        } else {
+            formatted = magnitude.toFixed(4);
+        }
+        return `${sign}${formatted}`;
+    }
+
+    function getDistanceClass(value) {
+        if (value === null || value === undefined) return '';
+        const num = parseFloat(value);
+        if (isNaN(num) || num === 0) return '';
+        return num < 0 ? 'negative' : 'positive';
+    }
     
     function renderAssetItem(asset) {
         const phaseClass = getPhaseClass(asset.phase_type);
@@ -2545,6 +2595,17 @@
             ? formatAssetPrice(asset.current_price)
             : '--';
 
+        const distToHigh = asset.range_distance ? asset.range_distance.to_high : null;
+        const distToLow = asset.range_distance ? asset.range_distance.to_low : null;
+
+        const highDistanceBadge = distToHigh === null || distToHigh === undefined ? '' : `
+            <span class="range-distance ${getDistanceClass(distToHigh)}">Δ ${formatDistance(distToHigh)}</span>
+        `;
+
+        const lowDistanceBadge = distToLow === null || distToLow === undefined ? '' : `
+            <span class="range-distance ${getDistanceClass(distToLow)}">Δ ${formatDistance(distToLow)}</span>
+        `;
+
         let rangeHtml = '';
         if (asset.previous_range && (asset.previous_range.high || asset.previous_range.low)) {
             rangeHtml = `
@@ -2552,10 +2613,12 @@
                     <span class="range-pill high">
                         <span class="label">High</span>
                         ${formatAssetPrice(asset.previous_range.high)}
+                        ${highDistanceBadge}
                     </span>
                     <span class="range-pill low">
                         <span class="label">Low</span>
                         ${formatAssetPrice(asset.previous_range.low)}
+                        ${lowDistanceBadge}
                     </span>
                 </div>
             `;
@@ -2590,6 +2653,9 @@
                         ${escapeHtml(phaseName)}
                     </span>
                     ${rangeHtml}
+                </div>
+                <div class="asset-status mt-1">
+                    <small><i class="bi bi-info-circle"></i> ${escapeHtml(asset.status_message || 'Kein Status')}</small>
                 </div>
             </li>
         `;
