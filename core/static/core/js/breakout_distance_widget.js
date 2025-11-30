@@ -405,7 +405,12 @@
             }
 
             const rangeData = ranges[referencePhase];
-            if (!rangeData || !rangeData.is_valid || rangeData.high === null || rangeData.low === null) {
+            const zoneHigh = Number(rangeData?.high);
+            const zoneLow = Number(rangeData?.low);
+
+            const hasValidRange = Number.isFinite(zoneHigh) && Number.isFinite(zoneLow);
+
+            if (!rangeData || !rangeData.is_valid || !hasValidRange) {
                 this.rangeZoneSeries.setData([]);
                 return;
             }
@@ -421,7 +426,7 @@
             const color = this.colors.zones[referencePhase] || 'rgba(0,0,0,0)';
 
             this.rangeZoneSeries.applyOptions({
-                baseValue: { type: 'price', price: rangeData.low },
+                baseValue: { type: 'price', price: zoneLow },
                 topFillColor1: color,
                 topFillColor2: color,
                 topLineColor: 'rgba(0,0,0,0)',
@@ -435,9 +440,8 @@
 
             const zoneStart = Number(startTime);
             const zoneEnd = Number(endTime);
-            const zoneHigh = Number(rangeData.high);
 
-            if (!Number.isFinite(zoneStart) || !Number.isFinite(zoneEnd) || !Number.isFinite(zoneHigh)) {
+            if (!Number.isFinite(zoneStart) || !Number.isFinite(zoneEnd)) {
                 this.rangeZoneSeries.setData([]);
                 return;
             }
