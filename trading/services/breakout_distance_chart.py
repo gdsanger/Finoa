@@ -33,7 +33,7 @@ TrendType = Literal["up", "down", "sideways"]
 REFERENCE_PHASE_MAPPING = {
     'LONDON_CORE': 'ASIA_RANGE',
     'US_CORE_TRADING': 'PRE_US_RANGE',
-    'PRE_US_RANGE': 'ASIA_RANGE',
+    'PRE_US_RANGE': 'LONDON_CORE',
     'EIA_PRE': 'PRE_US_RANGE',
     'EIA_POST': 'PRE_US_RANGE',
 }
