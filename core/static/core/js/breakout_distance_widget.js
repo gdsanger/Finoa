@@ -129,7 +129,7 @@
 
             try {
                 const [candlesRes, contextRes, rangesRes] = await Promise.all([
-                    fetch(`/fiona/api/breakout-distance-candles?asset_id=${this.assetId}&timeframe=${this.timeframe}&window=${this.hours}`),
+                    fetch(`/fiona/api/breakout-distance-candles?asset_id=${this.assetId}&timeframe=${this.timeframe}&window=${this.hours}&force_refresh=1`),
                     fetch(`/fiona/api/chart/${this.assetSymbol}/breakout-context`),
                     fetch(`/fiona/api/chart/${this.assetSymbol}/session-ranges?hours=${this.hours}`),
                 ]);

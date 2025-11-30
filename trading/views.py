@@ -2326,7 +2326,8 @@ def api_breakout_distance_candles(request):
         asset_id: Required - Asset ID to fetch candles for
         timeframe: Candle timeframe (default: '1m', options: 1m, 5m, 15m, 1h)
         window: Time window in hours (default: 6, options: 1, 3, 6, 8, 12, 24, 48, 72)
-    
+        force_refresh: Optional flag to force refresh from the realtime stream/broker
+
     Returns JSON with:
         - success: Whether the request was successful
         - asset: Asset symbol
@@ -2360,6 +2361,10 @@ def api_breakout_distance_candles(request):
         window_hours = float(request.GET.get('window', 6))
     except (ValueError, TypeError):
         window_hours = 6
+
+    # Optional flag to force a refresh from the realtime stream instead of cached data
+    force_refresh_param = request.GET.get('force_refresh', '').lower()
+    force_refresh = force_refresh_param in {'1', 'true', 'yes'}
     
     try:
         # Get the asset
@@ -2377,6 +2382,7 @@ def api_breakout_distance_candles(request):
             asset=asset,
             timeframe=timeframe,
             window_hours=window_hours,
+            force_refresh=force_refresh,
         )
         
         return JsonResponse({
