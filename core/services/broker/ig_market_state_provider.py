@@ -956,12 +956,15 @@ class IGMarketStateProvider(BaseMarketStateProvider):
             ).order_by('-end_time').first()
             
             if latest_range:
+                # Prefer manually adjusted ranges when available
+                high = float(latest_range.effective_high)
+                low = float(latest_range.effective_low)
                 logger.info(
                     f"Range loaded from database: asset={asset.symbol}, phase={phase}, "
-                    f"high={float(latest_range.high):.4f}, low={float(latest_range.low):.4f}, "
+                    f"high={high:.4f}, low={low:.4f}, "
                     f"end_time={latest_range.end_time.isoformat()}"
                 )
-                return (float(latest_range.high), float(latest_range.low))
+                return (high, low)
             
             logger.debug(f"No valid range found in database for {asset.symbol} {phase}")
             return None
