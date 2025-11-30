@@ -83,6 +83,10 @@ class Command(BaseCommand):
         self.weaviate_service: Optional[WeaviateService] = None
         self.shutdown_handler: Optional[GracefulShutdown] = None
         self._last_price_snapshot_cleanup: Optional[datetime] = None
+        # Track intra-phase highs/lows per epic using observed mid prices.
+        # Broker-provided daily low values would otherwise bleed into later phases
+        # (e.g., using the Asia low for London or US ranges).
+        self._phase_range_tracker: dict[str, dict[str, float]] = {}
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -792,17 +796,35 @@ class Command(BaseCommand):
         if not is_range_build:
             return None
         
-        # Get high/low from price object.
-        # Note: IG's price object provides session-level high/low that gets updated
-        # throughout the trading day. During range-building phases, this represents
-        # the current high/low since market open. The ranges are captured incrementally
-        # as the worker runs, with each update potentially recording a new high/low.
-        if current_price.high is None or current_price.low is None:
-            logger.debug(f"No high/low data for {epic}, skipping range build")
+        # Use mid price to build per-phase ranges. Broker-provided high/low values
+        # are daily extremes and would keep the Asia low for all following phases.
+        mid_price = None
+        try:
+            mid_price = float(current_price.mid_price)
+        except Exception:
+            mid_price = None
+
+        if mid_price is None:
+            try:
+                if current_price.bid is not None and current_price.ask is not None:
+                    mid_price = float((current_price.bid + current_price.ask) / 2)
+            except Exception:
+                mid_price = None
+
+        if mid_price is None:
+            logger.debug(f"No mid price for {epic}, skipping range build")
             return None
-        
-        high = float(current_price.high)
-        low = float(current_price.low)
+
+        tracker = self._phase_range_tracker.get(epic, {})
+        if tracker.get("phase") != phase:
+            tracker = {"phase": phase, "high": mid_price, "low": mid_price}
+        else:
+            tracker["high"] = max(tracker.get("high", mid_price), mid_price)
+            tracker["low"] = min(tracker.get("low", mid_price), mid_price)
+
+        self._phase_range_tracker[epic] = tracker
+        high = tracker["high"]
+        low = tracker["low"]
         
         # Get ATR for context
         atr = self.market_state_provider.get_atr(epic, '1h', 14)
