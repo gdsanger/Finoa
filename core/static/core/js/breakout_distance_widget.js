@@ -435,16 +435,18 @@
 
             const zoneStart = Number(startTime);
             const zoneEnd = Number(endTime);
-            if (Number.isNaN(zoneStart) || Number.isNaN(zoneEnd)) {
+            const zoneHigh = Number(rangeData.high);
+
+            if (!Number.isFinite(zoneStart) || !Number.isFinite(zoneEnd) || !Number.isFinite(zoneHigh)) {
                 this.rangeZoneSeries.setData([]);
                 return;
             }
 
             const dataPoints = zoneStart === zoneEnd
-                ? [{ time: zoneStart, value: Number(rangeData.high) }]
+                ? [{ time: zoneStart, value: zoneHigh }]
                 : [
-                    { time: zoneStart, value: Number(rangeData.high) },
-                    { time: zoneEnd, value: Number(rangeData.high) },
+                    { time: zoneStart, value: zoneHigh },
+                    { time: zoneEnd, value: zoneHigh },
                 ];
 
             this.rangeZoneSeries.setData(dataPoints);
