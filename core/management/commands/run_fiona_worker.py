@@ -54,6 +54,7 @@ class AssetCycleResult:
     bid_price: Optional[Decimal] = None
     ask_price: Optional[Decimal] = None
     spread: Optional[Decimal] = None
+    status_message: Optional[str] = None
 
 
 class GracefulShutdown:
@@ -546,6 +547,7 @@ class Command(BaseCommand):
         epic = asset.epic
         broker_symbol = asset.effective_broker_symbol
         result = AssetCycleResult()
+        result.status_message = "Starting asset cycle"
         
         # Get the broker service for this asset
         try:
@@ -632,15 +634,7 @@ class Command(BaseCommand):
                 result.ask_price = Decimal(str(price.ask)) if price.ask is not None else None
                 result.spread = Decimal(str(price.spread)) if price.spread is not None else None
                 self.stdout.write(f"     Price: {price.bid}/{price.ask} (via {asset.broker})")
-                
-                # Update asset-specific price status for multi-asset support
-                AssetPriceStatus.update_price(
-                    asset=asset,
-                    bid_price=price.bid,
-                    ask_price=price.ask,
-                    spread=price.spread,
-                )
-                
+
                 # Record price snapshot for Breakout Distance Chart
                 # Calculate mid price from bid/ask (price.bid and price.ask are already Decimal)
                 if price.bid is not None and price.ask is not None:
@@ -657,6 +651,7 @@ class Command(BaseCommand):
                         logger.warning(f"Failed to record price snapshot for {epic}: {snapshot_error}")
             except Exception as e:
                 self.stdout.write(self.style.WARNING(f"     Could not get price: {e}"))
+                result.status_message = f"Could not get price: {e}"
             
             # 5. Build and persist range if in a range-building phase
             range_built_phase = self._build_range_for_phase(asset, epic, phase, phase_configs_by_phase, current_price, now)
@@ -688,6 +683,7 @@ class Command(BaseCommand):
                     candles_evaluated=1,  # At least one cycle was run
                     range_built_phase=range_built_phase,
                 )
+                result.status_message = f"Phase {phase.value} not tradeable"
                 return result
             
             # 7. Run Strategy Engine
@@ -695,9 +691,11 @@ class Command(BaseCommand):
                 setups = strategy_engine.evaluate(epic, now)
                 result.setups_found = len(setups)
                 self.stdout.write(f"     Found {len(setups)} setup(s)")
+                result.status_message = strategy_engine.last_status_message or result.status_message
             except Exception as e:
                 self.stdout.write(self.style.ERROR(f"     Strategy error: {e}"))
                 logger.exception(f"Strategy evaluation failed for {epic}")
+                result.status_message = f"Strategy evaluation failed: {e}"
                 # Update diagnostics even on strategy error
                 self._update_asset_diagnostics(
                     asset=asset,
@@ -718,17 +716,30 @@ class Command(BaseCommand):
                 candles_evaluated=1,
                 range_built_phase=range_built_phase,
             )
-            
+
             if not setups:
+                result.status_message = strategy_engine.last_status_message or result.status_message or "No setups generated"
                 return result
-            
+
             # 8. Process each setup
             for setup in setups:
                 self._process_setup(setup, shadow_only, dry_run, now, trading_asset=asset)
-            
+
+            result.status_message = strategy_engine.last_status_message or result.status_message
             return result
-            
+
         finally:
+            status_message = result.status_message or "No status available"
+            try:
+                AssetPriceStatus.update_price(
+                    asset=asset,
+                    bid_price=result.bid_price,
+                    ask_price=result.ask_price,
+                    spread=result.spread,
+                    status_message=status_message,
+                )
+            except Exception as price_status_error:
+                logger.warning(f"Failed to persist price status for {epic}: {price_status_error}")
             # Clear current asset after processing
             self.market_state_provider.clear_current_asset()
 

@@ -80,6 +80,11 @@ class StrategyEngine:
         """
         self.market_state = market_state
         self.config = config or StrategyConfig()
+        self.last_status_message: Optional[str] = None
+
+    def _set_status(self, message: str) -> None:
+        """Record the latest status message for external consumers."""
+        self.last_status_message = message
 
     def evaluate(self, epic: str, ts: datetime) -> list[SetupCandidate]:
         """
@@ -92,6 +97,7 @@ class StrategyEngine:
         Returns:
             List of SetupCandidate objects (0 to N candidates).
         """
+        self.last_status_message = None
         candidates: list[SetupCandidate] = []
         
         # Get current phase
@@ -154,6 +160,7 @@ class StrategyEngine:
         
         # Log if phase is not tradeable with detailed market data
         if not is_tradeable_phase:
+            self._set_status(f"Phase {phase.value} not tradeable - no breakout evaluation")
             # Still log the price position relative to ranges for analysis
             price_analysis = self._analyze_price_position(
                 current_price, asia_range, pre_us_range, london_core_range
@@ -232,6 +239,7 @@ class StrategyEngine:
                 current_price, asia_range, pre_us_range, london_core_range
             )
             
+            self._set_status(reason)
             logger.debug(
                 "No setup candidates generated",
                 extra={
@@ -327,6 +335,7 @@ class StrategyEngine:
         Returns:
             EvaluationResult with setups and diagnostic criteria.
         """
+        self.last_status_message = None
         result = EvaluationResult()
         
         # Get current phase
@@ -354,6 +363,7 @@ class StrategyEngine:
                 detail=f"{phase.value} is a range formation phase only - no breakouts allowed",
             ))
             result.summary = f"Phase {phase.value}: Collecting range, no setups"
+            self._set_status(result.summary)
             return result
         
         result.criteria.append(DiagnosticCriterion(
@@ -361,9 +371,10 @@ class StrategyEngine:
             passed=phase_tradeable,
             detail=f"{phase.value} {'is' if phase_tradeable else 'is not'} a tradeable phase",
         ))
-        
+
         if not phase_tradeable:
             result.summary = f"Phase {phase.value} is not tradeable"
+            self._set_status(result.summary)
             return result
         
         # Evaluate based on phase
@@ -380,6 +391,7 @@ class StrategyEngine:
         # Set summary
         if result.setups:
             result.summary = f"Found {len(result.setups)} setup(s)"
+            self._set_status(result.summary)
         else:
             # Find first failed criterion for summary
             failed = [c for c in result.criteria if not c.passed]
@@ -387,7 +399,8 @@ class StrategyEngine:
                 result.summary = f"No setups: {failed[-1].name}"
             else:
                 result.summary = "No setups found"
-        
+            self._set_status(result.summary)
+
         return result
 
     def _evaluate_asia_breakout_with_diagnostics(
@@ -751,6 +764,7 @@ class StrategyEngine:
         # Get Asia range
         asia_range = self.market_state.get_asia_range(epic)
         if not asia_range:
+            self._set_status("Asia breakout evaluation: no range data")
             logger.debug(
                 "Asia breakout evaluation: no range data",
                 extra={
@@ -772,6 +786,7 @@ class StrategyEngine:
         # Check range size constraints
         if not self._is_valid_range(range_height, self.config.breakout.asia_range):
             ticks = range_height / self.config.tick_size if self.config.tick_size > 0 else 0
+            self._set_status("Asia breakout evaluation: invalid range size")
             logger.debug(
                 "Asia breakout evaluation: invalid range size",
                 extra={
@@ -796,6 +811,7 @@ class StrategyEngine:
         # Get recent candles
         candles = self.market_state.get_recent_candles(epic, '1m', 10)
         if not candles:
+            self._set_status("Asia breakout evaluation: no candle data")
             logger.debug(
                 "Asia breakout evaluation: no candle data",
                 extra={
@@ -828,6 +844,7 @@ class StrategyEngine:
                     trigger_price=latest_candle.close,
                 )
                 candidates.append(candidate)
+                self._set_status("Asia breakout evaluation: LONG setup detected")
                 logger.debug(
                     "Asia breakout evaluation: LONG setup detected",
                     extra={
@@ -846,6 +863,7 @@ class StrategyEngine:
                     }
                 )
             else:
+                self._set_status("Asia breakout evaluation: price above high but candle invalid")
                 logger.debug(
                     "Asia breakout evaluation: price above high but candle invalid",
                     extra={
@@ -878,6 +896,7 @@ class StrategyEngine:
                     trigger_price=latest_candle.close,
                 )
                 candidates.append(candidate)
+                self._set_status("Asia breakout evaluation: SHORT setup detected")
                 logger.debug(
                     "Asia breakout evaluation: SHORT setup detected",
                     extra={
@@ -896,6 +915,7 @@ class StrategyEngine:
                     }
                 )
             else:
+                self._set_status("Asia breakout evaluation: price below low but candle invalid")
                 logger.debug(
                     "Asia breakout evaluation: price below low but candle invalid",
                     extra={
@@ -917,6 +937,7 @@ class StrategyEngine:
         
         # Price within range
         if range_low <= latest_candle.close <= range_high:
+            self._set_status("Asia breakout evaluation: price within range")
             logger.debug(
                 "Asia breakout evaluation: price within range",
                 extra={
@@ -958,6 +979,7 @@ class StrategyEngine:
         # Get pre-US range
         pre_us_range = self.market_state.get_pre_us_range(epic)
         if not pre_us_range:
+            self._set_status("US breakout evaluation: no range data")
             logger.debug(
                 "US breakout evaluation: no range data",
                 extra={
@@ -979,6 +1001,7 @@ class StrategyEngine:
         # Check range size constraints
         if not self._is_valid_range(range_height, self.config.breakout.us_core):
             ticks = range_height / self.config.tick_size if self.config.tick_size > 0 else 0
+            self._set_status("US breakout evaluation: invalid range size")
             logger.debug(
                 "US breakout evaluation: invalid range size",
                 extra={
@@ -1003,6 +1026,7 @@ class StrategyEngine:
         # Get recent candles
         candles = self.market_state.get_recent_candles(epic, '1m', 10)
         if not candles:
+            self._set_status("US breakout evaluation: no candle data")
             logger.debug(
                 "US breakout evaluation: no candle data",
                 extra={
@@ -1035,6 +1059,7 @@ class StrategyEngine:
                     trigger_price=latest_candle.close,
                 )
                 candidates.append(candidate)
+                self._set_status("US breakout evaluation: LONG setup detected")
                 logger.debug(
                     "US breakout evaluation: LONG setup detected",
                     extra={
@@ -1053,6 +1078,7 @@ class StrategyEngine:
                     }
                 )
             else:
+                self._set_status("US breakout evaluation: price above high but candle invalid")
                 logger.debug(
                     "US breakout evaluation: price above high but candle invalid",
                     extra={
@@ -1085,6 +1111,7 @@ class StrategyEngine:
                     trigger_price=latest_candle.close,
                 )
                 candidates.append(candidate)
+                self._set_status("US breakout evaluation: SHORT setup detected")
                 logger.debug(
                     "US breakout evaluation: SHORT setup detected",
                     extra={
@@ -1103,6 +1130,7 @@ class StrategyEngine:
                     }
                 )
             else:
+                self._set_status("US breakout evaluation: price below low but candle invalid")
                 logger.debug(
                     "US breakout evaluation: price below low but candle invalid",
                     extra={
@@ -1124,6 +1152,7 @@ class StrategyEngine:
         
         # Price within range
         if range_low <= latest_candle.close <= range_high:
+            self._set_status("US breakout evaluation: price within range")
             logger.debug(
                 "US breakout evaluation: price within range",
                 extra={

@@ -2470,6 +2470,8 @@ def api_sidebar_assets(request):
             - current_phase: Current session phase name
             - phase_type: 'tradeable', 'range_building', 'other', or 'not_tradeable'
             - previous_range: Object with high/low from previous phase range (if available)
+            - status_message: Latest strategy engine status message for the asset
+            - range_distance: Dict with distance to high/low from current price (if available)
     """
     from .models import TradingAsset, AssetPriceStatus, BreakoutRange, AssetSessionPhaseConfig
     
@@ -2492,6 +2494,11 @@ def api_sidebar_assets(request):
                 'current_phase': 'OTHER',
                 'phase_type': 'other',
                 'previous_range': None,
+                'status_message': '',
+                'range_distance': {
+                    'to_high': None,
+                    'to_low': None,
+                },
             }
             
             # Get current price
@@ -2502,6 +2509,8 @@ def api_sidebar_assets(request):
                     asset_data['current_price'] = mid_price
                 elif price_status and price_status.bid_price:
                     asset_data['current_price'] = float(price_status.bid_price)
+                if price_status:
+                    asset_data['status_message'] = price_status.last_strategy_status or ''
             except Exception:
                 pass
             
@@ -2580,7 +2589,21 @@ def api_sidebar_assets(request):
                         }
             except Exception:
                 pass
-            
+
+            # Calculate distance from current price to range bounds if available
+            try:
+                if asset_data['current_price'] is not None and asset_data['previous_range']:
+                    range_high = asset_data['previous_range'].get('high')
+                    range_low = asset_data['previous_range'].get('low')
+
+                    if range_high is not None:
+                        asset_data['range_distance']['to_high'] = round(range_high - asset_data['current_price'], 6)
+
+                    if range_low is not None:
+                        asset_data['range_distance']['to_low'] = round(asset_data['current_price'] - range_low, 6)
+            except Exception:
+                pass
+
             result.append(asset_data)
         
         return JsonResponse({
