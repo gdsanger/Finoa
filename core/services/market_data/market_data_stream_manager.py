@@ -13,6 +13,8 @@ from datetime import datetime, timezone, timedelta
 from threading import Lock
 from typing import Dict, List, Optional, Tuple, Callable
 
+from core.services.broker import BrokerError
+
 from .candle_models import Candle, CandleStreamStatus, CandleDataResponse, DataStatus
 from .candle_stream import CandleStream
 from .redis_candle_store import RedisCandleStore, get_candle_store
@@ -274,7 +276,7 @@ class MarketDataStreamManager:
         """
         try:
             from core.services.broker import BrokerRegistry
-            
+
             registry = BrokerRegistry()
             broker = registry.get_broker_for_asset(asset)
 
@@ -296,7 +298,7 @@ class MarketDataStreamManager:
                         timeframe=timeframe,
                         num_points=num_points,
                     )
-                    
+
                     # Convert to Candle objects
                     candles = []
                     for data in price_data:
@@ -310,7 +312,7 @@ class MarketDataStreamManager:
                             complete=True,
                         )
                         candles.append(candle)
-                    
+
                     if candles:
                         stream.append_many(candles)
                         stream.status = 'LIVE'
@@ -320,15 +322,22 @@ class MarketDataStreamManager:
                     # Broker doesn't support historical prices
                     stream.status = 'POLL'
                     logger.warning(f"Broker {type(broker).__name__} doesn't support historical prices")
-                
+
                 self._last_fetch_time[stream.asset_id] = datetime.now(timezone.utc)
                 self._fetch_errors.pop(stream.asset_id, None)
-                
+
             finally:
                 registry.disconnect_all()
-                
+
+        except BrokerError as e:
+            error_msg = self._format_broker_error(e)
+            stream.error = error_msg
+            stream.status = 'CACHED' if stream.get_count() > 0 else 'OFFLINE'
+            self._fetch_errors[stream.asset_id] = error_msg
+            self._last_fetch_time[stream.asset_id] = datetime.now(timezone.utc)
+            logger.warning(f"Failed to fetch candles from broker for {asset.symbol}: {e}")
         except Exception as e:
-            error_msg = str(e)
+            error_msg = self._format_broker_error(e)
             stream.error = error_msg
             stream.status = 'OFFLINE'
             self._fetch_errors[stream.asset_id] = error_msg
@@ -477,6 +486,16 @@ class MarketDataStreamManager:
         with self._lock:
             for stream in self._streams.values():
                 stream.reload()
+
+    def _format_broker_error(self, error: Exception) -> str:
+        """Return a user-friendly broker error message for known cases."""
+        message = str(error)
+
+        if isinstance(error, BrokerError):
+            if 'error.public-api.exceeded-account-historical-data-allowance' in message:
+                return 'IG API-Limit für historische Daten erreicht. Bitte später erneut versuchen.'
+
+        return message
 
 
 # Module-level convenience functions

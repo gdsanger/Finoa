@@ -3,6 +3,7 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 from decimal import Decimal
 from datetime import timedelta
+from unittest.mock import MagicMock, patch
 import uuid
 
 from .models import Signal, Trade, WorkerStatus, TradingAsset, AssetBreakoutConfig, AssetEventConfig
@@ -4404,10 +4405,35 @@ class MarketDataStreamManagerTest(TestCase):
         """Test getting all stream statuses."""
         self.manager.get_or_create_stream('TEST_OIL', '1m', 'IG')
         self.manager.get_or_create_stream('TEST_OIL', '5m', 'IG')
-        
+
         statuses = self.manager.get_all_stream_statuses()
-        
+
         self.assertEqual(len(statuses), 2)
+
+    def test_ig_allowance_error_returns_cached_status(self):
+        """Handle IG allowance errors with a friendly message and cached status."""
+        from core.services.broker.broker_service import BrokerError
+        from core.services.market_data.candle_models import Candle
+
+        stream = self.manager.get_or_create_stream('TEST_OIL', '1m', 'IG')
+        stream.append(Candle(timestamp=1, open=1.0, high=1.0, low=1.0, close=1.0))
+
+        error = BrokerError(
+            "IG API error [error.public-api.exceeded-account-historical-data-allowance]: {}",
+            code='400',
+        )
+
+        with patch('core.services.broker.BrokerRegistry') as MockRegistry, \
+                patch.object(self.manager, '_fetch_historical_prices', side_effect=error):
+            MockRegistry.return_value.get_broker_for_asset.return_value = MagicMock()
+
+            self.manager._fetch_candles_from_broker(self.asset, stream, '1m', 1)
+
+        self.assertEqual(stream.status, 'CACHED')
+        self.assertEqual(
+            stream.error,
+            'IG API-Limit für historische Daten erreicht. Bitte später erneut versuchen.',
+        )
 
 
 class BreakoutDistanceCandlesAPITest(TestCase):
