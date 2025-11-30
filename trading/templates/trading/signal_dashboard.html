@@ -1245,6 +1245,10 @@
         background: transparent;
     }
 
+    .sidebar-list .list-group-item {
+        background-color: rgba(0, 0, 0, 0.28);
+    }
+
     .sidebar-loading {
         display: flex;
         flex-direction: column;
@@ -1263,8 +1267,8 @@
 
     /* Asset List Items (Bootstrap inspired) */
     .asset-list-item {
-        background: rgba(255, 255, 255, 0.02);
-        border-color: rgba(255, 255, 255, 0.05) !important;
+        background: rgba(255, 255, 255, 0.04);
+        border-color: rgba(255, 255, 255, 0.06) !important;
         padding: 0.9rem 1rem;
         transition: all 0.2s ease;
         color: var(--fiona-text-light);
@@ -1320,10 +1324,38 @@
 
     .price-badge {
         font-family: 'Roboto Mono', monospace;
-        background: rgba(46, 120, 214, 0.1);
-        color: #8bc4ff;
-        border: 1px solid rgba(46, 120, 214, 0.35);
-        padding: 0.35rem 0.6rem;
+        background: rgba(0, 0, 0, 0.45);
+        color: var(--fiona-text-light);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        padding: 0.4rem 0.65rem;
+        font-weight: 700;
+        font-size: 1rem;
+        letter-spacing: 0.2px;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+
+    .price-badge .price-currency {
+        font-size: 0.85rem;
+        opacity: 0.85;
+        margin-left: 0.2rem;
+    }
+
+    .price-badge.above-range {
+        background: rgba(40, 167, 69, 0.18);
+        color: var(--signal-long);
+        border-color: rgba(40, 167, 69, 0.45);
+    }
+
+    .price-badge.within-range {
+        background: rgba(255, 193, 7, 0.15);
+        color: var(--confidence-medium);
+        border-color: rgba(255, 193, 7, 0.45);
+    }
+
+    .price-badge.below-range {
+        background: rgba(220, 53, 69, 0.15);
+        color: var(--signal-short);
+        border-color: rgba(220, 53, 69, 0.5);
     }
 
     .phase-pill {
@@ -2470,10 +2502,40 @@
         const clean = source.replace(/[^a-zA-Z0-9]/g, '');
         return escapeHtml(clean.substring(0, 3).toUpperCase());
     }
+
+    function getPricePositionClass(asset) {
+        if (!asset || asset.current_price === null || asset.current_price === undefined) {
+            return '';
+        }
+
+        const range = asset.previous_range || {};
+        const high = range.high;
+        const low = range.low;
+
+        if (high === undefined || high === null || low === undefined || low === null) {
+            return '';
+        }
+
+        if (asset.current_price > high) {
+            return 'above-range';
+        }
+
+        if (asset.current_price < low) {
+            return 'below-range';
+        }
+
+        return 'within-range';
+    }
     
     function renderAssetItem(asset) {
         const phaseClass = getPhaseClass(asset.phase_type);
         const phaseName = getPhaseDisplayName(asset.current_phase);
+        const pricePositionClass = getPricePositionClass(asset);
+        const currency = asset.quote_currency ? `<span class="price-currency">${escapeHtml(asset.quote_currency)}</span>` : '';
+
+        const priceValue = (asset.current_price || asset.current_price === 0)
+            ? formatAssetPrice(asset.current_price)
+            : '--';
 
         let rangeHtml = '';
         if (asset.previous_range && (asset.previous_range.high || asset.previous_range.low)) {
@@ -2512,7 +2574,7 @@
                             <span class="asset-symbol">${escapeHtml(asset.symbol || 'N/A')}</span>
                         </div>
                     </div>
-                    <span class="badge rounded-pill price-badge">${formatAssetPrice(asset.current_price)}</span>
+                    <span class="badge rounded-pill price-badge ${pricePositionClass}">${priceValue}${currency}</span>
                 </div>
                 <div class="d-flex align-items-center gap-2 mt-2 flex-wrap">
                     <span class="phase-pill ${phaseClass}">

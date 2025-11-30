@@ -2487,6 +2487,7 @@ def api_sidebar_assets(request):
                 'id': asset.id,
                 'name': asset.name,
                 'symbol': asset.symbol,
+                'quote_currency': asset.quote_currency,
                 'current_price': None,
                 'current_phase': 'OTHER',
                 'phase_type': 'other',
