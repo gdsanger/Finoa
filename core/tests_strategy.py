@@ -327,6 +327,7 @@ class DummyMarketStateProvider(BaseMarketStateProvider):
         phase: SessionPhase = SessionPhase.OTHER,
         candles: list[Candle] = None,
         asia_range: tuple[float, float] = None,
+        london_core_range: tuple[float, float] = None,
         pre_us_range: tuple[float, float] = None,
         eia_timestamp: datetime = None,
         atr: float = None,
@@ -335,6 +336,7 @@ class DummyMarketStateProvider(BaseMarketStateProvider):
         self._phase = phase
         self._candles = candles or []
         self._asia_range = asia_range
+        self._london_core_range = london_core_range
         self._pre_us_range = pre_us_range
         self._eia_timestamp = eia_timestamp
         self._atr = atr
@@ -353,6 +355,9 @@ class DummyMarketStateProvider(BaseMarketStateProvider):
 
     def get_asia_range(self, epic: str) -> tuple[float, float] | None:
         return self._asia_range
+
+    def get_london_core_range(self, epic: str) -> tuple[float, float] | None:
+        return self._london_core_range
 
     def get_pre_us_range(self, epic: str) -> tuple[float, float] | None:
         return self._pre_us_range
@@ -504,7 +509,7 @@ class StrategyEngineBreakoutTest(TestCase):
     def test_us_core_breakout(self):
         """Test US Core breakout setup."""
         ts = datetime(2025, 1, 15, 16, 0, tzinfo=timezone.utc)
-        
+
         # Create a bullish breakout candle with body >= 50% of range
         # Range is 0.20 (75.20 - 75.00), so min body is 0.10
         candle = Candle(
@@ -527,6 +532,56 @@ class StrategyEngineBreakoutTest(TestCase):
         self.assertEqual(len(candidates), 1)
         self.assertEqual(candidates[0].setup_kind, SetupKind.BREAKOUT)
         self.assertEqual(candidates[0].phase, SessionPhase.US_CORE)
+
+    def test_us_core_breakout_reports_price_position(self):
+        """When price leaves the range without a valid signal, status reflects position."""
+        ts = datetime(2025, 1, 15, 16, 0, tzinfo=timezone.utc)
+
+        # Bullish candle that dips below the range low (invalid SHORT breakout)
+        candle = Candle(
+            timestamp=ts,
+            open=138.50,
+            high=139.00,
+            low=137.90,  # Below range low
+            close=138.80,  # Bullish close keeps breakout invalid for SHORT
+        )
+
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.US_CORE_TRADING,
+            candles=[candle],
+            pre_us_range=(140.15, 138.18),
+        )
+        engine = StrategyEngine(provider)
+
+        candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
+
+        self.assertEqual(len(candidates), 0)
+        self.assertEqual(engine.last_status_message, "US breakout evaluation: price below range")
+
+    def test_pre_us_breakout_uses_london_core_range(self):
+        """Pre-US breakout should evaluate against London Core range (previous phase)."""
+        ts = datetime(2025, 1, 15, 13, 0, tzinfo=timezone.utc)
+
+        candle = Candle(
+            timestamp=ts,
+            open=139.40,
+            high=139.50,
+            low=138.90,  # Below London Core low
+            close=139.10,  # Below London Core low but body too small for breakout
+        )
+
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.PRE_US_RANGE,
+            candles=[candle],
+            london_core_range=(140.00, 139.20),
+            pre_us_range=(150.00, 145.00),  # Decoy range; should not be used
+        )
+        engine = StrategyEngine(provider)
+
+        candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
+
+        self.assertEqual(len(candidates), 0)
+        self.assertEqual(engine.last_status_message, "US breakout evaluation: price below range")
 
 
 class StrategyEngineEiaTest(TestCase):

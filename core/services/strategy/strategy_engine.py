@@ -145,7 +145,6 @@ class StrategyEngine:
         elif phase == SessionPhase.PRE_US_RANGE:
             # Pre-US Range phase uses London Core range for reference
             london_core_range = self.market_state.get_london_core_range(epic)
-            pre_us_range = self.market_state.get_pre_us_range(epic)
         elif phase in (SessionPhase.US_CORE_TRADING, SessionPhase.US_CORE):
             # US Core Trading trades based on Pre-US Range breakouts
             pre_us_range = self.market_state.get_pre_us_range(epic)
@@ -510,10 +509,19 @@ class StrategyEngine:
                 )
                 result.setups.append(candidate)
         else:
+            price_position = "within range"
+            if current_price > range_high:
+                price_position = "above range"
+            elif current_price < range_low:
+                price_position = "below range"
+
             result.criteria.append(DiagnosticCriterion(
                 name="Price breakout",
                 passed=False,
-                detail=f"Price {current_price:.4f} within range ({range_low:.4f} - {range_high:.4f})",
+                detail=(
+                    f"Price {current_price:.4f} {price_position} "
+                    f"({range_low:.4f} - {range_high:.4f})"
+                ),
             ))
 
     def _evaluate_us_breakout_with_diagnostics(
@@ -934,22 +942,29 @@ class StrategyEngine:
         phase: SessionPhase
     ) -> list[SetupCandidate]:
         """
-        Evaluate Pre-US Range breakout during US Core session.
-        
+        Evaluate US-related breakout using the prior phase's reference range.
+
         Args:
             epic: Market identifier.
             ts: Current timestamp.
             phase: Current session phase.
-            
+
         Returns:
             List of breakout SetupCandidate objects.
         """
         candidates: list[SetupCandidate] = []
-        
-        # Get pre-US range
-        pre_us_range = self.market_state.get_pre_us_range(epic)
-        if not pre_us_range:
-            self._set_status("US breakout evaluation: no range data")
+
+        # Select the correct reference range based on the phase mapping:
+        # - PRE_US_RANGE evaluates breakouts against the London Core range
+        # - US_CORE_TRADING / US_CORE evaluate breakouts against the Pre-US range
+        range_source = "Pre-US"
+        reference_range = self.market_state.get_pre_us_range(epic)
+        if phase == SessionPhase.PRE_US_RANGE:
+            range_source = "London Core"
+            reference_range = self.market_state.get_london_core_range(epic)
+
+        if not reference_range:
+            self._set_status(f"US breakout evaluation: no {range_source} range data")
             logger.debug(
                 "US breakout evaluation: no range data",
                 extra={
@@ -959,13 +974,14 @@ class StrategyEngine:
                         "phase": phase.value,
                         "evaluation_type": "us_breakout",
                         "result": "no_setup",
-                        "reason": "Pre-US range data not available",
+                        "reason": f"{range_source} range data not available",
+                        "range_source": range_source,
                     }
                 }
             )
             return candidates
-        
-        range_high, range_low = pre_us_range
+
+        range_high, range_low = reference_range
         range_height = range_high - range_low
         
         # Check range size constraints
@@ -982,6 +998,7 @@ class StrategyEngine:
                         "evaluation_type": "us_breakout",
                         "result": "no_setup",
                         "reason": "Range size out of valid bounds",
+                        "range_source": range_source,
                         "range_high": range_high,
                         "range_low": range_low,
                         "range_height": range_height,
@@ -1007,6 +1024,7 @@ class StrategyEngine:
                         "evaluation_type": "us_breakout",
                         "result": "no_setup",
                         "reason": "No candle data available",
+                        "range_source": range_source,
                     }
                 }
             )
@@ -1074,16 +1092,17 @@ class StrategyEngine:
                             "epic": epic,
                             "timestamp": ts.isoformat(),
                             "phase": phase.value,
-                            "evaluation_type": "us_breakout",
-                            "result": "setup_found",
-                            "direction": trade_direction,
-                            "signal_type": breakout_signal.value,
-                            "current_price": current_price,
-                            "range_high": range_high,
-                            "range_low": range_low,
-                            "candle_body_size": latest_candle.body_size,
-                        }
+                        "evaluation_type": "us_breakout",
+                        "result": "setup_found",
+                        "direction": trade_direction,
+                        "signal_type": breakout_signal.value,
+                        "current_price": current_price,
+                        "range_source": range_source,
+                        "range_high": range_high,
+                        "range_low": range_low,
+                        "candle_body_size": latest_candle.body_size,
                     }
+                }
                 )
             else:
                 self._set_status(
@@ -1096,24 +1115,35 @@ class StrategyEngine:
                             "epic": epic,
                             "timestamp": ts.isoformat(),
                             "phase": phase.value,
-                            "evaluation_type": "us_breakout",
-                            "result": "no_setup",
-                            "reason": "Breakout candle body too small or wrong direction",
-                            "direction": validation_direction,
-                            "signal_type": breakout_signal.value,
-                            "current_price": current_price,
-                            "range_high": range_high,
-                            "range_low": range_low,
-                            "candle_body_size": latest_candle.body_size,
-                            "min_body_fraction": min_body_fraction,
-                        }
+                        "evaluation_type": "us_breakout",
+                        "result": "no_setup",
+                        "reason": "Breakout candle body too small or wrong direction",
+                        "direction": validation_direction,
+                        "signal_type": breakout_signal.value,
+                        "current_price": current_price,
+                        "range_source": range_source,
+                        "range_high": range_high,
+                        "range_low": range_low,
+                        "candle_body_size": latest_candle.body_size,
+                        "min_body_fraction": min_body_fraction,
+                    }
                     }
                 )
         else:
-            # Price within range
-            self._set_status("US breakout evaluation: price within range")
+            # No valid breakout signal detected; report actual price position
+            price_position = "within range"
+            reason = "Price within range bounds"
+            if current_price is not None:
+                if current_price > range_high:
+                    price_position = "above range"
+                    reason = "Price above range high without valid breakout"
+                elif current_price < range_low:
+                    price_position = "below range"
+                    reason = "Price below range low without valid breakout"
+
+            self._set_status(f"US breakout evaluation: price {price_position}")
             logger.debug(
-                "US breakout evaluation: price within range",
+                "US breakout evaluation: no breakout signal",
                 extra={
                     "strategy_data": {
                         "epic": epic,
@@ -1121,8 +1151,10 @@ class StrategyEngine:
                         "phase": phase.value,
                         "evaluation_type": "us_breakout",
                         "result": "no_setup",
-                        "reason": "Price within range bounds",
+                        "reason": reason,
+                        "price_position": price_position,
                         "current_price": current_price,
+                        "range_source": range_source,
                         "range_high": range_high,
                         "range_low": range_low,
                     }
