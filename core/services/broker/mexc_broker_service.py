@@ -140,12 +140,16 @@ class MexcBrokerService(BrokerService):
         """Get current timestamp in milliseconds."""
         return int(time.time() * 1000)
     
-    def _get_headers(self) -> dict:
+    def _get_headers(self, include_api_key: bool = True) -> dict:
         """Get headers for API requests."""
-        return {
-            "X-MEXC-APIKEY": self._api_key,
+        headers = {
             "Content-Type": "application/json",
         }
+
+        if include_api_key:
+            headers["X-MEXC-APIKEY"] = self._api_key
+
+        return headers
     
     def _request(
         self,
@@ -177,25 +181,27 @@ class MexcBrokerService(BrokerService):
             params['signature'] = self._sign_request(params)
         
         try:
+            headers = self._get_headers(include_api_key=signed)
+
             if method == "GET":
                 response = self._session.get(
                     url,
                     params=params,
-                    headers=self._get_headers(),
+                    headers=headers,
                     timeout=self._timeout,
                 )
             elif method == "POST":
                 response = self._session.post(
                     url,
                     params=params,
-                    headers=self._get_headers(),
+                    headers=headers,
                     timeout=self._timeout,
                 )
             elif method == "DELETE":
                 response = self._session.delete(
                     url,
                     params=params,
-                    headers=self._get_headers(),
+                    headers=headers,
                     timeout=self._timeout,
                 )
             else:
