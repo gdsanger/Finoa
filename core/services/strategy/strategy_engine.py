@@ -474,6 +474,7 @@ class StrategyEngine:
             range_low,
             range_height,
             self.config.breakout.asia_range.min_breakout_body_fraction,
+            context="Asia breakout evaluation",
         )
 
         if breakout_signal:
@@ -591,6 +592,7 @@ class StrategyEngine:
             range_low,
             range_height,
             self.config.breakout.us_core.min_breakout_body_fraction,
+            context="US breakout evaluation",
         )
 
         if breakout_signal:
@@ -826,6 +828,7 @@ class StrategyEngine:
             range_low,
             range_height,
             self.config.breakout.asia_range.min_breakout_body_fraction,
+            context="Asia diagnostics breakout evaluation",
         )
 
         if breakout_signal:
@@ -1040,6 +1043,7 @@ class StrategyEngine:
             range_low,
             range_height,
             self.config.breakout.us_core.min_breakout_body_fraction,
+            context="US diagnostics breakout evaluation",
         )
 
         if breakout_signal:
@@ -1571,37 +1575,88 @@ class StrategyEngine:
         range_low: float,
         range_height: float,
         min_body_fraction: float,
+        context: Optional[str] = None,
     ) -> Optional[BreakoutSignal]:
         """Detect breakout or fakeout signal for a candle relative to a range."""
 
+        context_suffix = f" [{context}]" if context else ""
+
         if candle.high > range_high:
-            if not self._passes_breakout_filters(
+            passed, reason = self._passes_breakout_filters(
                 candle,
                 range_height,
                 "LONG",
                 range_high,
                 range_low,
                 min_body_fraction,
-            ):
+            )
+            if not passed:
+                logger.debug(
+                    "Breakout signal rejected%s: %s",
+                    context_suffix,
+                    reason,
+                    extra={
+                        "strategy_data": {
+                            "candle_high": candle.high,
+                            "candle_low": candle.low,
+                            "candle_close": candle.close,
+                            "range_high": range_high,
+                            "range_low": range_low,
+                            "range_height": range_height,
+                            "direction": "LONG",
+                        }
+                    },
+                )
                 return None
             if candle.close > range_high:
                 return BreakoutSignal.LONG_BREAKOUT
             return BreakoutSignal.FAILED_LONG_BREAKOUT
 
         if candle.low < range_low:
-            if not self._passes_breakout_filters(
+            passed, reason = self._passes_breakout_filters(
                 candle,
                 range_height,
                 "SHORT",
                 range_high,
                 range_low,
                 min_body_fraction,
-            ):
+            )
+            if not passed:
+                logger.debug(
+                    "Breakout signal rejected%s: %s",
+                    context_suffix,
+                    reason,
+                    extra={
+                        "strategy_data": {
+                            "candle_high": candle.high,
+                            "candle_low": candle.low,
+                            "candle_close": candle.close,
+                            "range_high": range_high,
+                            "range_low": range_low,
+                            "range_height": range_height,
+                            "direction": "SHORT",
+                        }
+                    },
+                )
                 return None
             if candle.close < range_low:
                 return BreakoutSignal.SHORT_BREAKOUT
             return BreakoutSignal.FAILED_SHORT_BREAKOUT
 
+        logger.debug(
+            "Breakout signal not generated%s: candle remained inside range",
+            context_suffix,
+            extra={
+                "strategy_data": {
+                    "candle_high": candle.high,
+                    "candle_low": candle.low,
+                    "candle_close": candle.close,
+                    "range_high": range_high,
+                    "range_low": range_low,
+                    "range_height": range_height,
+                }
+            },
+        )
         return None
 
     def _passes_breakout_filters(
@@ -1612,13 +1667,13 @@ class StrategyEngine:
         range_high: float,
         range_low: float,
         min_body_fraction: float,
-    ) -> bool:
+    ) -> tuple[bool, str]:
         """Apply existing breakout quality filters before classifying signals."""
 
         if not self._is_valid_breakout_candle(
             candle, range_height, validation_direction, min_body_fraction
         ):
-            return False
+            return False, "Candle body/direction does not meet breakout requirements"
 
         # Enforce minimum breakout distance using configured ticks.
         min_ticks = self.config.breakout.min_breakout_distance_ticks
@@ -1629,9 +1684,11 @@ class StrategyEngine:
                 else range_low - candle.low
             )
             if tick_distance / self.config.tick_size < min_ticks:
-                return False
+                return False, (
+                    f"Breakout distance {tick_distance:.4f} below minimum of {min_ticks} ticks"
+                )
 
-        return True
+        return True, ""
 
     def _map_breakout_signal_directions(
         self, signal: BreakoutSignal
