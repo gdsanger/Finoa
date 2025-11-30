@@ -339,6 +339,47 @@
     .back-link:hover {
         color: var(--fiona-text-light);
     }
+
+    /* Data Status Indicator */
+    .data-status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.35rem 0.65rem;
+        border-radius: 4px;
+        font-size: 0.7rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .data-status-badge i {
+        font-size: 0.5rem;
+    }
+
+    .data-status-badge.live {
+        background-color: rgba(34, 197, 94, 0.2);
+        color: #22c55e;
+        border: 1px solid #22c55e;
+    }
+
+    .data-status-badge.poll {
+        background-color: rgba(59, 130, 246, 0.2);
+        color: #3b82f6;
+        border: 1px solid #3b82f6;
+    }
+
+    .data-status-badge.cached {
+        background-color: rgba(255, 193, 7, 0.2);
+        color: #ffc107;
+        border: 1px solid #ffc107;
+    }
+
+    .data-status-badge.offline {
+        background-color: rgba(239, 68, 68, 0.2);
+        color: #ef4444;
+        border: 1px solid #ef4444;
+    }
 </style>
 {% endblock %}
 
@@ -357,9 +398,9 @@
                 <!-- Asset Selector -->
                 <div class="control-group">
                     <span class="control-label">Asset</span>
-                    <select id="asset-selector" class="control-select" onchange="changeAsset(this.value)">
+                    <select id="asset-selector" class="control-select" onchange="changeAsset(this.value, this.options[this.selectedIndex].dataset.id)">
                         {% for asset in active_assets %}
-                        <option value="{{ asset.symbol }}" {% if selected_asset and asset.id == selected_asset.id %}selected{% endif %}>
+                        <option value="{{ asset.symbol }}" data-id="{{ asset.id }}" {% if selected_asset and asset.id == selected_asset.id %}selected{% endif %}>
                             {{ asset.symbol }} - {{ asset.name }}
                         </option>
                         {% empty %}
@@ -386,6 +427,13 @@
                 <button class="btn btn-sm btn-outline-light" onclick="refreshChart()" title="Aktualisieren">
                     <i class="bi bi-arrow-clockwise"></i>
                 </button>
+
+                <!-- Data Status Indicator -->
+                <div class="control-group" id="data-status-group">
+                    <span id="data-status" class="data-status-badge offline" title="Datenstatus">
+                        <i class="bi bi-circle-fill"></i> <span id="data-status-text">OFFLINE</span>
+                    </span>
+                </div>
             </div>
         </div>
 
@@ -508,6 +556,23 @@
                             <span class="info-value" id="info-tick-size">{% if selected_asset %}{{ selected_asset.tick_size }}{% else %}--{% endif %}</span>
                         </div>
                     </div>
+
+                    <!-- Chart Info -->
+                    <div class="info-section">
+                        <div class="info-section-title">Chart-Daten</div>
+                        <div class="info-row">
+                            <span class="info-label">Kerzen</span>
+                            <span class="info-value" id="info-candle-count">--</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Timeframe</span>
+                            <span class="info-value" id="info-timeframe">1m</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Zeitfenster</span>
+                            <span class="info-value" id="info-window">{{ selected_hours }}h</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -524,10 +589,13 @@
     let priceLines = {};
     let rangeMarkers = {};
     let resizeListenerAdded = false;
+    let refreshInterval = null;
 
     // Current settings
     let currentAsset = '{{ selected_asset.symbol|default:"" }}';
+    let currentAssetId = '{{ selected_asset.id|default:"" }}';
     let currentHours = {{ selected_hours }};
+    let currentTimeframe = '1m';  // Default to 1-minute candles for realtime
     let rangeVisibility = {
         asia: true,
         london: true,
@@ -608,7 +676,7 @@
 
     // Load chart data
     async function loadChartData() {
-        if (!currentAsset) {
+        if (!currentAssetId) {
             showError('Kein Asset ausgewählt');
             return;
         }
@@ -616,9 +684,10 @@
         showLoading();
 
         try {
-            // Load candles, breakout context, and session ranges in parallel
+            // Use the new Market Data Layer API for candles (broker-agnostic, Redis-backed)
+            // Also load breakout context and session ranges for overlay data
             const [candlesRes, contextRes, rangesRes] = await Promise.all([
-                fetch(`/fiona/api/chart/${currentAsset}/candles?hours=${currentHours}&tf=5m`),
+                fetch(`/fiona/api/breakout-distance-candles?asset_id=${currentAssetId}&timeframe=${currentTimeframe}&window=${currentHours}`),
                 fetch(`/fiona/api/chart/${currentAsset}/breakout-context`),
                 fetch(`/fiona/api/chart/${currentAsset}/session-ranges?hours=${currentHours}`),
             ]);
@@ -626,6 +695,13 @@
             const candlesData = await candlesRes.json();
             const contextData = await contextRes.json();
             const rangesData = await rangesRes.json();
+
+            // Update data status indicator
+            if (candlesData.success && candlesData.status) {
+                updateDataStatus(candlesData.status);
+            } else {
+                updateDataStatus({ status: 'OFFLINE', error: candlesData.error });
+            }
 
             if (candlesData.success && candlesData.candles && candlesData.candles.length > 0) {
                 // Recreate chart after loading overlay destroyed it
@@ -636,6 +712,9 @@
                 
                 // Fit content with some margin
                 chart.timeScale().fitContent();
+                
+                // Update info panel with candle count
+                document.getElementById('info-candle-count').textContent = candlesData.candle_count + ' Candles';
             } else {
                 showError(candlesData.error || 'Keine Kerzen-Daten verfügbar');
                 return;
@@ -658,8 +737,53 @@
 
         } catch (error) {
             console.error('Error loading chart data:', error);
+            updateDataStatus({ status: 'OFFLINE', error: error.message });
             showError('Fehler beim Laden der Chart-Daten');
         }
+    }
+
+    // Update data status indicator
+    function updateDataStatus(statusData) {
+        const badge = document.getElementById('data-status');
+        const text = document.getElementById('data-status-text');
+        
+        if (!badge || !text) return;
+        
+        // Remove all status classes
+        badge.classList.remove('live', 'poll', 'cached', 'offline');
+        
+        const status = statusData.status || 'OFFLINE';
+        let displayText = status;
+        let cssClass = 'offline';
+        let tooltip = 'Datenstatus';
+        
+        switch (status.toUpperCase()) {
+            case 'LIVE':
+                cssClass = 'live';
+                displayText = 'LIVE';
+                tooltip = 'Echtzeit-Stream aktiv';
+                break;
+            case 'POLL':
+                cssClass = 'poll';
+                displayText = 'POLL';
+                tooltip = 'Fallback: REST-Polling';
+                break;
+            case 'CACHED':
+                cssClass = 'cached';
+                displayText = 'CACHE';
+                tooltip = 'Daten aus Redis-Cache';
+                break;
+            case 'OFFLINE':
+            default:
+                cssClass = 'offline';
+                displayText = 'OFFLINE';
+                tooltip = statusData.error || 'Keine Daten / Verbindungsfehler';
+                break;
+        }
+        
+        badge.classList.add(cssClass);
+        text.textContent = displayText;
+        badge.title = tooltip;
     }
 
     // Draw session ranges as horizontal lines
@@ -847,8 +971,11 @@
     }
 
     // Change asset
-    function changeAsset(symbol) {
+    function changeAsset(symbol, assetId) {
         currentAsset = symbol;
+        currentAssetId = assetId;
+        // Update tick size display
+        document.getElementById('info-asset').textContent = symbol;
         if (chart) {
             loadChartData();
         } else {
@@ -869,6 +996,9 @@
             }
         });
         
+        // Update info panel
+        document.getElementById('info-window').textContent = hours + 'h';
+        
         loadChartData();
     }
 
@@ -883,9 +1013,38 @@
         loadChartData();
     }
 
+    // Start auto-refresh (every 30 seconds)
+    function startAutoRefresh() {
+        if (refreshInterval) {
+            clearInterval(refreshInterval);
+        }
+        refreshInterval = setInterval(() => {
+            loadChartData();
+        }, 30000);  // 30 seconds
+    }
+
+    // Stop auto-refresh
+    function stopAutoRefresh() {
+        if (refreshInterval) {
+            clearInterval(refreshInterval);
+            refreshInterval = null;
+        }
+    }
+
     // Initialize on page load
     document.addEventListener('DOMContentLoaded', function() {
         initChart();
+        startAutoRefresh();
+    });
+
+    // Stop refresh when page is hidden
+    document.addEventListener('visibilitychange', function() {
+        if (document.hidden) {
+            stopAutoRefresh();
+        } else {
+            loadChartData();
+            startAutoRefresh();
+        }
     });
 </script>
 {% endblock %}
