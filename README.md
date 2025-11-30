@@ -2,7 +2,7 @@
 
 **Finoa** ist eine moderne, minimalistische Finanzverwaltungs-App auf Basis von  
 **Django**, **HTMX**, **Bootstrap** und **SQLite**.  
-Sie zeigt nicht nur deinen aktuellen finanziellen Stand, sondern auch die Entwicklung der nächsten Monate.
+Sie zeigt nicht nur deinen aktuellen finanziellen Stand, sondern auch die Entwicklung der nächsten Monate. Zudem wurde ein Tradingsystem (Multi-Broker und Multi-Asset) eingebaut.
 
 Der Fokus liegt auf:
 - Übersicht statt Chaos  
