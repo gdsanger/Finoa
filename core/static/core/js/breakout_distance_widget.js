@@ -32,6 +32,8 @@
             this.candlestickSeries = null;
             this.refreshInterval = null;
             this.initialized = false;
+            this.activeRequestToken = 0;
+            this.lastAssetKey = `${this.assetSymbol}|${this.assetId}`;
 
             this.colors = {
                 asia: { fill: 'rgba(255, 193, 7, 0.15)', line: '#ffc107' },
@@ -84,6 +86,26 @@
             this.assetSymbol = symbol;
             this.assetId = assetId;
             this.currentCandles = [];
+
+            // Reset chart visuals immediately when switching assets to avoid stale views
+            if (this.candlestickSeries) {
+                this.candlestickSeries.setData([]);
+            }
+
+            for (const key in this.priceLines) {
+                try {
+                    this.candlestickSeries?.removePriceLine(this.priceLines[key]);
+                } catch (e) {}
+                delete this.priceLines[key];
+            }
+
+            this.lastAssetKey = `${symbol}|${assetId}`;
+            this.activeRequestToken++;
+
+            // Show loading state so the user sees the asset switch immediately
+            if (this.chart) {
+                this.showLoading();
+            }
         }
 
         setHours(hours) {
@@ -122,6 +144,8 @@
                 return;
             }
 
+            const requestToken = ++this.activeRequestToken;
+            const expectedAssetKey = `${this.assetSymbol}|${this.assetId}`;
             const firstLoad = !this.chart;
             if (firstLoad) {
                 this.showLoading();
@@ -133,6 +157,11 @@
                 const rangesPromise = fetch(`/fiona/api/chart/${this.assetSymbol}/session-ranges?hours=${this.hours}`);
 
                 const [candlesRes, contextRes] = await Promise.all([candlesPromise, contextPromise]);
+
+                // Ignore stale responses if the asset has changed mid-flight
+                if (requestToken !== this.activeRequestToken || expectedAssetKey !== this.lastAssetKey) {
+                    return;
+                }
 
                 const candlesData = await candlesRes.json();
                 const contextData = await contextRes.json();
