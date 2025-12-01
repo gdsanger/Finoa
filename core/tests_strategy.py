@@ -557,7 +557,11 @@ class StrategyEngineBreakoutTest(TestCase):
         candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
 
         self.assertEqual(len(candidates), 0)
-        self.assertEqual(engine.last_status_message, "US breakout evaluation: price below range")
+        self.assertEqual(
+            engine.last_status_message,
+            "US breakout evaluation: price below range; "
+            "Phase US_CORE_TRADING is tradeable but no valid setups found",
+        )
 
     def test_pre_us_breakout_uses_london_core_range(self):
         """Pre-US breakout should evaluate against London Core range (previous phase)."""
@@ -582,7 +586,11 @@ class StrategyEngineBreakoutTest(TestCase):
         candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
 
         self.assertEqual(len(candidates), 0)
-        self.assertEqual(engine.last_status_message, "US breakout evaluation: price below range")
+        self.assertEqual(
+            engine.last_status_message,
+            "US breakout evaluation: price below range; "
+            "Phase PRE_US_RANGE is tradeable but no valid setups found",
+        )
 
 
 class StrategyEngineEiaTest(TestCase):

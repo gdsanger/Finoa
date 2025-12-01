@@ -82,10 +82,13 @@ class StrategyEngine:
         self.market_state = market_state
         self.config = config or StrategyConfig()
         self.last_status_message: Optional[str] = None
+        # Collects all status messages for the current evaluation run.
+        self._status_history: list[str] = []
 
     def _set_status(self, message: str) -> None:
         """Record the latest status message for external consumers."""
         self.last_status_message = message
+        self._status_history.append(message)
 
     def _is_phase_tradeable(self, phase: SessionPhase) -> tuple[bool, list[str]]:
         """Determine if the given phase is tradeable for the current asset."""
@@ -120,6 +123,7 @@ class StrategyEngine:
             List of SetupCandidate objects (0 to N candidates).
         """
         self.last_status_message = None
+        self._status_history = []
         candidates: list[SetupCandidate] = []
         
         # Get current phase
@@ -251,12 +255,17 @@ class StrategyEngine:
                 reason = f"Phase {phase.value} is tradeable but no valid setups found"
             else:
                 reason = f"Phase {phase.value} is not a tradeable phase"
-            
+
             price_analysis = self._analyze_price_position(
                 current_price, asia_range, pre_us_range, london_core_range
             )
-            
-            self._set_status(reason)
+
+            status_trace = list(dict.fromkeys(self._status_history))
+            # Append the phase-level summary to the trace for maximum clarity
+            status_trace.append(reason)
+            detailed_reason = "; ".join(status_trace)
+
+            self._set_status(detailed_reason)
             logger.debug(
                 "No setup candidates generated",
                 extra={
@@ -273,7 +282,8 @@ class StrategyEngine:
                         "pre_us_range_high": pre_us_range[0] if pre_us_range else None,
                         "pre_us_range_low": pre_us_range[1] if pre_us_range else None,
                         "price_analysis": price_analysis,
-                        "reason": reason,
+                        "reason": detailed_reason,
+                        "status_trace": status_trace,
                     }
                 }
             )
@@ -353,6 +363,7 @@ class StrategyEngine:
             EvaluationResult with setups and diagnostic criteria.
         """
         self.last_status_message = None
+        self._status_history = []
         result = EvaluationResult()
         
         # Get current phase
