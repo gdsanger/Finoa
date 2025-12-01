@@ -131,7 +131,7 @@ class BreakoutContextData:
 class ChartCandlesResponse:
     """Response for candles endpoint."""
     asset: str
-    timeframe: str = '5m'
+    timeframe: str = '1m'
     hours: int = 1
     candles: List[CandleData] = field(default_factory=list)
     error: Optional[str] = None
@@ -175,7 +175,7 @@ def get_asset_by_symbol(symbol: str) -> Optional[TradingAsset]:
 def get_candles_for_asset(
     asset: TradingAsset,
     hours: int = 1,
-    timeframe: str = '5m',
+    timeframe: str = '1m',
 ) -> ChartCandlesResponse:
     """
     Get candlestick data for an asset from the appropriate broker API.
@@ -187,7 +187,7 @@ def get_candles_for_asset(
     Args:
         asset: TradingAsset instance
         hours: Number of hours of history (1, 3, 6, 8, 12, 24)
-        timeframe: Candle timeframe ('5m', '15m', '1h', etc.)
+        timeframe: Candle timeframe ('1m', '5m', '15m', '1h', etc.)
     
     Returns:
         ChartCandlesResponse with candle data

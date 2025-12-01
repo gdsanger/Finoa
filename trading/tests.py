@@ -3783,23 +3783,23 @@ class ChartCandlesAPITest(TestCase):
     def test_get_candles_success(self):
         """Test successful candle retrieval with price snapshot data."""
         from .models import PriceSnapshot
-        
+
         # Create price snapshots for the last hour
         now = timezone.now()
-        for i in range(12):  # 12 snapshots = 12 * 5 = 60 minutes
+        for i in range(60):  # 60 snapshots = 60 * 1 = 60 minutes
             PriceSnapshot.objects.create(
                 asset=self.asset,
-                timestamp=now - timedelta(minutes=55 - i * 5),
+                timestamp=now - timedelta(minutes=59 - i),
                 price_mid=Decimal(f'75.{i:02d}'),
             )
-        
+
         response = self.client.get('/fiona/api/chart/OIL/candles?hours=1')
         self.assertEqual(response.status_code, 200)
         
         data = response.json()
         self.assertTrue(data['success'])
         self.assertEqual(data['asset'], 'OIL')
-        self.assertEqual(data['timeframe'], '5m')
+        self.assertEqual(data['timeframe'], '1m')
         self.assertEqual(data['hours'], 1)
         self.assertIn('candles', data)
         self.assertIn('candle_count', data)
@@ -4055,20 +4055,20 @@ class ChartServiceTest(TestCase):
         """Test getting candles for asset with price snapshot data."""
         from .services.chart_service import get_candles_for_asset
         from .models import PriceSnapshot
-        
+
         # Create price snapshots for the last hour
         now = timezone.now()
-        for i in range(12):  # 12 snapshots = 12 * 5 = 60 minutes
+        for i in range(60):  # 60 snapshots = 60 * 1 = 60 minutes
             PriceSnapshot.objects.create(
                 asset=self.asset,
-                timestamp=now - timedelta(minutes=55 - i * 5),
+                timestamp=now - timedelta(minutes=59 - i),
                 price_mid=Decimal(f'75.{i:02d}'),
             )
-        
-        result = get_candles_for_asset(self.asset, hours=1, timeframe='5m')
-        
+
+        result = get_candles_for_asset(self.asset, hours=1, timeframe='1m')
+
         self.assertEqual(result.asset, 'OIL')
-        self.assertEqual(result.timeframe, '5m')
+        self.assertEqual(result.timeframe, '1m')
         self.assertEqual(result.hours, 1)
         self.assertIsNone(result.error)
         # Should have candles from snapshot data
@@ -4077,9 +4077,9 @@ class ChartServiceTest(TestCase):
     def test_get_candles_for_asset_no_data(self):
         """Test getting candles when no data is available."""
         from .services.chart_service import get_candles_for_asset
-        
-        result = get_candles_for_asset(self.asset, hours=1, timeframe='5m')
-        
+
+        result = get_candles_for_asset(self.asset, hours=1, timeframe='1m')
+
         self.assertEqual(result.asset, 'OIL')
         # Should have error message when no data available
         self.assertIsNotNone(result.error)
