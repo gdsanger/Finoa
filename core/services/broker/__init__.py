@@ -25,6 +25,7 @@ from .ig_api_client import IgApiClient
 from .ig_broker_service import IgBrokerService
 
 from .mexc_broker_service import MexcBrokerService
+from .mexc_market_data import MexcMarketDataFetcher, MexcMarketDataError
 
 from .config import (
     get_active_ig_broker_config,
@@ -59,6 +60,8 @@ __all__ = [
     'IgBrokerService',
     # MEXC implementation
     'MexcBrokerService',
+    'MexcMarketDataFetcher',
+    'MexcMarketDataError',
     # Config utilities
     'get_active_ig_broker_config',
     'create_ig_broker_service',

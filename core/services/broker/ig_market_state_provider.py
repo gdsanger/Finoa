@@ -17,6 +17,8 @@ from typing import Optional, TYPE_CHECKING
 from core.services.strategy.models import Candle, SessionPhase
 from core.services.strategy.providers import BaseMarketStateProvider
 from .ig_broker_service import IgBrokerService
+from .mexc_broker_service import MexcBrokerService
+from .mexc_market_data import MexcMarketDataFetcher, MexcMarketDataError
 
 if TYPE_CHECKING:
     from trading.models import TradingAsset
@@ -193,6 +195,7 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         eia_timestamp: Optional[datetime] = None,
         session_times: Optional[SessionTimesConfig] = None,
         broker_registry: Optional['BrokerRegistry'] = None,
+        mexc_market_data: Optional[MexcMarketDataFetcher] = None,
     ):
         """
         Initialize the IG Market State Provider.
@@ -205,11 +208,13 @@ class IGMarketStateProvider(BaseMarketStateProvider):
             broker_registry: Optional BrokerRegistry for multi-broker support.
                             When provided and a current_asset is set, the registry
                             will be used to get the correct broker for the asset.
+            mexc_market_data: Optional MEXC market data fetcher for real klines.
         """
         self._broker = broker_service
         self._eia_timestamp = eia_timestamp
         self._session_times = session_times or SessionTimesConfig()
         self._broker_registry = broker_registry
+        self._mexc_market_data = mexc_market_data or MexcMarketDataFetcher()
         
         # Cache for session ranges
         self._asia_range_cache: dict[str, tuple[float, float]] = {}
@@ -477,28 +482,36 @@ class IGMarketStateProvider(BaseMarketStateProvider):
                 broker_service = self._broker_registry.get_broker_for_asset(self._current_asset)
                 symbol = self._current_asset.effective_broker_symbol
             
-            # Get current market data
-            price = broker_service.get_symbol_price(symbol)
-            
-            # Create a candle from current price data
-            now = datetime.now(timezone.utc)
-            current_candle = Candle(
-                timestamp=now,
-                open=float(price.mid_price),
-                high=float(price.high) if price.high else float(price.mid_price),
-                low=float(price.low) if price.low else float(price.mid_price),
-                close=float(price.mid_price),
-                volume=None,
-            )
-            
-            # For now, return cached candles plus current
             cache_key = f"{symbol}_{timeframe}"
-            cached = self._candle_cache.get(cache_key, [])
-            
-            # Add current candle and limit
-            candles = cached + [current_candle]
+            candles: list[Candle] = []
+
+            if isinstance(broker_service, MexcBrokerService) and timeframe == "1m":
+                fetch_limit = max(1, min(limit, 2))
+                try:
+                    candles = self._mexc_market_data.get_klines(symbol, interval="1m", limit=fetch_limit)
+                except MexcMarketDataError as exc:
+                    logger.warning("Failed to fetch MEXC klines for %s: %s", symbol, exc)
+
+            if not candles:
+                # Get current market data
+                price = broker_service.get_symbol_price(symbol)
+
+                # Create a candle from current price data
+                now = datetime.now(timezone.utc)
+                current_candle = Candle(
+                    timestamp=now,
+                    open=float(price.mid_price),
+                    high=float(price.high) if price.high else float(price.mid_price),
+                    low=float(price.low) if price.low else float(price.mid_price),
+                    close=float(price.mid_price),
+                    volume=None,
+                )
+
+                cached = self._candle_cache.get(cache_key, [])
+                candles = cached + [current_candle]
+
             candles = candles[-limit:]
-            
+
             # Update cache
             self._candle_cache[cache_key] = candles[-50:]  # Keep last 50
             
