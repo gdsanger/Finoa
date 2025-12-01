@@ -1602,6 +1602,10 @@ class StrategyEngine:
                 min_body_fraction,
             )
             if not passed:
+                rejection_reason = (
+                    f"Breakout rejected: LONG validation failed - {reason}{context_suffix}"
+                )
+                self._set_status(rejection_reason)
                 logger.debug(
                     "Breakout signal rejected%s: %s",
                     context_suffix,
@@ -1633,6 +1637,10 @@ class StrategyEngine:
                 min_body_fraction,
             )
             if not passed:
+                rejection_reason = (
+                    f"Breakout rejected: SHORT validation failed - {reason}{context_suffix}"
+                )
+                self._set_status(rejection_reason)
                 logger.debug(
                     "Breakout signal rejected%s: %s",
                     context_suffix,
@@ -1680,11 +1688,26 @@ class StrategyEngine:
         min_body_fraction: float,
     ) -> tuple[bool, str]:
         """Apply existing breakout quality filters before classifying signals."""
+        # Direction check with explicit detail
+        if validation_direction == "LONG" and candle.is_bearish:
+            return False, (
+                "Bullish breakout required but candle closed lower than it opened "
+                f"(open {candle.open:.4f} > close {candle.close:.4f})"
+            )
 
-        if not self._is_valid_breakout_candle(
-            candle, range_height, validation_direction, min_body_fraction
-        ):
-            return False, "Candle body/direction does not meet breakout requirements"
+        if validation_direction == "SHORT" and candle.is_bullish:
+            return False, (
+                "Bearish breakout required but candle closed higher than it opened "
+                f"(open {candle.open:.4f} < close {candle.close:.4f})"
+            )
+
+        # Body-size check with numeric context
+        min_body = range_height * min_body_fraction
+        if candle.body_size < min_body:
+            return False, (
+                f"Candle body {candle.body_size:.4f} below minimum {min_body:.4f} "
+                f"({min_body_fraction * 100:.0f}% of range)"
+            )
 
         # Enforce minimum breakout distance using configured ticks.
         min_ticks = self.config.breakout.min_breakout_distance_ticks
