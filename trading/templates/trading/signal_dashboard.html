@@ -1586,6 +1586,10 @@
         display: flex;
     }
 
+    .chart-modal.fullscreen {
+        padding: 0;
+    }
+
     .chart-modal-dialog {
         width: 75vw;
         height: 75vh;
@@ -1597,6 +1601,14 @@
         flex-direction: column;
         box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
         overflow: hidden;
+    }
+
+    .chart-modal.fullscreen .chart-modal-dialog {
+        width: 100vw;
+        height: 100vh;
+        max-width: none;
+        border-radius: 0;
+        box-shadow: none;
     }
 
     .chart-modal-header {
@@ -1612,6 +1624,26 @@
         margin: 0;
         color: var(--fiona-text-light);
         font-size: 1.05rem;
+    }
+
+    .chart-control-btn {
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        color: #e5e7eb;
+        border-radius: 8px;
+        padding: 0.35rem 0.5rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s ease;
+    }
+
+    .chart-control-btn:hover,
+    .chart-control-btn:focus {
+        color: #fff;
+        border-color: rgba(255, 255, 255, 0.25);
+        background: rgba(255, 255, 255, 0.1);
+        box-shadow: 0 0 0 0.15rem rgba(255, 255, 255, 0.08);
     }
 
     .chart-modal-body {
@@ -1729,6 +1761,11 @@
         .chart-modal-dialog {
             width: 95vw;
             height: 80vh;
+        }
+
+        .chart-modal.fullscreen .chart-modal-dialog {
+            width: 100vw;
+            height: 100vh;
         }
     }
 
@@ -1998,6 +2035,9 @@
                 <span id="asset-chart-status" class="data-status-badge offline">
                     <i class="bi bi-circle-fill"></i> <span id="asset-chart-status-text">OFFLINE</span>
                 </span>
+                <button type="button" class="chart-control-btn" id="asset-chart-fullscreen-btn" aria-label="Fullscreen umschalten" title="Fullscreen umschalten">
+                    <i class="bi bi-arrows-fullscreen"></i>
+                </button>
                 <button type="button" class="btn-close btn-close-white" aria-label="Close" onclick="closeAssetChartModal()"></button>
             </div>
         </div>
@@ -3048,6 +3088,7 @@
 
         if (!modal || !widget) return;
 
+        setAssetChartFullscreen(false);
         modal.classList.add('open');
         modal.setAttribute('aria-hidden', 'false');
         document.body.style.overflow = 'hidden';
@@ -3067,6 +3108,7 @@
     function closeAssetChartModal() {
         const modal = document.getElementById('asset-chart-modal');
         if (modal) {
+            setAssetChartFullscreen(false);
             modal.classList.remove('open');
             modal.setAttribute('aria-hidden', 'true');
         }
@@ -3076,12 +3118,47 @@
         }
     }
 
+    function setAssetChartFullscreen(isFullscreen) {
+        const modal = document.getElementById('asset-chart-modal');
+        const toggleBtn = document.getElementById('asset-chart-fullscreen-btn');
+
+        if (modal) {
+            modal.classList.toggle('fullscreen', Boolean(isFullscreen));
+        }
+
+        if (toggleBtn) {
+            toggleBtn.innerHTML = isFullscreen
+                ? '<i class="bi bi-fullscreen-exit"></i>'
+                : '<i class="bi bi-arrows-fullscreen"></i>';
+            toggleBtn.setAttribute('aria-label', isFullscreen ? 'Fullscreen verlassen' : 'Fullscreen öffnen');
+            toggleBtn.setAttribute('title', isFullscreen ? 'Fullscreen verlassen' : 'Fullscreen öffnen');
+        }
+
+        if (assetChartWidget) {
+            setTimeout(() => assetChartWidget.resizeToContainer(), 50);
+        }
+    }
+
+    function toggleAssetChartFullscreen() {
+        const modal = document.getElementById('asset-chart-modal');
+        const isCurrentlyFullscreen = modal?.classList.contains('fullscreen');
+        setAssetChartFullscreen(!isCurrentlyFullscreen);
+    }
+
     const assetChartModalEl = document.getElementById('asset-chart-modal');
     if (assetChartModalEl) {
         assetChartModalEl.addEventListener('click', function(event) {
             if (event.target === assetChartModalEl) {
                 closeAssetChartModal();
             }
+        });
+    }
+
+    const assetChartFullscreenBtn = document.getElementById('asset-chart-fullscreen-btn');
+    if (assetChartFullscreenBtn) {
+        assetChartFullscreenBtn.addEventListener('click', function(event) {
+            event.stopPropagation();
+            toggleAssetChartFullscreen();
         });
     }
 
