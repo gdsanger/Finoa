@@ -231,6 +231,64 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         self._candle_counts: dict[str, int] = {}
         
         logger.info("IGMarketStateProvider initialized")
+
+    def _to_ig_resolution(self, timeframe: str) -> str:
+        """Map a timeframe string to the IG resolution string."""
+
+        mapping = {
+            "1m": "MINUTE",
+            "2m": "MINUTE_2",
+            "3m": "MINUTE_3",
+            "5m": "MINUTE_5",
+            "10m": "MINUTE_10",
+            "15m": "MINUTE_15",
+            "30m": "MINUTE_30",
+            "1h": "HOUR",
+            "2h": "HOUR_2",
+            "3h": "HOUR_3",
+            "4h": "HOUR_4",
+            "1d": "DAY",
+            "1w": "WEEK",
+            "1M": "MONTH",
+        }
+
+        return mapping.get(timeframe.lower(), "MINUTE")
+
+    def _timeframe_to_timedelta(self, timeframe: str) -> timedelta:
+        """Convert timeframe strings like '1m' or '5m' to timedeltas."""
+
+        if not timeframe:
+            return timedelta(minutes=1)
+
+        unit = timeframe[-1].lower()
+        try:
+            value = int(timeframe[:-1])
+        except (TypeError, ValueError):
+            return timedelta(minutes=1)
+
+        if unit == "m":
+            return timedelta(minutes=value)
+        if unit == "h":
+            return timedelta(hours=value)
+        if unit == "d":
+            return timedelta(days=value)
+        if unit == "w":
+            return timedelta(weeks=value)
+
+        return timedelta(minutes=1)
+
+    @staticmethod
+    def _floor_timestamp(ts: datetime, step: timedelta) -> datetime:
+        """Floor a timestamp to the start of the current timeframe bucket."""
+
+        if step.total_seconds() <= 0:
+            return ts
+
+        # Convert to integer seconds for stability
+        epoch_seconds = int(ts.timestamp())
+        step_seconds = int(step.total_seconds())
+        floored_seconds = epoch_seconds - (epoch_seconds % step_seconds)
+        return datetime.fromtimestamp(floored_seconds, tz=timezone.utc)
     
     def set_current_asset(self, asset: 'TradingAsset') -> None:
         """
@@ -447,7 +505,8 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         self,
         epic: str,
         timeframe: str,
-        limit: int
+        limit: int,
+        closed_only: bool = False,
     ) -> list[Candle]:
         """
         Get recent candles for a market.
@@ -491,6 +550,46 @@ class IGMarketStateProvider(BaseMarketStateProvider):
                     candles = self._mexc_market_data.get_klines(symbol, interval="1m", limit=fetch_limit)
                 except MexcMarketDataError as exc:
                     logger.warning("Failed to fetch MEXC klines for %s: %s", symbol, exc)
+
+            if not candles and isinstance(broker_service, IgBrokerService):
+                resolution = self._to_ig_resolution(timeframe)
+                try:
+                    price_history = broker_service.get_historical_prices(
+                        epic=symbol,
+                        resolution=resolution,
+                        num_points=limit,
+                    )
+                    sorted_history = [
+                        item
+                        for item in sorted(price_history, key=lambda d: d.get("time", 0))
+                        if all(k in item and item[k] is not None for k in ("time", "open", "high", "low", "close"))
+                    ]
+
+                    if closed_only:
+                        timeframe_delta = self._timeframe_to_timedelta(timeframe)
+                        now = datetime.now(timezone.utc)
+                        current_period_start = self._floor_timestamp(now, timeframe_delta)
+                        sorted_history = [
+                            item
+                            for item in sorted_history
+                            if datetime.fromtimestamp(item["time"], tz=timezone.utc) < current_period_start
+                        ]
+
+                    trimmed_history = sorted_history[-limit:] if limit else sorted_history
+
+                    candles = [
+                        Candle(
+                            timestamp=datetime.fromtimestamp(item["time"], tz=timezone.utc),
+                            open=float(item["open"]),
+                            high=float(item["high"]),
+                            low=float(item["low"]),
+                            close=float(item["close"]),
+                            volume=None,
+                        )
+                        for item in trimmed_history
+                    ]
+                except Exception as exc:  # noqa: BLE001 - defensive catch for broker errors
+                    logger.warning("Failed to fetch IG historical candles for %s: %s", symbol, exc)
 
             if not candles:
                 # Get current market data

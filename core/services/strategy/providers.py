@@ -35,7 +35,8 @@ class MarketStateProvider(Protocol):
         self,
         epic: str,
         timeframe: str,
-        limit: int
+        limit: int,
+        closed_only: bool = False,
     ) -> list[Candle]:
         """
         Get recent candles for a market.
@@ -44,7 +45,9 @@ class MarketStateProvider(Protocol):
             epic: Market identifier.
             timeframe: Candle timeframe (e.g., '1m', '5m', '1h').
             limit: Maximum number of candles to return.
-            
+            closed_only: If True, exclude the currently forming candle and
+                return only closed candles.
+
         Returns:
             List of Candle objects, most recent last.
         """
@@ -161,7 +164,8 @@ class BaseMarketStateProvider(ABC):
         self,
         epic: str,
         timeframe: str,
-        limit: int
+        limit: int,
+        closed_only: bool = False,
     ) -> list[Candle]:
         """Get recent candles for a market."""
         pass
