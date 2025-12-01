@@ -50,6 +50,7 @@ class IGMarketStateProviderTest(TestCase):
             low=Decimal("74.00"),
         )
         self.mock_broker.get_symbol_price.return_value = self.mock_price
+        self.mock_broker.get_historical_prices.return_value = []
 
     def test_provider_initialization(self):
         """Test provider initializes correctly."""
@@ -256,12 +257,68 @@ class IGMarketStateProviderTest(TestCase):
     def test_get_recent_candles(self):
         """Test getting recent candles."""
         provider = IGMarketStateProvider(broker_service=self.mock_broker)
-        
+
         candles = provider.get_recent_candles("CC.D.CL.UNC.IP", "1m", 10)
-        
+
         self.assertIsInstance(candles, list)
         # Should have at least 1 candle from current price
         self.assertGreaterEqual(len(candles), 1)
+
+    def test_get_recent_candles_uses_ig_history_when_available(self):
+        """Historical IG candles should be used when provided by the broker."""
+        provider = IGMarketStateProvider(broker_service=self.mock_broker)
+
+        self.mock_broker.get_historical_prices.return_value = [
+            {"time": 1, "open": 1.0, "high": 1.5, "low": 0.8, "close": 1.2},
+            {"time": 2, "open": 1.2, "high": 2.0, "low": 1.0, "close": 1.8},
+        ]
+
+        candles = provider.get_recent_candles("CC.D.CL.UNC.IP", "1m", 1)
+
+        self.mock_broker.get_symbol_price.assert_not_called()
+        self.assertEqual(len(candles), 1)
+        self.assertEqual(candles[0].high, 2.0)
+        self.assertEqual(candles[0].low, 1.0)
+
+    def test_get_recent_candles_trims_to_limit(self):
+        """Excess IG candles should be trimmed so only the newest N are used."""
+        provider = IGMarketStateProvider(broker_service=self.mock_broker)
+
+        self.mock_broker.get_historical_prices.return_value = [
+            {"time": 1, "open": 1.0, "high": 1.1, "low": 0.9, "close": 1.0},
+            {"time": 2, "open": 1.1, "high": 1.2, "low": 1.0, "close": 1.1},
+            {"time": 3, "open": 1.2, "high": 1.3, "low": 1.1, "close": 1.2},
+        ]
+
+        candles = provider.get_recent_candles("CC.D.CL.UNC.IP", "1m", 2)
+
+        self.assertEqual(len(candles), 2)
+        self.assertEqual(candles[0].timestamp, datetime.fromtimestamp(2, tz=timezone.utc))
+        self.assertEqual(candles[1].timestamp, datetime.fromtimestamp(3, tz=timezone.utc))
+
+    def test_get_recent_candles_can_exclude_current_incomplete(self):
+        """closed_only flag should drop the currently forming candle from IG history."""
+        provider = IGMarketStateProvider(broker_service=self.mock_broker)
+
+        candle_1 = datetime(2024, 1, 1, 0, 1, 0, tzinfo=timezone.utc)
+        candle_2 = datetime(2024, 1, 1, 0, 2, 0, tzinfo=timezone.utc)
+        candle_current = datetime(2024, 1, 1, 0, 3, 0, tzinfo=timezone.utc)
+
+        self.mock_broker.get_historical_prices.return_value = [
+            {"time": int(candle_1.timestamp()), "open": 1.0, "high": 1.1, "low": 0.9, "close": 1.0},
+            {"time": int(candle_2.timestamp()), "open": 1.1, "high": 1.2, "low": 1.0, "close": 1.1},
+            {"time": int(candle_current.timestamp()), "open": 1.2, "high": 1.5, "low": 1.0, "close": 1.3},
+        ]
+
+        with patch(
+            "core.services.broker.ig_market_state_provider.datetime",
+            wraps=datetime,
+        ) as mock_datetime:
+            mock_datetime.now.return_value = datetime(2024, 1, 1, 0, 3, 30, tzinfo=timezone.utc)
+            candles = provider.get_recent_candles("CC.D.CL.UNC.IP", "1m", 1, closed_only=True)
+
+        self.assertEqual(len(candles), 1)
+        self.assertEqual(candles[0].timestamp, candle_2)
 
     def test_get_daily_high_low(self):
         """Test getting daily high/low."""

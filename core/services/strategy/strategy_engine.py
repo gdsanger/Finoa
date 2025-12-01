@@ -126,7 +126,7 @@ class StrategyEngine:
         phase = self.market_state.get_phase(ts)
         
         # Get current price data for comprehensive logging
-        candles = self.market_state.get_recent_candles(epic, '1m', 1)
+        candles = self.market_state.get_recent_candles(epic, '1m', 1, closed_only=True)
         current_price = candles[-1].close if candles else None
         
         # Get range data only for the relevant phase to avoid misleading log messages

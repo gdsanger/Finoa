@@ -349,7 +349,8 @@ class DummyMarketStateProvider(BaseMarketStateProvider):
         self,
         epic: str,
         timeframe: str,
-        limit: int
+        limit: int,
+        closed_only: bool = False,
     ) -> list[Candle]:
         return self._candles[:limit]
 
