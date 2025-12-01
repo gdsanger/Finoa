@@ -557,7 +557,13 @@ class StrategyEngineBreakoutTest(TestCase):
         candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
 
         self.assertEqual(len(candidates), 0)
-        self.assertEqual(engine.last_status_message, "US breakout evaluation: price below range")
+        self.assertEqual(
+            engine.last_status_message,
+            "Breakout rejected: SHORT validation failed - Bearish breakout required "
+            "but candle closed higher than it opened (open 138.5000 < close 138.8000) "
+            "[US diagnostics breakout evaluation]; US breakout evaluation: price below range; "
+            "Phase US_CORE_TRADING is tradeable but no valid setups found",
+        )
 
     def test_pre_us_breakout_uses_london_core_range(self):
         """Pre-US breakout should evaluate against London Core range (previous phase)."""
@@ -582,7 +588,13 @@ class StrategyEngineBreakoutTest(TestCase):
         candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
 
         self.assertEqual(len(candidates), 0)
-        self.assertEqual(engine.last_status_message, "US breakout evaluation: price below range")
+        self.assertEqual(
+            engine.last_status_message,
+            "Breakout rejected: SHORT validation failed - Candle body 0.3000 below minimum "
+            "0.4000 (50% of range) [US diagnostics breakout evaluation]; "
+            "US breakout evaluation: price below range; "
+            "Phase PRE_US_RANGE is tradeable but no valid setups found",
+        )
 
 
 class StrategyEngineEiaTest(TestCase):

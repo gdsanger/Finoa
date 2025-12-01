@@ -82,10 +82,13 @@ class StrategyEngine:
         self.market_state = market_state
         self.config = config or StrategyConfig()
         self.last_status_message: Optional[str] = None
+        # Collects all status messages for the current evaluation run.
+        self._status_history: list[str] = []
 
     def _set_status(self, message: str) -> None:
         """Record the latest status message for external consumers."""
         self.last_status_message = message
+        self._status_history.append(message)
 
     def _is_phase_tradeable(self, phase: SessionPhase) -> tuple[bool, list[str]]:
         """Determine if the given phase is tradeable for the current asset."""
@@ -120,6 +123,7 @@ class StrategyEngine:
             List of SetupCandidate objects (0 to N candidates).
         """
         self.last_status_message = None
+        self._status_history = []
         candidates: list[SetupCandidate] = []
         
         # Get current phase
@@ -251,12 +255,17 @@ class StrategyEngine:
                 reason = f"Phase {phase.value} is tradeable but no valid setups found"
             else:
                 reason = f"Phase {phase.value} is not a tradeable phase"
-            
+
             price_analysis = self._analyze_price_position(
                 current_price, asia_range, pre_us_range, london_core_range
             )
-            
-            self._set_status(reason)
+
+            status_trace = list(dict.fromkeys(self._status_history))
+            # Append the phase-level summary to the trace for maximum clarity
+            status_trace.append(reason)
+            detailed_reason = "; ".join(status_trace)
+
+            self._set_status(detailed_reason)
             logger.debug(
                 "No setup candidates generated",
                 extra={
@@ -273,7 +282,8 @@ class StrategyEngine:
                         "pre_us_range_high": pre_us_range[0] if pre_us_range else None,
                         "pre_us_range_low": pre_us_range[1] if pre_us_range else None,
                         "price_analysis": price_analysis,
-                        "reason": reason,
+                        "reason": detailed_reason,
+                        "status_trace": status_trace,
                     }
                 }
             )
@@ -353,6 +363,7 @@ class StrategyEngine:
             EvaluationResult with setups and diagnostic criteria.
         """
         self.last_status_message = None
+        self._status_history = []
         result = EvaluationResult()
         
         # Get current phase
@@ -1591,6 +1602,10 @@ class StrategyEngine:
                 min_body_fraction,
             )
             if not passed:
+                rejection_reason = (
+                    f"Breakout rejected: LONG validation failed - {reason}{context_suffix}"
+                )
+                self._set_status(rejection_reason)
                 logger.debug(
                     "Breakout signal rejected%s: %s",
                     context_suffix,
@@ -1622,6 +1637,10 @@ class StrategyEngine:
                 min_body_fraction,
             )
             if not passed:
+                rejection_reason = (
+                    f"Breakout rejected: SHORT validation failed - {reason}{context_suffix}"
+                )
+                self._set_status(rejection_reason)
                 logger.debug(
                     "Breakout signal rejected%s: %s",
                     context_suffix,
@@ -1669,11 +1688,26 @@ class StrategyEngine:
         min_body_fraction: float,
     ) -> tuple[bool, str]:
         """Apply existing breakout quality filters before classifying signals."""
+        # Direction check with explicit detail
+        if validation_direction == "LONG" and candle.is_bearish:
+            return False, (
+                "Bullish breakout required but candle closed lower than it opened "
+                f"(open {candle.open:.4f} > close {candle.close:.4f})"
+            )
 
-        if not self._is_valid_breakout_candle(
-            candle, range_height, validation_direction, min_body_fraction
-        ):
-            return False, "Candle body/direction does not meet breakout requirements"
+        if validation_direction == "SHORT" and candle.is_bullish:
+            return False, (
+                "Bearish breakout required but candle closed higher than it opened "
+                f"(open {candle.open:.4f} < close {candle.close:.4f})"
+            )
+
+        # Body-size check with numeric context
+        min_body = range_height * min_body_fraction
+        if candle.body_size < min_body:
+            return False, (
+                f"Candle body {candle.body_size:.4f} below minimum {min_body:.4f} "
+                f"({min_body_fraction * 100:.0f}% of range)"
+            )
 
         # Enforce minimum breakout distance using configured ticks.
         min_ticks = self.config.breakout.min_breakout_distance_ticks
