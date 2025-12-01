@@ -2099,13 +2099,13 @@ def api_breakout_distance_chart_by_id(request, asset_id):
 @login_required
 def api_chart_candles(request, asset_code):
     """
-    GET /api/chart/{asset}/candles - Return 5-minute candlestick data.
+    GET /api/chart/{asset}/candles - Return 1-minute candlestick data.
     
     Path parameters:
         asset_code: Asset symbol (e.g., 'OIL', 'NAS100')
     
     Query parameters:
-        tf: Timeframe (default: '5m', currently only 5m supported)
+        tf: Timeframe (default: '1m')
         hours: Time window (1, 3, 6, 8, 12, 24) - default: 1
     
     Returns JSON with:
@@ -2116,7 +2116,7 @@ def api_chart_candles(request, asset_code):
         - candles: Array of OHLC data with unix timestamps
     """
     # Get query parameters
-    timeframe = request.GET.get('tf', '5m')
+    timeframe = request.GET.get('tf', '1m')
     try:
         hours = int(request.GET.get('hours', 1))
     except (ValueError, TypeError):
