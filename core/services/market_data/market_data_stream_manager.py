@@ -73,8 +73,9 @@ class MarketDataStreamManager:
         self._lock = Lock()
         
         # Status tracking
-        self._last_fetch_time: Dict[str, datetime] = {}
-        self._fetch_errors: Dict[str, str] = {}
+        self._last_fetch_time: Dict[Tuple[str, str], datetime] = {}
+        self._fetch_errors: Dict[Tuple[str, str], str] = {}
+        self._fetch_locks: Dict[Tuple[str, str], Lock] = {}
     
     @classmethod
     def get_instance(cls) -> 'MarketDataStreamManager':
@@ -96,6 +97,13 @@ class MarketDataStreamManager:
     def _get_stream_key(self, asset_id: str, timeframe: str) -> Tuple[str, str]:
         """Get the stream registry key."""
         return (asset_id, timeframe)
+
+    def _get_fetch_lock(self, key: Tuple[str, str]) -> Lock:
+        """Get or create a fetch lock for a stream key."""
+        with self._lock:
+            if key not in self._fetch_locks:
+                self._fetch_locks[key] = Lock()
+            return self._fetch_locks[key]
     
     def get_or_create_stream(
         self,
@@ -190,14 +198,25 @@ class MarketDataStreamManager:
             timeframe=timeframe,
             broker=getattr(asset, 'broker', None),
         )
-        
+
+        fetch_key = self._get_stream_key(stream.asset_id, timeframe)
+
         # Check if we need to fetch from broker
         should_fetch = force_refresh or self._should_fetch_from_broker(
             stream, timeframe, window_hours
         )
-        
+
         if should_fetch:
-            self._fetch_candles_from_broker(asset, stream, timeframe, window_hours)
+            fetch_lock = self._get_fetch_lock(fetch_key)
+            if fetch_lock.acquire(blocking=False):
+                try:
+                    self._fetch_candles_from_broker(asset, stream, timeframe, window_hours)
+                finally:
+                    fetch_lock.release()
+            else:
+                logger.debug(
+                    f"Fetch already in progress for {stream.asset_id}/{timeframe}, returning cached data"
+                )
         
         # Get candles from stream
         candles = stream.get_recent(hours=window_hours)
@@ -234,7 +253,8 @@ class MarketDataStreamManager:
         
         # If status is OFFLINE with error, retry periodically
         if stream.status == 'OFFLINE' and stream.error:
-            last_fetch = self._last_fetch_time.get(stream.asset_id)
+            fetch_key = self._get_stream_key(stream.asset_id, timeframe)
+            last_fetch = self._last_fetch_time.get(fetch_key)
             if last_fetch is None:
                 return True
             # Retry after 60 seconds
@@ -274,6 +294,8 @@ class MarketDataStreamManager:
             timeframe: Candle timeframe
             window_hours: Time window in hours
         """
+        fetch_key = self._get_stream_key(stream.asset_id, timeframe)
+
         try:
             from core.services.broker import BrokerRegistry
 
@@ -323,8 +345,8 @@ class MarketDataStreamManager:
                     stream.status = 'POLL'
                     logger.warning(f"Broker {type(broker).__name__} doesn't support historical prices")
 
-                self._last_fetch_time[stream.asset_id] = datetime.now(timezone.utc)
-                self._fetch_errors.pop(stream.asset_id, None)
+                self._last_fetch_time[fetch_key] = datetime.now(timezone.utc)
+                self._fetch_errors.pop(fetch_key, None)
 
             finally:
                 registry.disconnect_all()
@@ -333,15 +355,15 @@ class MarketDataStreamManager:
             error_msg = self._format_broker_error(e)
             stream.error = error_msg
             stream.status = 'CACHED' if stream.get_count() > 0 else 'OFFLINE'
-            self._fetch_errors[stream.asset_id] = error_msg
-            self._last_fetch_time[stream.asset_id] = datetime.now(timezone.utc)
+            self._fetch_errors[fetch_key] = error_msg
+            self._last_fetch_time[fetch_key] = datetime.now(timezone.utc)
             logger.warning(f"Failed to fetch candles from broker for {asset.symbol}: {e}")
         except Exception as e:
             error_msg = self._format_broker_error(e)
             stream.error = error_msg
             stream.status = 'OFFLINE'
-            self._fetch_errors[stream.asset_id] = error_msg
-            self._last_fetch_time[stream.asset_id] = datetime.now(timezone.utc)
+            self._fetch_errors[fetch_key] = error_msg
+            self._last_fetch_time[fetch_key] = datetime.now(timezone.utc)
             logger.warning(f"Failed to fetch candles from broker for {asset.symbol}: {e}")
     
     def _timeframe_to_ig_resolution(self, timeframe: str) -> str:
