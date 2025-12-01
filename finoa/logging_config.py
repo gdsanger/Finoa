@@ -8,6 +8,7 @@ and the background worker. Supports:
 - Console logging for development
 - Environment-based configuration
 """
+import json
 import logging
 import os
 from pathlib import Path
@@ -128,6 +129,33 @@ def get_date_format() -> str:
     return '%Y-%m-%d %H:%M:%S'
 
 
+class StrategyDataFilter(logging.Filter):
+    """Ensure ``strategy_data`` exists on log records.
+
+    The verbose formatter includes ``%(strategy_data)s`` so we need to guarantee
+    the attribute is present to avoid ``KeyError`` when log calls don't supply
+    extra strategy data. Any mapping or list is serialized to JSON for
+    readability; other types are converted to strings. Empty values render as an
+    empty string so the formatter's trailing space does not cause noisy output.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:  # noqa: D401
+        if not hasattr(record, "strategy_data") or record.strategy_data is None:
+            record.strategy_data = ""
+            return True
+
+        value = record.strategy_data
+        if isinstance(value, (dict, list)):
+            try:
+                record.strategy_data = json.dumps(value, default=str)
+            except Exception:  # pragma: no cover - defensive fallback
+                record.strategy_data = str(value)
+        else:
+            record.strategy_data = str(value)
+
+        return True
+
+
 def configure_logging() -> dict:
     """
     Configure logging for the application.
@@ -157,6 +185,11 @@ def configure_logging() -> dict:
     logging_config = {
         'version': 1,
         'disable_existing_loggers': False,
+        'filters': {
+            'strategy_data': {
+                '()': 'finoa.logging_config.StrategyDataFilter',
+            },
+        },
         'formatters': {
             'standard': {
                 'format': log_format,
@@ -182,6 +215,7 @@ def configure_logging() -> dict:
                 'encoding': 'utf-8',
                 'formatter': 'verbose',
                 'level': log_level,
+                'filters': ['strategy_data'],
             },
         },
         'loggers': {
