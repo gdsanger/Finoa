@@ -33,16 +33,12 @@
         background-color: var(--fiona-bg-dark);
         min-height: 100vh;
         color: var(--fiona-text-light);
-        padding: 1rem;
     }
     
     .fiona-header {
         display: flex;
         justify-content: space-between;
-        align-items: center;
-        margin-bottom: 1.5rem;
-        padding-bottom: 1rem;
-        border-bottom: 1px solid var(--fiona-border);
+        align-items: center;      
     }
     
     .fiona-header h1 {
@@ -590,7 +586,7 @@
     
     .worker-status-value {
         font-size: 1rem;
-        font-weight: 700;
+        font-weight: 400;
         font-family: 'Roboto Mono', monospace;
         color: var(--fiona-text-light);
     }
@@ -1213,15 +1209,13 @@
         min-width: 0;
         background: linear-gradient(180deg, rgba(46, 120, 214, 0.12), rgba(26, 188, 156, 0.04)),
                     var(--fiona-card-dark);
-        border: 1px solid rgba(255, 255, 255, 0.06);
-        border-radius: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.06);       
         display: flex;
         flex-direction: column;
         overflow: hidden;
         position: sticky;
         top: 1rem;
-        max-height: calc(100vh - 130px);
-        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+        max-height: calc(100vh - 130px);       
         backdrop-filter: blur(6px);
     }
 
@@ -1723,8 +1717,7 @@
             grid-template-columns: 1fr;
         }
 
-        .assets-sidebar {
-            max-height: 360px;
+        .assets-sidebar {           
             position: relative;
             top: 0;
         }
@@ -1744,31 +1737,60 @@
 {% block content %}
 <div class="fiona-dashboard" data-signals-api-base="{% url 'api_signals_since' 'TIMESTAMP' %}">
     <div class="container-fluid">
-        <div class="fiona-header">
-            <div>
-                <h1>
-                    <i class="bi bi-graph-up-arrow"></i> Signal Dashboard
-                </h1>
-                <small class="text-muted">Trading Signal Management v1.0</small>
-            </div>
+        <div class="fiona-header">            
+            <ul class="list-group list-group-horizontal">
+                 <li class="list-group-item text-center"  style="background-color: #2e3440">
+                    <span class="lead text-white" id="worker-last-activity">--</span><br>
+                    <span class="small text-warning" >Worker last run</span>
+                 </li>
+                  <li class="list-group-item text-center"  style="background-color: #2e3440">
+                    <span class="lead text-white" id="worker-status-indicator">--</span>
+                    <span class="small text-warning" >Worker Status</span>
+                 </li>
+                 <li class="list-group-item text-center"  style="background-color: #2e3440">
+                    <span class="lead text-white" id="worker-phase">--</span><br>
+                    <span class="small text-warning" >Phase</span>
+                 </li>
+                  <li class="list-group-item text-center"  style="background-color: #2e3440">
+                    <span class="lead text-white">{{ active_count }}</span><br>
+                    <span class="small text-warning">aktive Signale</span>
+                 </li>
+            
+                 <li class="list-group-item text-center"  style="background-color: #2e3440">
+                    <span class="lead text-white" id="ig-balance">--</span><br>
+                    <span class="small text-danger">IG Kontostand</span>
+                 </li>
+                 <li class="list-group-item text-center"  style="background-color: #2e3440">
+                    <span class="lead text-white" id="ig-margin-available">--</span><br>
+                    <span class="small text-danger">IG Marging</span>
+                 </li>
+                   <li class="list-group-item text-center"  style="background-color: #2e3440">
+                    <span class="lead text-white" id="ig-pnl">--</span><br>
+                    <span class="small text-danger">P/L</span>
+                 </li>
+                  <li class="list-group-item text-center"  style="background-color: #2e3440">
+                    <span class="lead text-white" id="mexc-balance">--</span><br>
+                    <span class="small text-info">MEXC Kontostand</span>
+                 </li>
+                 <li class="list-group-item text-center"  style="background-color: #2e3440">
+                    <span class="lead text-white" id="mexc-margin-available">--</span><br>
+                    <span class="small text-info">MEXC Marging</span>
+                 </li>
+                  <li class="list-group-item text-center"  style="background-color: #2e3440">
+                    <span class="lead text-white" id="mexc-pnl">--</span><br>
+                    <span class="small text-info">P/L</span>
+                 </li>
+                </ul>
+
+
             <div class="d-flex gap-2 align-items-center">
-                <span id="signal-count-badge" class="badge bg-success">{{ active_count }} aktive Signale</span>
+                 <a href="{% url 'breakout_distance_chart' %}" class="btn btn-sm btn-outline-light" title="Breakout Chart" style="margin-top: auto;">
+                        <i class="bi bi-graph-up"></i> Chart
+                    </a>
                 <!-- Notification toggle button -->
                 <button id="notification-toggle" class="btn btn-sm btn-outline-light" onclick="toggleNotifications()" title="Benachrichtigungen">
                     <i id="notification-icon" class="bi bi-bell"></i>
                 </button>
-                <a href="{% url 'breakout_distance_chart' %}" class="btn btn-sm btn-outline-light" title="Breakout Chart">
-                    <i class="bi bi-graph-up"></i> Chart
-                </a>
-                <a href="{% url 'trading_diagnostics' %}" class="btn btn-sm btn-outline-light" title="Trading Diagnostics">
-                    <i class="bi bi-activity"></i> Diagnostics
-                </a>
-                <a href="{% url 'asset_list' %}" class="btn btn-sm btn-outline-light">
-                    <i class="bi bi-box-seam"></i> Assets
-                </a>
-                <a href="{% url 'trade_history' %}" class="btn btn-sm btn-outline-light">
-                    <i class="bi bi-clock-history"></i> Historie
-                </a>
             </div>
         </div>
         
@@ -1797,127 +1819,8 @@
             
             <!-- Main Content Area -->
             <main class="dashboard-main">
-        
-        <!-- Account Info Card - Multi-Broker -->
-        <div class="account-info-card" id="account-info">
-            <div class="account-info-header">
-                <h5><i class="bi bi-bank"></i> Konto &amp; Margin</h5>
-                <div class="d-flex align-items-center gap-2">
-                    <!-- Broker Tabs -->
-                    <div class="broker-tabs">
-                        <button class="broker-tab-btn active" data-broker="ig" onclick="selectBrokerTab('ig')">
-                            <span class="broker-status-dot" id="ig-status-dot"></span>
-                            IG
-                        </button>
-                        <button class="broker-tab-btn" data-broker="mexc" onclick="selectBrokerTab('mexc')">
-                            <span class="broker-status-dot" id="mexc-status-dot"></span>
-                            MEXC
-                        </button>
-                    </div>
-                    <button class="refresh-btn" id="refresh-account-btn" onclick="refreshAllBrokersAccountState()" title="Aktualisieren">
-                        <i class="bi bi-arrow-clockwise"></i>
-                    </button>
-                </div>
-            </div>
-            
-            <!-- IG Broker Content -->
-            <div id="ig-account-content" class="broker-content active">
-                <div class="account-info-grid">
-                    <div class="account-info-item">
-                        <div class="account-info-value" id="ig-balance">--</div>
-                        <div class="account-info-label">Kontostand</div>
-                    </div>
-                    <div class="account-info-item">
-                        <div class="account-info-value" id="ig-available">--</div>
-                        <div class="account-info-label">Verfügbar</div>
-                    </div>
-                    <div class="account-info-item">
-                        <div class="account-info-value" id="ig-margin-used">--</div>
-                        <div class="account-info-label">Margin (genutzt)</div>
-                    </div>
-                    <div class="account-info-item">
-                        <div class="account-info-value" id="ig-margin-available">--</div>
-                        <div class="account-info-label">Margin (verfügbar)</div>
-                    </div>
-                    <div class="account-info-item">
-                        <div class="account-info-value" id="ig-pnl">--</div>
-                        <div class="account-info-label">Unrealisiert P&amp;L</div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- MEXC Broker Content -->
-            <div id="mexc-account-content" class="broker-content">
-                <div class="account-info-grid">
-                    <div class="account-info-item">
-                        <div class="account-info-value" id="mexc-balance">--</div>
-                        <div class="account-info-label">Kontostand</div>
-                    </div>
-                    <div class="account-info-item">
-                        <div class="account-info-value" id="mexc-available">--</div>
-                        <div class="account-info-label">Verfügbar</div>
-                    </div>
-                    <div class="account-info-item">
-                        <div class="account-info-value" id="mexc-margin-used">--</div>
-                        <div class="account-info-label">Margin (genutzt)</div>
-                    </div>
-                    <div class="account-info-item">
-                        <div class="account-info-value" id="mexc-margin-available">--</div>
-                        <div class="account-info-label">Margin (verfügbar)</div>
-                    </div>
-                    <div class="account-info-item">
-                        <div class="account-info-value" id="mexc-pnl">--</div>
-                        <div class="account-info-label">Unrealisiert P&amp;L</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Worker Status Card -->
-        <div class="worker-status-card" id="worker-status">
-            <div class="worker-status-header">
-                <h5><i class="bi bi-cpu"></i> Worker Status</h5>
-                <div class="d-flex align-items-center gap-2">
-                    <span id="worker-status-indicator" class="worker-status-indicator loading">
-                        <i class="bi bi-circle-fill"></i>
-                        <span>Lädt...</span>
-                    </span>
-                    <button class="refresh-btn" id="refresh-worker-btn" onclick="refreshWorkerStatus()" title="Aktualisieren">
-                        <i class="bi bi-arrow-clockwise"></i>
-                    </button>
-                </div>
-            </div>
-            <div id="worker-status-content">
-                <div class="worker-status-grid">
-                    <div class="worker-status-item">
-                        <div class="worker-status-value" id="worker-last-activity">--</div>
-                        <div class="worker-status-label">Letzte Aktivität</div>
-                    </div>
-                    <div class="worker-status-item">
-                        <div class="worker-status-value" id="worker-phase">--</div>
-                        <div class="worker-status-label">Phase</div>
-                    </div>
-                    <div class="worker-status-item">
-                        <div class="worker-status-value" id="worker-epic">--</div>
-                        <div class="worker-status-label">Epic</div>
-                    </div>
-                    <div class="worker-status-item">
-                        <div class="worker-status-value" id="worker-setup-count">--</div>
-                        <div class="worker-status-label">Setups gefunden</div>
-                    </div>
-                    <div class="worker-status-item">
-                        <div class="worker-status-value" id="worker-interval">--</div>
-                        <div class="worker-status-label">Intervall</div>
-                    </div>
-                </div>
-                <!-- Countdown Timer -->
-                <div class="worker-countdown" id="worker-countdown">
-                    <span class="countdown-label"><i class="bi bi-clock"></i> Nächster Lauf in</span>
-                    <span class="countdown-value" id="worker-countdown-value">--</span>
-                </div>
-            </div>
-        </div>
-        
+                
+       
         <!-- Signal List Container (refreshable via HTMX) -->
         <div id="signal-list-container">
         {% if signals %}
@@ -2506,7 +2409,7 @@
         if (lastActivityEl && data.last_run_at) {
             const timeStr = formatTime(data.last_run_at);
             const agoStr = formatTimeAgo(data.seconds_since_last_run);
-            lastActivityEl.innerHTML = timeStr + '<br><small>' + agoStr + '</small>';
+            lastActivityEl.innerHTML = timeStr ; //+ '<br><small>' + agoStr + '</small>';
         }
         
         // Update phase
@@ -2791,7 +2694,7 @@
     // ============================================================================
     
     let sidebarRefreshInterval = null;
-    const SIDEBAR_REFRESH_INTERVAL = 30000; // 30 seconds
+    const SIDEBAR_REFRESH_INTERVAL = 10000; // 10 seconds
     
     function setSidebarRefreshButtonLoading(loading) {
         const btn = document.getElementById('refresh-sidebar-btn');
@@ -2927,12 +2830,12 @@
             rangeHtml = `
                 <div class="range-pills ms-auto">
                     <span class="range-pill high">
-                        <span class="label">High</span>
+                        <span class="label">H</span>
                         ${formatAssetPrice(asset.previous_range.high)}
                         ${highDistanceBadge}
                     </span>
                     <span class="range-pill low">
-                        <span class="label">Low</span>
+                        <span class="label">L</span>
                         ${formatAssetPrice(asset.previous_range.low)}
                         ${lowDistanceBadge}
                     </span>
@@ -2952,10 +2855,9 @@
         }
 
         return `
-            <li class="list-group-item asset-list-item border-secondary-subtle">
+            <li class="list-group-item asset-list-item border-secondary-subtle"  data-asset-id="${asset.id}" data-symbol="${escapeHtml(asset.symbol || '')}" onclick="openAssetChartModalFromButton(this)">
                 <div class="d-flex justify-content-between align-items-center">
-                    <div class="asset-meta">
-                        <div class="asset-avatar">${getAssetInitials(asset)}</div>
+                    <div class="asset-meta">                       
                         <div class="asset-title">
                             <span class="asset-name">${escapeHtml(asset.name)}</span>
                             <span class="asset-symbol">${escapeHtml(asset.symbol || 'N/A')}</span>
@@ -2970,13 +2872,9 @@
                             ${escapeHtml(phaseName)}
                         </span>
                         ${rangeHtml}
-                    </div>
-                    <div class="asset-actions">
-                        <button class="asset-chart-btn" data-asset-id="${asset.id}" data-symbol="${escapeHtml(asset.symbol || '')}" onclick="openAssetChartModalFromButton(this)">
-                            <i class="bi bi-graph-up"></i> Chart
-                        </button>
-                    </div>
+                    </div>                 
                 </div>
+                <hr>
                 <div class="asset-status mt-1">
                     <small><i class="bi bi-info-circle"></i> ${escapeHtml(asset.status_message || 'Kein Status')}</small>
                 </div>

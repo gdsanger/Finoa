@@ -53,7 +53,7 @@ class UsCoreConfig:
     
     # US Core Trading session (breakouts allowed)
     us_core_trading_start: str = "15:00"  # UTC time
-    us_core_trading_end: str = "22:00"    # UTC time
+    us_core_trading_end: str = "23:59"    # UTC time
     us_core_trading_enabled: bool = True   # Whether trading is enabled in this session
     
     # Range requirements (for Pre-US Range)
@@ -173,7 +173,7 @@ class StrategyConfig:
 
         london_core = LondonCoreConfig(
             start=london_core_data.get('start', '08:00'),
-            end=london_core_data.get('end', '12:00'),
+            end=london_core_data.get('end', '13:00'),
             min_range_ticks=london_core_data.get('min_range_ticks', 10),
             max_range_ticks=london_core_data.get('max_range_ticks', 200),
             min_breakout_body_fraction=london_core_data.get('min_breakout_body_fraction', 0.5),
