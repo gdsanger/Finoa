@@ -1195,12 +1195,33 @@
      * Dashboard Layout with Sidebar
      * ========================================================= */
     .dashboard-layout {
-        display: grid;
-        grid-template-columns: minmax(320px, 340px) 1fr;
+        display: flex;
+        flex-wrap: wrap;
         align-items: flex-start;
-        gap: 1.5rem;
+        column-gap: 1.5rem;
+        row-gap: 1.5rem;
         min-height: calc(100vh - 120px);
         width: 100%;
+    }
+
+    .dashboard-sidebar-col {
+        flex: 0 0 100%;
+    }
+
+    .dashboard-main-col {
+        flex: 1 1 0;
+        min-width: 0;
+    }
+
+    @media (min-width: 992px) {
+        .dashboard-sidebar-col {
+            flex: 0 0 400px;
+            max-width: 400px;
+        }
+
+        .dashboard-main-col {
+            flex: 1 1 calc(100% - 400px - 1.5rem);
+        }
     }
 
     /* Assets Sidebar */
@@ -1714,12 +1735,19 @@
     /* Responsive - Hide sidebar on mobile */
     @media (max-width: 992px) {
         .dashboard-layout {
-            grid-template-columns: 1fr;
+            column-gap: 0;
         }
 
-        .assets-sidebar {           
+        .dashboard-sidebar-col,
+        .dashboard-main-col {
+            flex: 0 0 100%;
+            max-width: 100%;
+        }
+
+        .assets-sidebar {
             position: relative;
             top: 0;
+            max-height: none;
         }
 
         .asset-list-item {
@@ -1795,36 +1823,33 @@
         </div>
         
         <!-- Main Dashboard Layout with Sidebar -->
-        <div class="dashboard-layout">
+        <div class="row g-3 dashboard-layout">
+            <!-- Left Sidebar - Active Assets -->
+            <div class="col-12 col-lg-auto dashboard-sidebar-col">
+                <aside class="assets-sidebar" id="assets-sidebar">
+                    <div class="sidebar-header">
+                        <h5><i class="bi bi-collection"></i> Aktive Assets</h5>
+                        <button class="refresh-btn" id="refresh-sidebar-btn" onclick="refreshAssetsSidebar()" title="Aktualisieren">
+                            <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                    </div>
+                    <div class="sidebar-content">
+                        <ul class="list-group list-group-flush sidebar-list" id="sidebar-assets-list">
+                            <!-- Asset items will be dynamically loaded -->
+                            <li class="list-group-item bg-transparent border-0">
+                                <div class="sidebar-loading">
+                                    <i class="bi bi-hourglass-split"></i>
+                                    <span>Lädt Assets...</span>
+                                </div>
+                            </li>
+                        </ul>
+                    </div>
+                </aside>
+            </div>
 
-<!-- Left Sidebar - Active Assets -->
-            <aside class="assets-sidebar" id="assets-sidebar">
-                <div class="sidebar-header">
-                    <h5><i class="bi bi-collection"></i> Aktive Assets</h5>
-                    <button class="refresh-btn" id="refresh-sidebar-btn" onclick="refreshAssetsSidebar()" title="Aktualisieren">
-                        <i class="bi bi-arrow-clockwise"></i>
-                    </button>
-                </div>
-                <div class="sidebar-content">
-                    <ul class="list-group list-group-flush sidebar-list" id="sidebar-assets-list">
-                        <!-- Asset items will be dynamically loaded -->
-                        <li class="list-group-item bg-transparent border-0">
-                            <div class="sidebar-loading">
-                                <i class="bi bi-hourglass-split"></i>
-                                <span>Lädt Assets...</span>
-                            </div>
-                        </li>
-                    </ul>
-                </div>
-            </aside>
-
-
-
-
-            
-            
             <!-- Main Content Area -->
-            <main class="dashboard-main">
+            <div class="col-12 col-lg dashboard-main-col">
+                <main class="dashboard-main">
                 
        
         <!-- Signal List Container (refreshable via HTMX) -->
@@ -1954,8 +1979,9 @@
         </div>
         {% endif %}
         </div>
-            </main>
-            <!-- End Main Content Area -->
+                </main>
+                <!-- End Main Content Area -->
+            </div>
         </div>
         <!-- End Dashboard Layout -->
     </div>
