@@ -1029,3 +1029,114 @@ class RiskEngineDebugLoggingTest(TestCase):
             # Check that adjustment is logged
             calls = [str(c) for c in mock_logger.debug.call_args_list]
             self.assertTrue(any('adjusted' in str(c).lower() or 'reduced' in str(c).lower() for c in calls))
+
+
+class RiskEngineZeroEquityTest(TestCase):
+    """Tests for Risk Engine handling of zero equity edge cases."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.config = RiskConfig()
+        self.engine = RiskEngine(self.config)
+        
+        # Create an account with zero equity
+        self.zero_equity_account = AccountState(
+            account_id="ZERO_EQUITY",
+            account_name="Zero Equity Account",
+            balance=Decimal("0.00"),
+            available=Decimal("0.00"),
+            equity=Decimal("0.00"),
+            margin_used=Decimal("0.00"),
+            margin_available=Decimal("0.00"),
+            currency="EUR",
+        )
+        
+        self.setup = SetupCandidate(
+            id="setup-123",
+            created_at=datetime.now(timezone.utc),
+            epic="CC.D.CL.UNC.IP",
+            setup_kind=SetupKind.BREAKOUT,
+            phase=SessionPhase.LONDON_CORE,
+            reference_price=75.50,
+            direction="LONG",
+            breakout=BreakoutContext(
+                range_high=75.50,
+                range_low=74.50,
+                range_height=1.00,
+                trigger_price=75.55,
+                direction="LONG",
+            ),
+        )
+        
+        self.order = OrderRequest(
+            epic="CC.D.CL.UNC.IP",
+            direction=OrderDirection.BUY,
+            size=Decimal("1.0"),
+            order_type=OrderType.MARKET,
+            stop_loss=Decimal("75.40"),
+            take_profit=Decimal("76.50"),
+        )
+
+    def test_trade_denied_zero_equity(self):
+        """Test that trade is denied when account equity is zero."""
+        now = datetime(2025, 1, 15, 10, 0, tzinfo=timezone.utc)
+        
+        result = self.engine.evaluate(
+            account=self.zero_equity_account,
+            positions=[],
+            setup=self.setup,
+            order=self.order,
+            now=now,
+        )
+        
+        # Trade should be denied due to zero equity
+        self.assertFalse(result.allowed)
+        # Should have a violation related to risk or SL distance
+        self.assertGreater(len(result.violations), 0)
+        # Verify risk metrics include equity = 0
+        self.assertEqual(result.risk_metrics.get('equity'), 0.0)
+        self.assertEqual(result.risk_metrics.get('max_risk_amount'), 0.0)
+
+    def test_zero_equity_logs_warning(self):
+        """Test that zero equity triggers a warning log."""
+        from unittest.mock import patch
+        
+        now = datetime(2025, 1, 15, 10, 0, tzinfo=timezone.utc)
+        
+        with patch('core.services.risk.risk_engine.logger') as mock_logger:
+            result = self.engine.evaluate(
+                account=self.zero_equity_account,
+                positions=[],
+                setup=self.setup,
+                order=self.order,
+                now=now,
+            )
+            
+            # Should have a warning call for zero equity
+            self.assertTrue(mock_logger.warning.called)
+            
+            # Check that zero equity warning is logged
+            warning_calls = [str(c) for c in mock_logger.warning.call_args_list]
+            self.assertTrue(any('zero' in str(c).lower() or 'negative' in str(c).lower() for c in warning_calls))
+
+    def test_zero_equity_logs_account_state(self):
+        """Test that account state is logged for debugging."""
+        from unittest.mock import patch
+        
+        now = datetime(2025, 1, 15, 10, 0, tzinfo=timezone.utc)
+        
+        with patch('core.services.risk.risk_engine.logger') as mock_logger:
+            result = self.engine.evaluate(
+                account=self.zero_equity_account,
+                positions=[],
+                setup=self.setup,
+                order=self.order,
+                now=now,
+            )
+            
+            # Should have debug calls logging account state
+            self.assertTrue(mock_logger.debug.called)
+            
+            # Check that account state is logged
+            debug_calls = [str(c) for c in mock_logger.debug.call_args_list]
+            self.assertTrue(any('account' in str(c).lower() for c in debug_calls))
