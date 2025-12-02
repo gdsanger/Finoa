@@ -6,6 +6,7 @@ from django.contrib import messages
 from django.db.models import Count, F, Sum, DecimalField, ExpressionWrapper, Min, Max
 from django.db import transaction
 from django.core.exceptions import ValidationError
+from django.urls import reverse
 from datetime import date, datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from decimal import Decimal
@@ -740,8 +741,11 @@ def book_virtual_booking(request, recurring_id):
     # Create the booking(s)
     with transaction.atomic():
         if recurring.is_transfer and recurring.transfer_partner_account:
-            # Create transfer bookings using the existing create_transfer function
-            # The recurring.amount is negative for outflow, so we need to use abs()
+            # Create transfer bookings using the existing create_transfer function.
+            # The create_transfer function expects a positive amount and handles the
+            # sign conversion internally (negative for source, positive for target).
+            # We use abs() to ensure the amount is positive regardless of how the
+            # recurring booking was defined (typically negative for outflow).
             from_booking, to_booking = create_transfer(
                 from_account=recurring.account,
                 to_account=recurring.transfer_partner_account,
@@ -773,7 +777,8 @@ def book_virtual_booking(request, recurring_id):
     # Redirect back to account detail with the same month/year
     year = booking_date.year
     month = booking_date.month
-    return redirect(f'/accounts/{recurring.account.id}/?year={year}&month={month}')
+    url = reverse('account_detail', args=[recurring.account.id])
+    return redirect(f'{url}?year={year}&month={month}')
 
 
 @login_required
