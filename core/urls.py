@@ -15,6 +15,7 @@ urlpatterns = [
     path('documents/review/<int:document_id>/', views.document_review_detail, name='document_review_detail'),
     path('due-bookings/', views.due_bookings, name='due_bookings'),
     path('bookings/<int:booking_id>/mark-booked/', views.mark_booking_as_booked, name='mark_booking_as_booked'),
+    path('recurring/<int:recurring_id>/book/', views.book_virtual_booking, name='book_virtual_booking'),
     path('time-tracking/', views.time_tracking, name='time_tracking'),
     path('time-tracking/create/', views.time_entry_create, name='time_entry_create'),
     path('time-tracking/<int:entry_id>/update/', views.time_entry_update, name='time_entry_update'),

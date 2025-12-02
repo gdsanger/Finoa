@@ -3146,3 +3146,214 @@ class AIAnalysisViewTest(TestCase):
         
         # Should default to 6 months
         self.assertEqual(response.context['selected_months'], 6)
+
+
+class BookVirtualBookingViewTest(TestCase):
+    """Tests for booking virtual bookings from recurring templates"""
+    
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.user = User.objects.create_user(username='testuser', password='testpass')
+        self.client.login(username='testuser', password='testpass')
+        
+        self.account = Account.objects.create(
+            name='Test Account',
+            type='checking',
+            initial_balance=Decimal('1000.00')
+        )
+        self.account2 = Account.objects.create(
+            name='Savings Account',
+            type='checking',
+            initial_balance=Decimal('500.00')
+        )
+        self.category = Category.objects.create(name='Test Category')
+        self.payee = Payee.objects.create(name='Test Payee')
+    
+    def test_book_virtual_booking_requires_login(self):
+        """Test that booking virtual bookings requires login"""
+        recurring = RecurringBooking.objects.create(
+            account=self.account,
+            amount=Decimal('-100.00'),
+            category=self.category,
+            description='Test Recurring',
+            start_date=date(2025, 1, 1),
+            frequency='MONTHLY',
+            interval=1,
+            day_of_month=15,
+            is_active=True
+        )
+        
+        self.client.logout()
+        response = self.client.post(f'/recurring/{recurring.id}/book/', {
+            'booking_date': '2025-01-15'
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.url.startswith('/login/'))
+    
+    def test_book_virtual_booking_requires_post(self):
+        """Test that only POST requests are accepted"""
+        recurring = RecurringBooking.objects.create(
+            account=self.account,
+            amount=Decimal('-100.00'),
+            category=self.category,
+            description='Test Recurring',
+            start_date=date(2025, 1, 1),
+            frequency='MONTHLY',
+            interval=1,
+            day_of_month=15,
+            is_active=True
+        )
+        
+        response = self.client.get(f'/recurring/{recurring.id}/book/')
+        self.assertEqual(response.status_code, 405)  # Method Not Allowed
+    
+    def test_book_virtual_booking_creates_booking(self):
+        """Test that booking a virtual booking creates a real booking"""
+        recurring = RecurringBooking.objects.create(
+            account=self.account,
+            amount=Decimal('-150.00'),
+            category=self.category,
+            payee=self.payee,
+            description='Monthly Expense',
+            start_date=date(2025, 1, 1),
+            frequency='MONTHLY',
+            interval=1,
+            day_of_month=15,
+            is_active=True
+        )
+        
+        response = self.client.post(f'/recurring/{recurring.id}/book/', {
+            'booking_date': '2025-01-15'
+        })
+        
+        # Should redirect to account detail
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(f'/accounts/{self.account.id}/', response.url)
+        
+        # Check that booking was created
+        booking = Booking.objects.filter(
+            account=self.account,
+            description='Monthly Expense'
+        ).first()
+        
+        self.assertIsNotNone(booking)
+        self.assertEqual(booking.amount, Decimal('-150.00'))
+        self.assertEqual(booking.category, self.category)
+        self.assertEqual(booking.payee, self.payee)
+        self.assertEqual(booking.status, 'POSTED')
+        self.assertEqual(booking.booking_date, date(2025, 1, 15))
+    
+    def test_book_virtual_booking_transfer_creates_two_bookings(self):
+        """Test that booking a virtual transfer creates both bookings"""
+        recurring = RecurringBooking.objects.create(
+            account=self.account,
+            amount=Decimal('-200.00'),
+            category=self.category,
+            description='Monthly Savings Transfer',
+            start_date=date(2025, 1, 1),
+            frequency='MONTHLY',
+            interval=1,
+            day_of_month=15,
+            is_active=True,
+            is_transfer=True,
+            transfer_partner_account=self.account2
+        )
+        
+        response = self.client.post(f'/recurring/{recurring.id}/book/', {
+            'booking_date': '2025-01-15'
+        })
+        
+        self.assertEqual(response.status_code, 302)
+        
+        # Check that both bookings were created
+        from_booking = Booking.objects.filter(
+            account=self.account,
+            description='Monthly Savings Transfer',
+            is_transfer=True
+        ).first()
+        
+        to_booking = Booking.objects.filter(
+            account=self.account2,
+            description='Monthly Savings Transfer',
+            is_transfer=True
+        ).first()
+        
+        self.assertIsNotNone(from_booking)
+        self.assertIsNotNone(to_booking)
+        self.assertEqual(from_booking.amount, Decimal('-200.00'))
+        self.assertEqual(to_booking.amount, Decimal('200.00'))
+        self.assertEqual(from_booking.transfer_group_id, to_booking.transfer_group_id)
+    
+    def test_book_virtual_booking_missing_date(self):
+        """Test that missing booking_date returns error"""
+        recurring = RecurringBooking.objects.create(
+            account=self.account,
+            amount=Decimal('-100.00'),
+            description='Test Recurring',
+            start_date=date(2025, 1, 1),
+            frequency='MONTHLY',
+            interval=1,
+            day_of_month=15,
+            is_active=True
+        )
+        
+        response = self.client.post(f'/recurring/{recurring.id}/book/', {})
+        
+        # Should redirect with error
+        self.assertEqual(response.status_code, 302)
+        
+        # No booking should be created
+        booking = Booking.objects.filter(description='Test Recurring').first()
+        self.assertIsNone(booking)
+    
+    def test_book_virtual_booking_invalid_date(self):
+        """Test that invalid date format returns error"""
+        recurring = RecurringBooking.objects.create(
+            account=self.account,
+            amount=Decimal('-100.00'),
+            description='Test Recurring',
+            start_date=date(2025, 1, 1),
+            frequency='MONTHLY',
+            interval=1,
+            day_of_month=15,
+            is_active=True
+        )
+        
+        response = self.client.post(f'/recurring/{recurring.id}/book/', {
+            'booking_date': 'invalid-date'
+        })
+        
+        # Should redirect with error
+        self.assertEqual(response.status_code, 302)
+        
+        # No booking should be created
+        booking = Booking.objects.filter(description='Test Recurring').first()
+        self.assertIsNone(booking)
+    
+    def test_book_virtual_booking_inactive_recurring(self):
+        """Test that inactive recurring booking cannot be booked"""
+        recurring = RecurringBooking.objects.create(
+            account=self.account,
+            amount=Decimal('-100.00'),
+            description='Inactive Recurring',
+            start_date=date(2025, 1, 1),
+            frequency='MONTHLY',
+            interval=1,
+            day_of_month=15,
+            is_active=False
+        )
+        
+        response = self.client.post(f'/recurring/{recurring.id}/book/', {
+            'booking_date': '2025-01-15'
+        })
+        
+        # Should return 404 for inactive recurring booking
+        self.assertEqual(response.status_code, 404)
+    
+    def test_book_virtual_booking_nonexistent_recurring(self):
+        """Test that nonexistent recurring booking returns 404"""
+        response = self.client.post('/recurring/99999/book/', {
+            'booking_date': '2025-01-15'
+        })
+        
+        self.assertEqual(response.status_code, 404)
