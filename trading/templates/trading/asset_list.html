@@ -4,53 +4,18 @@
 
 {% block extra_css %}
 <style>
-    .asset-card {
-        border-radius: 12px;
-        transition: transform 0.2s, box-shadow 0.2s;
-    }
-    
-    .asset-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    }
-    
-    .asset-card.inactive {
-        opacity: 0.6;
-    }
-    
+    /* Page-specific overrides - using dark mode variables from finoa.css */
     .asset-status-badge {
         font-size: 0.75rem;
         padding: 0.25rem 0.5rem;
     }
     
-    .category-section {
-        margin-bottom: 2rem;
-    }
-    
-    .category-header {
-        font-size: 0.875rem;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        color: #6c757d;
-        margin-bottom: 1rem;
-        padding-bottom: 0.5rem;
-        border-bottom: 1px solid #dee2e6;
-    }
-    
     .epic-badge {
         font-family: 'Roboto Mono', monospace;
         font-size: 0.75rem;
-        background-color: #f8f9fa;
+        background-color: var(--fiona-card-header);
         padding: 0.25rem 0.5rem;
         border-radius: 4px;
-    }
-    
-    .config-indicator {
-        font-size: 0.75rem;
-    }
-    
-    .config-indicator i {
-        width: 1rem;
     }
 </style>
 {% endblock %}

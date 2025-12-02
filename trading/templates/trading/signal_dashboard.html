@@ -5,34 +5,12 @@
 
 {% block extra_css %}
 <style>
-    /* Fiona Trading Dashboard - Dark Mode Styles */
-    :root {
-        --fiona-bg-dark: #1a1d21;
-        --fiona-card-dark: #2d3239;
-        --fiona-card-header: #3a4149;
-        --fiona-text-light: #e9ecef;
-        --fiona-text-muted: #8b949e;
-        --fiona-border: #484f58;
-        
-        /* Signal Colors */
-        --signal-long: #28a745;
-        --signal-short: #dc3545;
-        
-        /* Confidence Colors */
-        --confidence-high: #28a745;
-        --confidence-medium: #ffc107;
-        --confidence-low: #dc3545;
-        
-        /* Risk Colors */
-        --risk-green: #28a745;
-        --risk-yellow: #ffc107;
-        --risk-red: #dc3545;
-    }
+    /* Fiona Trading Dashboard - Page Specific Styles */
+    /* Note: Core dark mode variables are defined in finoa.css */
     
     .fiona-dashboard {
-        background-color: var(--fiona-bg-dark);
         min-height: 100vh;
-        color: var(--fiona-text-light);
+        padding: 1rem;
     }
     
     .fiona-header {
@@ -42,7 +20,6 @@
     }
     
     .fiona-header h1 {
-        color: var(--fiona-text-light);
         margin: 0;
     }
     

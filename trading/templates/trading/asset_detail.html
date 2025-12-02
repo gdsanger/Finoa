@@ -4,54 +4,17 @@
 
 {% block extra_css %}
 <style>
-    .config-section {
-        margin-bottom: 1.5rem;
-    }
-    
+    /* Page-specific overrides - dark mode variables from finoa.css */
     .config-section-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 1rem;
-        padding-bottom: 0.5rem;
-        border-bottom: 1px solid #dee2e6;
-    }
-    
-    .config-section-title {
-        font-size: 1rem;
-        font-weight: 600;
-        margin: 0;
-    }
-    
-    .config-table {
-        font-size: 0.9rem;
+        border-bottom-color: var(--fiona-border);
     }
     
     .config-table th {
-        width: 40%;
-        font-weight: 500;
-        color: #6c757d;
-    }
-    
-    .event-config-row {
-        transition: background-color 0.2s;
+        color: var(--fiona-text-muted);
     }
     
     .event-config-row:hover {
-        background-color: rgba(0, 0, 0, 0.02);
-    }
-    
-    .badge-phase {
-        font-family: monospace;
-        font-size: 0.75rem;
-    }
-    
-    .epic-display {
-        font-family: 'Roboto Mono', monospace;
-        font-size: 0.9rem;
-        background-color: #f8f9fa;
-        padding: 0.25rem 0.5rem;
-        border-radius: 4px;
+        background-color: var(--fiona-card-header);
     }
 </style>
 {% endblock %}
