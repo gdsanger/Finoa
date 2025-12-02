@@ -1048,7 +1048,7 @@ class RiskEngineZeroEquityTest(TestCase):
             equity=Decimal("0.00"),
             margin_used=Decimal("0.00"),
             margin_available=Decimal("0.00"),
-            currency="EUR",
+            currency="USDT",
         )
         
         self.setup = SetupCandidate(
