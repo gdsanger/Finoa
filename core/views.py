@@ -708,6 +708,75 @@ def mark_booking_as_booked(request, booking_id):
 
 
 @login_required
+@require_http_methods(['POST'])
+def book_virtual_booking(request, recurring_id):
+    """
+    Create a real booking from a virtual booking (recurring booking instance).
+    
+    This converts a virtual booking instance from a recurring booking template
+    into a real POSTED booking. For transfer recurring bookings, this creates
+    both sides of the transfer.
+    
+    POST parameters:
+        booking_date: The date for the booking (from the virtual booking)
+    
+    Returns:
+        Redirects back to the account detail page
+    """
+    recurring = get_object_or_404(RecurringBooking, id=recurring_id, is_active=True)
+    
+    # Get the booking date from POST data
+    booking_date_str = request.POST.get('booking_date')
+    if not booking_date_str:
+        messages.error(request, 'Buchungsdatum ist erforderlich.')
+        return redirect('account_detail', account_id=recurring.account.id)
+    
+    try:
+        booking_date = date.fromisoformat(booking_date_str)
+    except ValueError:
+        messages.error(request, 'Ungültiges Datumsformat.')
+        return redirect('account_detail', account_id=recurring.account.id)
+    
+    # Create the booking(s)
+    with transaction.atomic():
+        if recurring.is_transfer and recurring.transfer_partner_account:
+            # Create transfer bookings using the existing create_transfer function
+            # The recurring.amount is negative for outflow, so we need to use abs()
+            from_booking, to_booking = create_transfer(
+                from_account=recurring.account,
+                to_account=recurring.transfer_partner_account,
+                amount=abs(recurring.amount),
+                booking_date=booking_date,
+                description=recurring.description,
+                category=recurring.category
+            )
+            messages.success(
+                request, 
+                f'Umbuchung "{recurring.description}" erfolgreich gebucht.'
+            )
+        else:
+            # Create a single booking
+            Booking.objects.create(
+                account=recurring.account,
+                booking_date=booking_date,
+                amount=recurring.amount,
+                category=recurring.category,
+                payee=recurring.payee,
+                description=recurring.description,
+                status='POSTED'
+            )
+            messages.success(
+                request, 
+                f'Buchung "{recurring.description}" erfolgreich erstellt.'
+            )
+    
+    # Redirect back to account detail with the same month/year
+    year = booking_date.year
+    month = booking_date.month
+    return redirect(f'/accounts/{recurring.account.id}/?year={year}&month={month}')
+
+
+@login_required
 def reconcile_balance(request, account_id):
     """
     Balance reconciliation view for aligning Finoa balance with external balance.

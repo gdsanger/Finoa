@@ -228,6 +228,11 @@
             <h5 class="mb-0"><i class="bi bi-arrow-repeat"></i> Virtuelle Buchungen (Serien)</h5>
         </div>
         <div class="card-body">
+            <p class="text-muted small mb-3">
+                <i class="bi bi-info-circle"></i> 
+                Diese Buchungen werden aus wiederkehrenden Buchungsvorlagen generiert und im Forecast berücksichtigt. 
+                Klicken Sie auf "Buchen", um eine virtuelle Buchung als echte Buchung zu erfassen.
+            </p>
             <div class="table-responsive">
                 <table class="table table-finoa">
                     <thead>
@@ -235,14 +240,22 @@
                             <th>Datum</th>
                             <th>Beschreibung</th>
                             <th>Kategorie</th>
+                            <th>Empfänger</th>
                             <th class="text-end">Betrag</th>
+                            <th class="text-center">Aktionen</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for booking in virtual_bookings %}
                         <tr class="table-secondary">
-                            <td>{{ booking.booking_date|date:"d.m.Y" }}</td>
-                            <td>{{ booking.description }} <span class="badge bg-secondary">virtuell</span></td>
+                            <td>{{ booking.date|date:"d.m.Y" }}</td>
+                            <td>
+                                {{ booking.description }} 
+                                <span class="badge bg-secondary">virtuell</span>
+                                {% if booking.is_transfer %}
+                                    <span class="badge bg-info">Umbuchung</span>
+                                {% endif %}
+                            </td>
                             <td>
                                 {% if booking.category %}
                                     <span class="badge bg-info">{{ booking.category.name }}</span>
@@ -250,8 +263,26 @@
                                     <span class="text-muted">—</span>
                                 {% endif %}
                             </td>
+                            <td>
+                                {% if booking.payee %}
+                                    {{ booking.payee.name }}
+                                {% elif booking.is_transfer and booking.transfer_partner_account %}
+                                    <span class="text-muted">→ {{ booking.transfer_partner_account.name }}</span>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
                             <td class="text-end {% if booking.amount >= 0 %}balance-positive{% else %}balance-negative{% endif %}">
                                 <strong>{{ booking.amount|floatformat:2 }} €</strong>
+                            </td>
+                            <td class="text-center">
+                                <form method="post" action="{% url 'book_virtual_booking' booking.recurring_booking_id %}" style="display: inline;">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="booking_date" value="{{ booking.date|date:'Y-m-d' }}">
+                                    <button type="submit" class="btn btn-sm btn-finoa-primary" title="Als echte Buchung erfassen">
+                                        <i class="bi bi-check-circle"></i> Buchen
+                                    </button>
+                                </form>
                             </td>
                         </tr>
                         {% endfor %}
