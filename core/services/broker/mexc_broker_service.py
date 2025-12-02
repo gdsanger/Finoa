@@ -467,12 +467,25 @@ class MexcBrokerService(BrokerService):
         # Get account assets from Futures API
         assets_data = self._futures_request("GET", "/api/v1/private/account/assets")
         
+        # Log raw response for debugging
+        logger.debug(
+            "Futures account assets response",
+            extra={
+                "broker_data": {
+                    "endpoint": "/api/v1/private/account/assets",
+                    "response_type": type(assets_data).__name__,
+                    "asset_count": len(assets_data) if isinstance(assets_data, list) else 0,
+                }
+            }
+        )
+        
         # Find USDT asset in the response
         # The response is a list of assets
         usdt_equity = Decimal('0')
         usdt_available = Decimal('0')
         usdt_frozen = Decimal('0')
         usdt_unrealized_pnl = Decimal('0')
+        usdt_found = False
         
         if isinstance(assets_data, list):
             for asset in assets_data:
@@ -481,7 +494,45 @@ class MexcBrokerService(BrokerService):
                     usdt_available = Decimal(str(asset.get('availableBalance', '0')))
                     usdt_frozen = Decimal(str(asset.get('frozenBalance', '0')))
                     usdt_unrealized_pnl = Decimal(str(asset.get('unrealisedPnl', '0')))
+                    usdt_found = True
+                    
+                    # Log the USDT asset values for debugging
+                    logger.debug(
+                        "Futures USDT asset found",
+                        extra={
+                            "broker_data": {
+                                "currency": "USDT",
+                                "equity": float(usdt_equity),
+                                "available_balance": float(usdt_available),
+                                "frozen_balance": float(usdt_frozen),
+                                "unrealised_pnl": float(usdt_unrealized_pnl),
+                            }
+                        }
+                    )
                     break
+        
+        # Warn if USDT asset was not found or has zero equity
+        if not usdt_found:
+            logger.warning(
+                "Futures USDT asset not found in account assets response",
+                extra={
+                    "broker_data": {
+                        "endpoint": "/api/v1/private/account/assets",
+                        "assets_received": [a.get('currency') for a in assets_data] if isinstance(assets_data, list) else [],
+                    }
+                }
+            )
+        elif usdt_equity <= Decimal('0'):
+            logger.warning(
+                "Futures USDT equity is zero or negative",
+                extra={
+                    "broker_data": {
+                        "equity": float(usdt_equity),
+                        "available_balance": float(usdt_available),
+                        "frozen_balance": float(usdt_frozen),
+                    }
+                }
+            )
         
         # Calculate balance (equity - unrealized P&L)
         usdt_balance = usdt_equity - usdt_unrealized_pnl

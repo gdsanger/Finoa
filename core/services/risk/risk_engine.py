@@ -449,6 +449,39 @@ class RiskEngine:
         risk_metrics['max_risk_amount'] = float(max_risk_amount)
         risk_metrics['equity'] = float(account.equity)
         
+        # Log account state for debugging (critical for troubleshooting)
+        logger.debug(
+            "Risk evaluation: account state",
+            extra={
+                "risk_data": {
+                    "setup_id": setup.id,
+                    "account_id": account.account_id,
+                    "equity": float(account.equity),
+                    "balance": float(account.balance),
+                    "available": float(account.available),
+                    "currency": account.currency,
+                    "max_risk_amount": float(max_risk_amount),
+                    "max_risk_percent": float(self.config.max_risk_per_trade_percent),
+                }
+            }
+        )
+        
+        # Warn if equity is zero or suspiciously low
+        if account.equity <= Decimal('0'):
+            logger.warning(
+                "Risk evaluation: account equity is zero or negative - all trades will be rejected",
+                extra={
+                    "risk_data": {
+                        "setup_id": setup.id,
+                        "account_id": account.account_id,
+                        "equity": float(account.equity),
+                        "balance": float(account.balance),
+                        "available": float(account.available),
+                        "currency": account.currency,
+                    }
+                }
+            )
+        
         # Check position size limit and cap if needed
         if working_size > self.config.max_position_size:
             working_size = self.config.max_position_size
