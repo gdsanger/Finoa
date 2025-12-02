@@ -1,25 +1,46 @@
 /* 
  * Finoa Brand Colors & Custom Styles
  * Minimalistic, modern financial management UI
+ * Dark Mode Theme
  */
 
 :root {
-    --finoa-green: #39A77B;
-    --finoa-blue: #3A6EA5;
-    --finoa-grey: #E9ECEF;
-    --dark-slate: #2E3440;
-    --soft-white: #F7F9FA;
+    /* Brand Colors */
+    --fiona-green: #39A77B;
+    --fiona-blue: #3A6EA5;
+    
+    /* Dark Mode Colors */
+    --fiona-bg-dark: #1a1d21;
+    --fiona-card-dark: #2d3239;
+    --fiona-card-header: #3a4149;
+    --fiona-text-light: #e9ecef;
+    --fiona-text-muted: #8b949e;
+    --fiona-border: #484f58;
+    
+    /* Signal Colors */
+    --signal-long: #28a745;
+    --signal-short: #dc3545;
+    
+    /* Confidence Colors */
+    --confidence-high: #28a745;
+    --confidence-medium: #ffc107;
+    --confidence-low: #dc3545;
+    
+    /* Legacy variables for compatibility */
+    --fiona-grey: #3a4149;
+    --dark-slate: #e9ecef;
+    --soft-white: #1a1d21;
 }
 
 body {
-    background-color: var(--soft-white);
-    color: var(--dark-slate);
+    background-color: var(--fiona-bg-dark);
+    color: var(--fiona-text-light);
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
 /* Navigation & Header */
 .navbar-finoa {
-    background-color: var(--finoa-blue);
+    background-color: var(--fiona-blue);
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
@@ -29,7 +50,7 @@ body {
 }
 
 .navbar-finoa .nav-link:hover {
-    color: var(--finoa-green) !important;
+    color: var(--fiona-green) !important;
 }
 
 .navbar-toggler-finoa {
@@ -40,26 +61,34 @@ body {
     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28255, 255, 255, 1%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
 }
 
-/* Cards & Panels */
-.card-finoa {
-    background-color: white;
-    border: none;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+/* Cards & Panels - Dark Mode */
+.card-finoa,
+.card {
+    background-color: var(--fiona-card-dark);
+    border: 1px solid var(--fiona-border);
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
     margin-bottom: 1.5rem;
+    color: var(--fiona-text-light);
 }
 
-.card-finoa .card-header {
-    background-color: var(--finoa-grey);
-    border-bottom: 2px solid var(--finoa-blue);
+.card-finoa .card-header,
+.card .card-header {
+    background-color: var(--fiona-card-header);
+    border-bottom: 1px solid var(--fiona-border);
     font-weight: 600;
-    border-radius: 8px 8px 0 0;
+    border-radius: 12px 12px 0 0;
+    color: var(--fiona-text-light);
+}
+
+.card-body {
+    color: var(--fiona-text-light);
 }
 
 /* Buttons */
 .btn-finoa-primary {
-    background-color: var(--finoa-green);
-    border-color: var(--finoa-green);
+    background-color: var(--fiona-green);
+    border-color: var(--fiona-green);
     color: white;
 }
 
@@ -70,8 +99,8 @@ body {
 }
 
 .btn-finoa-secondary {
-    background-color: var(--finoa-blue);
-    border-color: var(--finoa-blue);
+    background-color: var(--fiona-blue);
+    border-color: var(--fiona-blue);
     color: white;
 }
 
@@ -83,7 +112,7 @@ body {
 
 /* Balance Display */
 .balance-positive {
-    color: var(--finoa-green);
+    color: var(--fiona-green);
     font-weight: 600;
 }
 
@@ -97,27 +126,63 @@ body {
     font-weight: 700;
 }
 
-/* Tables */
-.table-finoa {
-    background-color: white;
+/* Tables - Dark Mode */
+.table-finoa,
+.table {
+    --bs-table-bg: var(--fiona-card-dark);
+    --bs-table-color: var(--fiona-text-light);
+    --bs-table-border-color: var(--fiona-border);
+    --bs-table-striped-bg: rgba(255, 255, 255, 0.05);
+    --bs-table-hover-bg: rgba(255, 255, 255, 0.075);
+    color: var(--fiona-text-light);
+    background-color: var(--fiona-card-dark);
 }
 
-.table-finoa thead {
-    background-color: var(--finoa-grey);
-    color: var(--dark-slate);
+.table-finoa thead,
+.table thead {
+    background-color: var(--fiona-card-header);
+    color: var(--fiona-text-muted);
 }
 
-.table-finoa tbody tr:hover {
-    background-color: var(--finoa-grey);
+.table-finoa thead th,
+.table thead th {
+    border-bottom: 1px solid var(--fiona-border);
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+    color: var(--fiona-text-muted);
+}
+
+.table-finoa tbody tr:hover,
+.table tbody tr:hover {
+    background-color: var(--fiona-card-header);
+}
+
+.table-finoa tbody td,
+.table tbody td {
+    border-bottom: 1px solid var(--fiona-border);
+    vertical-align: middle;
+}
+
+.table-light,
+.table-secondary {
+    --bs-table-bg: var(--fiona-card-header);
+    --bs-table-color: var(--fiona-text-light);
+}
+
+.table-info {
+    --bs-table-bg: rgba(58, 110, 165, 0.2);
+    --bs-table-color: var(--fiona-text-light);
 }
 
 /* Status Badges */
 .badge-posted {
-    background-color: var(--finoa-green);
+    background-color: var(--fiona-green);
 }
 
 .badge-planned {
-    background-color: var(--finoa-blue);
+    background-color: var(--fiona-blue);
 }
 
 .badge-cancelled {
@@ -157,7 +222,7 @@ body {
 
 /* Account Type Colors */
 .account-checking {
-    border-left: 4px solid var(--finoa-blue);
+    border-left: 4px solid var(--fiona-blue);
 }
 
 .account-credit_card {
@@ -165,7 +230,7 @@ body {
 }
 
 .account-trading {
-    border-left: 4px solid var(--finoa-green);
+    border-left: 4px solid var(--fiona-green);
 }
 
 .account-loan {
@@ -231,10 +296,499 @@ body {
 /* Form styling */
 .form-finoa .form-label {
     font-weight: 600;
-    color: var(--dark-slate);
+    color: var(--fiona-text-light);
 }
 
 .form-finoa .form-control:focus {
-    border-color: var(--finoa-blue);
+    border-color: var(--fiona-blue);
     box-shadow: 0 0 0 0.2rem rgba(58, 110, 165, 0.25);
+}
+
+/* Form Controls - Dark Mode */
+.form-control,
+.form-select {
+    background-color: var(--fiona-card-dark);
+    border-color: var(--fiona-border);
+    color: var(--fiona-text-light);
+}
+
+.form-control:focus,
+.form-select:focus {
+    background-color: var(--fiona-card-header);
+    border-color: var(--fiona-blue);
+    color: var(--fiona-text-light);
+    box-shadow: 0 0 0 0.2rem rgba(58, 110, 165, 0.25);
+}
+
+.form-control::placeholder {
+    color: var(--fiona-text-muted);
+}
+
+.form-label {
+    color: var(--fiona-text-light);
+}
+
+.form-text {
+    color: var(--fiona-text-muted);
+}
+
+/* Dropdowns - Dark Mode */
+.dropdown-menu {
+    background-color: var(--fiona-card-dark);
+    border: 1px solid var(--fiona-border);
+}
+
+.dropdown-item {
+    color: var(--fiona-text-light);
+}
+
+.dropdown-item:hover,
+.dropdown-item:focus {
+    background-color: var(--fiona-card-header);
+    color: var(--fiona-text-light);
+}
+
+.dropdown-divider {
+    border-color: var(--fiona-border);
+}
+
+/* Modals - Dark Mode */
+.modal-content {
+    background-color: var(--fiona-card-dark);
+    border: 1px solid var(--fiona-border);
+    color: var(--fiona-text-light);
+}
+
+.modal-header {
+    border-bottom-color: var(--fiona-border);
+}
+
+.modal-footer {
+    border-top-color: var(--fiona-border);
+}
+
+/* Alerts - Dark Mode */
+.alert {
+    border-radius: 8px;
+}
+
+.alert-info {
+    background-color: rgba(58, 110, 165, 0.2);
+    border-color: var(--fiona-blue);
+    color: var(--fiona-text-light);
+}
+
+.alert-success {
+    background-color: rgba(40, 167, 69, 0.2);
+    border-color: var(--signal-long);
+    color: var(--fiona-text-light);
+}
+
+.alert-warning {
+    background-color: rgba(255, 193, 7, 0.2);
+    border-color: var(--confidence-medium);
+    color: var(--fiona-text-light);
+}
+
+.alert-danger {
+    background-color: rgba(220, 53, 69, 0.2);
+    border-color: var(--signal-short);
+    color: var(--fiona-text-light);
+}
+
+/* Breadcrumbs - Dark Mode */
+.breadcrumb {
+    background-color: transparent;
+}
+
+.breadcrumb-item a {
+    color: var(--fiona-blue);
+}
+
+.breadcrumb-item.active {
+    color: var(--fiona-text-muted);
+}
+
+.breadcrumb-item + .breadcrumb-item::before {
+    color: var(--fiona-text-muted);
+}
+
+/* Links - Dark Mode */
+a {
+    color: var(--fiona-blue);
+}
+
+a:hover {
+    color: var(--fiona-green);
+}
+
+/* Text Utilities - Dark Mode */
+.text-muted {
+    color: var(--fiona-text-muted) !important;
+}
+
+/* Page-level container styles */
+.container,
+.container-fluid {
+    color: var(--fiona-text-light);
+}
+
+/* Headings */
+h1, h2, h3, h4, h5, h6,
+.h1, .h2, .h3, .h4, .h5, .h6 {
+    color: var(--fiona-text-light);
+}
+
+/* Code blocks */
+code {
+    background-color: var(--fiona-card-header);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    color: var(--fiona-text-light);
+}
+
+/* Pagination - Dark Mode */
+.page-link {
+    background-color: var(--fiona-card-dark);
+    border-color: var(--fiona-border);
+    color: var(--fiona-text-light);
+}
+
+.page-link:hover {
+    background-color: var(--fiona-card-header);
+    border-color: var(--fiona-border);
+    color: var(--fiona-text-light);
+}
+
+.page-item.active .page-link {
+    background-color: var(--fiona-blue);
+    border-color: var(--fiona-blue);
+}
+
+.page-item.disabled .page-link {
+    background-color: var(--fiona-card-header);
+    border-color: var(--fiona-border);
+    color: var(--fiona-text-muted);
+}
+
+/* List Groups - Dark Mode */
+.list-group-item {
+    background-color: var(--fiona-card-dark);
+    border-color: var(--fiona-border);
+    color: var(--fiona-text-light);
+}
+
+.list-group-item:hover {
+    background-color: var(--fiona-card-header);
+}
+
+/* Specific badge colors for dark mode */
+.bg-secondary {
+    background-color: var(--fiona-card-header) !important;
+}
+
+.bg-info {
+    background-color: var(--fiona-blue) !important;
+}
+
+.bg-success {
+    background-color: var(--signal-long) !important;
+}
+
+.bg-danger {
+    background-color: var(--signal-short) !important;
+}
+
+.bg-warning {
+    color: var(--fiona-bg-dark) !important;
+}
+
+/* Background utilities */
+.bg-success-subtle {
+    background-color: rgba(40, 167, 69, 0.2) !important;
+}
+
+.bg-danger-subtle {
+    background-color: rgba(220, 53, 69, 0.2) !important;
+}
+
+.bg-warning-subtle {
+    background-color: rgba(255, 193, 7, 0.2) !important;
+}
+
+.bg-primary-subtle {
+    background-color: rgba(58, 110, 165, 0.2) !important;
+}
+
+.bg-secondary-subtle {
+    background-color: rgba(108, 117, 125, 0.2) !important;
+}
+
+/* Border utilities */
+.border-secondary {
+    border-color: var(--fiona-border) !important;
+}
+
+/* Mono font for numbers */
+.mono {
+    font-family: 'Roboto Mono', monospace;
+}
+
+/* Empty state styles */
+.empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: var(--fiona-text-muted);
+}
+
+.empty-state i {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+
+/* Trading specific styles shared across all trading templates */
+
+/* Direction Badges */
+.direction-badge {
+    font-size: 1rem;
+    font-weight: 700;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+}
+
+.direction-badge-sm {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-weight: 600;
+}
+
+.direction-LONG {
+    background-color: var(--signal-long);
+    color: white;
+}
+
+.direction-SHORT {
+    background-color: var(--signal-short);
+    color: white;
+}
+
+/* Trade Type Badges */
+.trade-type-badge {
+    font-size: 0.75rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 6px;
+    font-weight: 600;
+}
+
+.trade-type-LIVE {
+    background-color: var(--signal-long);
+    color: white;
+}
+
+.trade-type-SHADOW {
+    background-color: #6c757d;
+    color: white;
+}
+
+/* Status Badges */
+.status-badge {
+    font-size: 0.75rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 6px;
+    font-weight: 600;
+}
+
+.status-OPEN {
+    background-color: rgba(37, 99, 235, 0.2);
+    color: #60a5fa;
+    border: 1px solid #60a5fa;
+}
+
+.status-CLOSED {
+    background-color: rgba(40, 167, 69, 0.2);
+    color: var(--signal-long);
+    border: 1px solid var(--signal-long);
+}
+
+.status-CANCELLED {
+    background-color: rgba(108, 117, 125, 0.2);
+    color: #adb5bd;
+    border: 1px solid #adb5bd;
+}
+
+/* P&L colors */
+.pnl-positive {
+    color: var(--signal-long);
+    font-weight: 700;
+}
+
+.pnl-negative {
+    color: var(--signal-short);
+    font-weight: 700;
+}
+
+/* Confidence badges */
+.confidence-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 6px;
+    font-weight: 600;
+}
+
+.confidence-high {
+    background-color: rgba(40, 167, 69, 0.2);
+    color: var(--confidence-high);
+    border: 1px solid var(--confidence-high);
+}
+
+.confidence-medium {
+    background-color: rgba(255, 193, 7, 0.2);
+    color: var(--confidence-medium);
+    border: 1px solid var(--confidence-medium);
+}
+
+.confidence-low {
+    background-color: rgba(220, 53, 69, 0.2);
+    color: var(--confidence-low);
+    border: 1px solid var(--confidence-low);
+}
+
+/* Risk badges */
+.risk-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 6px;
+    font-weight: 600;
+}
+
+.risk-GREEN {
+    background-color: rgba(40, 167, 69, 0.2);
+    color: var(--signal-long);
+    border: 1px solid var(--signal-long);
+}
+
+.risk-YELLOW {
+    background-color: rgba(255, 193, 7, 0.2);
+    color: var(--confidence-medium);
+    border: 1px solid var(--confidence-medium);
+}
+
+.risk-RED {
+    background-color: rgba(220, 53, 69, 0.2);
+    color: var(--signal-short);
+    border: 1px solid var(--signal-short);
+}
+
+/* Back button style */
+.btn-back {
+    background-color: transparent;
+    border: 1px solid var(--fiona-border);
+    color: var(--fiona-text-light);
+    font-weight: 500;
+    padding: 0.5rem 1rem;
+}
+
+.btn-back:hover {
+    background-color: var(--fiona-card-header);
+    color: white;
+}
+
+/* Epic display style */
+.epic-display {
+    font-family: 'Roboto Mono', monospace;
+    font-size: 0.9rem;
+    background-color: var(--fiona-card-header);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+}
+
+/* Asset cards */
+.asset-card {
+    border-radius: 12px;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.asset-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.asset-card.inactive {
+    opacity: 0.6;
+}
+
+/* Category sections */
+.category-section {
+    margin-bottom: 2rem;
+}
+
+.category-header {
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--fiona-text-muted);
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--fiona-border);
+}
+
+/* Config indicators */
+.config-indicator {
+    font-size: 0.75rem;
+}
+
+.config-indicator i {
+    width: 1rem;
+}
+
+/* Config tables */
+.config-table {
+    font-size: 0.9rem;
+}
+
+.config-table th {
+    width: 40%;
+    font-weight: 500;
+    color: var(--fiona-text-muted);
+}
+
+/* Event config rows */
+.event-config-row {
+    transition: background-color 0.2s;
+}
+
+.event-config-row:hover {
+    background-color: var(--fiona-card-header);
+}
+
+/* Badge for phase */
+.badge-phase {
+    font-family: monospace;
+    font-size: 0.75rem;
+}
+
+/* Config section styling */
+.config-section {
+    margin-bottom: 1.5rem;
+}
+
+.config-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--fiona-border);
+}
+
+.config-section-title {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0;
 }
