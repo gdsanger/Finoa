@@ -1766,6 +1766,31 @@ class DueBookingsViewTest(TestCase):
         booking.refresh_from_db()
         self.assertEqual(booking.status, 'POSTED')
     
+    def test_mark_booking_as_booked_updates_date_to_today(self):
+        """Test that marking a booking as booked updates the booking_date to today"""
+        from datetime import timedelta
+        
+        # Create an overdue booking with a past date
+        past_date = date.today() - timedelta(days=10)
+        booking = Booking.objects.create(
+            account=self.account,
+            booking_date=past_date,
+            amount=Decimal('-100.00'),
+            description='Overdue payment',
+            status='PLANNED'
+        )
+        
+        # Verify the booking_date is in the past
+        self.assertEqual(booking.booking_date, past_date)
+        
+        response = self.client.post(f'/bookings/{booking.id}/mark-booked/')
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify booking_date was updated to today
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, 'POSTED')
+        self.assertEqual(booking.booking_date, date.today())
+    
     def test_mark_booking_as_booked_already_posted(self):
         """Test marking an already posted booking returns error"""
         booking = Booking.objects.create(

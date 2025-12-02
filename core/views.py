@@ -691,12 +691,14 @@ def due_bookings(request):
 def mark_booking_as_booked(request, booking_id):
     """
     Mark a planned booking as booked via HTMX.
+    Updates the booking_date to the current date and changes status to POSTED.
     Returns empty response so HTMX can remove the row via outerHTML swap.
     """
     booking = get_object_or_404(Booking, id=booking_id)
     
     if booking.status == 'PLANNED':
         booking.status = 'POSTED'
+        booking.booking_date = date.today()
         booking.save()
         # Return empty response for HTMX to swap (removes the row)
         return HttpResponse('')
