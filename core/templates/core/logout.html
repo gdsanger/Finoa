@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="de" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -17,7 +17,6 @@
     
     <style>
         body {
-            background-color: #F7F9FA;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -29,31 +28,22 @@
             padding: 15px;
         }
         .logout-card {
-            background-color: white;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            background-color: var(--fiona-card-dark);
+            border: 1px solid var(--fiona-border);
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
             padding: 40px;
             text-align: center;
         }
         .logout-header h1 {
-            color: #3A6EA5;
+            color: var(--fiona-blue);
             font-size: 2.5rem;
             margin-bottom: 10px;
         }
         .logout-icon {
             font-size: 4rem;
-            color: #39A77B;
+            color: var(--fiona-green);
             margin-bottom: 20px;
-        }
-        .btn-finoa {
-            background-color: #39A77B;
-            border-color: #39A77B;
-            color: white;
-        }
-        .btn-finoa:hover {
-            background-color: #2d8563;
-            border-color: #2d8563;
-            color: white;
         }
     </style>
 </head>
@@ -66,7 +56,7 @@
             <h1>🌿 <strong>Finoa</strong></h1>
             <p class="lead mb-4">Sie wurden erfolgreich abgemeldet.</p>
             <p class="text-muted mb-4">Vielen Dank für die Nutzung von Finoa.</p>
-            <a href="{% url 'login' %}" class="btn btn-finoa">
+            <a href="{% url 'login' %}" class="btn btn-finoa-primary">
                 <i class="bi bi-box-arrow-in-right"></i> Erneut anmelden
             </a>
         </div>
