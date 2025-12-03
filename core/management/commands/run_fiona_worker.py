@@ -273,8 +273,19 @@ class Command(BaseCommand):
         
         # 7. Load Risk Config
         self.stdout.write("  → Loading Risk Config...")
-        risk_config = RiskConfig()  # Use defaults
-        self.stdout.write(self.style.SUCCESS("    ✓ Risk Config loaded"))
+        risk_config_path = 'core/services/risk/risk_config.yaml'
+        try:
+            risk_config = RiskConfig.from_yaml(risk_config_path)
+            self.stdout.write(self.style.SUCCESS(f"    ✓ Risk Config loaded from {risk_config_path}"))
+            self.stdout.write(f"      - Leverage: {risk_config.leverage}")
+            self.stdout.write(f"      - Max risk per trade: {risk_config.max_risk_per_trade_percent}%")
+        except FileNotFoundError:
+            self.stdout.write(self.style.WARNING(f"    ⚠ Config file not found at {risk_config_path}, using defaults"))
+            risk_config = RiskConfig()
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f"    ✗ Error loading config: {e}"))
+            self.stdout.write(self.style.WARNING("    ⚠ Using default Risk Config"))
+            risk_config = RiskConfig()
         
         # 8. Create Risk Engine
         self.stdout.write("  → Creating Risk Engine...")
