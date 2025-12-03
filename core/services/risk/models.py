@@ -6,6 +6,8 @@ independent of specific broker or strategy implementations.
 """
 from __future__ import annotations
 
+import dataclasses
+import typing
 from dataclasses import dataclass, field
 from datetime import datetime, time
 from decimal import Decimal
@@ -38,7 +40,7 @@ class RiskConfig:
         deny_overnight: Whether to deny overnight positions.
         tick_size: Size of one tick for the traded instrument.
         tick_value: Value of one tick in account currency.
-        leverage: Hebel bei Marginhandel
+        leverage: Leverage for margin trading (e.g., 20.0 for 1:20, 1.0 for no leverage).
     """
     max_risk_per_trade_percent: Decimal = Decimal('1.0')
     max_daily_loss_percent: Decimal = Decimal('3.0')
@@ -57,17 +59,25 @@ class RiskConfig:
     deny_overnight: bool = True
     
     # Instrument-specific settings
-    tick_size: Decimal = Decimal('0.1')
-    tick_value: Decimal = Decimal('0.1')  # USD per tick for CL contract
+    tick_size: Decimal = Decimal('0.01')
+    tick_value: Decimal = Decimal('10.0')  # USD per tick for CL contract
+    leverage: Decimal = Decimal('1.0')  # Leverage for margin trading (1.0 = no leverage)
     
     def __post_init__(self):
-        """Ensure values are proper types."""
-        for field_name in ['max_risk_per_trade_percent', 'max_daily_loss_percent',
-                           'max_weekly_loss_percent', 'max_position_size',
-                           'tick_size', 'tick_value']:
-            value = getattr(self, field_name)
-            if not isinstance(value, Decimal):
-                setattr(self, field_name, Decimal(str(value)))
+        """Ensure Decimal fields are proper types."""
+        # Dynamically identify and convert Decimal fields
+        # This approach is more maintainable than hardcoding field names
+        
+        # Get type hints to properly evaluate type annotations
+        type_hints = typing.get_type_hints(self.__class__)
+        
+        for field in dataclasses.fields(self):
+            # Check if this field is typed as Decimal
+            field_type = type_hints.get(field.name)
+            if field_type is Decimal:
+                value = getattr(self, field.name)
+                if not isinstance(value, Decimal):
+                    setattr(self, field.name, Decimal(str(value)))
 
     @classmethod
     def from_dict(cls, data: dict) -> 'RiskConfig':
@@ -92,9 +102,9 @@ class RiskConfig:
             deny_eia_window_minutes=data.get('deny_eia_window_minutes', 5),
             deny_friday_after=data.get('deny_friday_after', '21:00'),
             deny_overnight=data.get('deny_overnight', True),
-            tick_size=Decimal(str(data.get('tick_size', '0.1'))),
-            tick_value=Decimal(str(data.get('tick_value', '0.1'))),
-            leverage=data.get('leverage', 20),
+            tick_size=Decimal(str(data.get('tick_size', '0.01'))),
+            tick_value=Decimal(str(data.get('tick_value', '10.0'))),
+            leverage=Decimal(str(data.get('leverage', '1.0'))),
         )
 
     @classmethod
@@ -147,7 +157,7 @@ class RiskConfig:
             'deny_overnight': self.deny_overnight,
             'tick_size': float(self.tick_size),
             'tick_value': float(self.tick_value),
-            'leverage' : self.leverage,
+            'leverage': float(self.leverage),
         }
 
     def to_yaml(self) -> str:

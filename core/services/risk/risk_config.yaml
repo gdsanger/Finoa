@@ -70,6 +70,12 @@ deny_overnight: true
 tick_size: 0.1
 
 # Value of one tick in account currency (e.g., $10 for CL mini contract)
-tick_value: 1.0
+tick_value: 10.0
 
-leverage: 20
+# Leverage for margin trading (e.g., 20.0 for 1:20 leverage, 1.0 for no leverage)
+# NOTE: Position sizes are calculated based on P&L RISK, not leverage or margin.
+# Leverage affects margin requirements but not risk-based position sizing.
+# Example: With 1:20 leverage, $1,000 margin controls a $20,000 position,
+#          but the position size is still limited by your risk tolerance.
+# See LEVERAGE_DOCUMENTATION.md for detailed explanation.
+leverage: 20.0
