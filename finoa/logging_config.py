@@ -156,6 +156,33 @@ class StrategyDataFilter(logging.Filter):
         return True
 
 
+class RiskDataFilter(logging.Filter):
+    """Ensure ``risk_data`` exists on log records.
+
+    The verbose formatter includes ``%(risk_data)s`` so we need to guarantee
+    the attribute is present to avoid ``KeyError`` when log calls don't supply
+    extra risk data. Any mapping or list is serialized to JSON for
+    readability; other types are converted to strings. Empty values render as an
+    empty string so the formatter's trailing space does not cause noisy output.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:  # noqa: D401
+        if not hasattr(record, "risk_data") or record.risk_data is None:
+            record.risk_data = ""
+            return True
+
+        value = record.risk_data
+        if isinstance(value, (dict, list)):
+            try:
+                record.risk_data = json.dumps(value, default=str)
+            except Exception:  # pragma: no cover - defensive fallback
+                record.risk_data = str(value)
+        else:
+            record.risk_data = str(value)
+
+        return True
+
+
 def configure_logging() -> dict:
     """
     Configure logging for the application.
@@ -189,6 +216,9 @@ def configure_logging() -> dict:
             'strategy_data': {
                 '()': 'finoa.logging_config.StrategyDataFilter',
             },
+            'risk_data': {
+                '()': 'finoa.logging_config.RiskDataFilter',
+            },
         },
         'formatters': {
             'standard': {
@@ -196,7 +226,7 @@ def configure_logging() -> dict:
                 'datefmt': date_format,
             },
             'verbose': {
-                'format': '%(asctime)s [%(levelname)s] %(name)s (%(process)d:%(thread)d): %(message)s %(strategy_data)s',
+                'format': '%(asctime)s [%(levelname)s] %(name)s (%(process)d:%(thread)d): %(message)s %(strategy_data)s%(risk_data)s',
                 'datefmt': date_format,
             },
         },
@@ -215,7 +245,7 @@ def configure_logging() -> dict:
                 'encoding': 'utf-8',
                 'formatter': 'verbose',
                 'level': log_level,
-                'filters': ['strategy_data'],
+                'filters': ['strategy_data', 'risk_data'],
             },
         },
         'loggers': {
