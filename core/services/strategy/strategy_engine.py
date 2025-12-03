@@ -48,6 +48,7 @@ class EvaluationResult:
     setups: list[SetupCandidate] = field(default_factory=list)
     criteria: list[DiagnosticCriterion] = field(default_factory=list)
     summary: str = ""
+    discarded_count: int = 0  # Number of setups discarded by strategy filters
     
     def to_criteria_list(self) -> list[dict]:
         """Convert criteria to list of dicts for JSON serialization."""
@@ -84,6 +85,8 @@ class StrategyEngine:
         self.last_status_message: Optional[str] = None
         # Collects all status messages for the current evaluation run.
         self._status_history: list[str] = []
+        # Track discarded setups count from last evaluation
+        self.last_discarded_count: int = 0
 
     def _set_status(self, message: str) -> None:
         """Record the latest status message for external consumers."""
@@ -230,7 +233,8 @@ class StrategyEngine:
             candidates.extend(eia_candidates)
         
         # Filter duplicates and invalid setups
-        candidates = self._filter_candidates(candidates)
+        candidates, discarded_count = self._filter_candidates(candidates)
+        self.last_discarded_count = discarded_count
         
         # Log evaluation result
         if candidates:
@@ -401,7 +405,8 @@ class StrategyEngine:
             self._evaluate_eia_with_diagnostics(epic, ts, phase, result)
         
         # Filter duplicates
-        result.setups = self._filter_candidates(result.setups)
+        result.setups, discarded_count = self._filter_candidates(result.setups)
+        result.discarded_count = discarded_count
         
         # Set summary
         if result.setups:
@@ -1848,7 +1853,7 @@ class StrategyEngine:
     def _filter_candidates(
         self,
         candidates: list[SetupCandidate]
-    ) -> list[SetupCandidate]:
+    ) -> tuple[list[SetupCandidate], int]:
         """
         Filter and deduplicate setup candidates.
         
@@ -1856,7 +1861,7 @@ class StrategyEngine:
             candidates: List of candidates to filter.
             
         Returns:
-            Filtered list of valid candidates.
+            Tuple of (filtered list of valid candidates, count of discarded candidates).
         """
         # Remove duplicates based on setup_kind and direction
         seen = set()
@@ -1868,4 +1873,5 @@ class StrategyEngine:
                 seen.add(key)
                 filtered.append(candidate)
         
-        return filtered
+        discarded_count = len(candidates) - len(filtered)
+        return filtered, discarded_count

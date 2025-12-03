@@ -393,7 +393,8 @@ class Command(BaseCommand):
         
         # 6. Process each setup
         for setup in setups:
-            self._process_setup(setup, shadow_only, dry_run, now)
+            # Legacy mode doesn't use AssetDiagnostics, pass None
+            self._process_setup(setup, shadow_only, dry_run, now, diagnostics=None)
     
     def _run_multi_asset_cycle(self, shadow_only: bool, dry_run: bool, worker_interval: int = 60) -> None:
         """
@@ -712,13 +713,14 @@ class Command(BaseCommand):
                 return result
             
             # Update diagnostics with the results
-            self._update_asset_diagnostics(
+            diagnostics = self._update_asset_diagnostics(
                 asset=asset,
                 now=now,
                 phase=phase,
                 setups_found=len(setups),
                 candles_evaluated=1,
                 range_built_phase=range_built_phase,
+                setups_discarded=strategy_engine.last_discarded_count,
             )
 
             if not setups:
@@ -727,7 +729,14 @@ class Command(BaseCommand):
 
             # 8. Process each setup
             for setup in setups:
-                self._process_setup(setup, shadow_only, dry_run, now, trading_asset=asset)
+                self._process_setup(setup, shadow_only, dry_run, now, trading_asset=asset, diagnostics=diagnostics)
+            
+            # Save diagnostics after processing all setups to persist risk engine counters
+            if diagnostics:
+                try:
+                    diagnostics.save()
+                except Exception as e:
+                    logger.warning(f"Failed to save diagnostics after setup processing: {e}")
 
             result.status_message = strategy_engine.last_status_message or result.status_message
             return result
@@ -909,7 +918,8 @@ class Command(BaseCommand):
         setups_found: int = 0,
         candles_evaluated: int = 0,
         range_built_phase: str = None,
-    ) -> None:
+        setups_discarded: int = 0,
+    ) -> AssetDiagnostics:
         """
         Update or create AssetDiagnostics record for the current time window.
         
@@ -923,6 +933,10 @@ class Command(BaseCommand):
             setups_found: Number of setups generated
             candles_evaluated: Number of candles evaluated
             range_built_phase: Phase for which a range was built (e.g., 'asia', 'london', 'pre_us', 'us_core')
+            setups_discarded: Number of setups discarded by strategy filters
+            
+        Returns:
+            AssetDiagnostics: The updated or created diagnostics record
         """
         try:
             # Use 1-hour windows for diagnostics aggregation
@@ -945,6 +959,7 @@ class Command(BaseCommand):
             # Update counters
             diagnostics.candles_evaluated += candles_evaluated
             diagnostics.setups_generated_total += setups_found
+            diagnostics.setups_discarded_strategy += setups_discarded
             
             # Update range built counters if applicable
             # Map phase names to field names
@@ -959,11 +974,13 @@ class Command(BaseCommand):
                 setattr(diagnostics, field_name, getattr(diagnostics, field_name) + 1)
             
             diagnostics.save()
+            return diagnostics
             
         except Exception as e:
             logger.warning(f"Failed to update asset diagnostics for {asset.symbol}: {e}")
+            return None
 
-    def _process_setup(self, setup, shadow_only: bool, dry_run: bool, now: datetime, trading_asset=None) -> None:
+    def _process_setup(self, setup, shadow_only: bool, dry_run: bool, now: datetime, trading_asset=None, diagnostics=None) -> None:
         """Process a single setup through risk and execution.
         
         Args:
@@ -972,6 +989,7 @@ class Command(BaseCommand):
             dry_run: Whether to skip trade execution
             now: Current timestamp
             trading_asset: Optional TradingAsset model instance for linking signals
+            diagnostics: Optional AssetDiagnostics instance for tracking metrics
         """
         self.stdout.write(
             f"\n  Setup: {setup.setup_kind.value} {setup.direction} @ {setup.reference_price}"
@@ -1063,6 +1081,18 @@ class Command(BaseCommand):
                 order=order,
                 now=now,
             )
+            
+            # Update diagnostics for risk engine evaluation
+            if diagnostics:
+                diagnostics.setups_evaluated_by_risk += 1
+                
+                if risk_result.allowed:
+                    diagnostics.setups_approved_by_risk += 1
+                else:
+                    diagnostics.setups_rejected_by_risk += 1
+                
+                # TODO: Track rejection reason codes once risk engine returns reason codes
+                # Currently risk engine returns plain text violations, not ReasonCode values
             
             if risk_result.allowed:
                 self.stdout.write(self.style.SUCCESS(f"    ✓ Risk approved: {risk_result.reason}"))
