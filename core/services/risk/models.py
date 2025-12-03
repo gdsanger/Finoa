@@ -6,6 +6,8 @@ independent of specific broker or strategy implementations.
 """
 from __future__ import annotations
 
+import dataclasses
+import typing
 from dataclasses import dataclass, field
 from datetime import datetime, time
 from decimal import Decimal
@@ -64,8 +66,6 @@ class RiskConfig:
         """Ensure Decimal fields are proper types."""
         # Dynamically identify and convert Decimal fields
         # This approach is more maintainable than hardcoding field names
-        import dataclasses
-        import typing
         
         # Get type hints to properly evaluate type annotations
         type_hints = typing.get_type_hints(self.__class__)
