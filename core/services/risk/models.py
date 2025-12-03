@@ -52,6 +52,7 @@ class RiskConfig:
     
     sl_min_ticks: int = 5
     tp_min_ticks: int = 5
+    leverage: int = 20
     
     deny_eia_window_minutes: int = 5
     deny_friday_after: str = '21:00'
