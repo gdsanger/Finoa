@@ -1142,11 +1142,14 @@ class Command(BaseCommand):
                 adjusted_size = order.size
             
             # Map setup_kind to Signal setup_type
-            setup_type = 'BREAKOUT'
             if hasattr(setup.setup_kind, 'value'):
                 setup_type = setup.setup_kind.value
             elif isinstance(setup.setup_kind, str):
                 setup_type = setup.setup_kind
+            else:
+                # Log unexpected setup_kind and use string representation
+                logger.warning(f"Unexpected setup_kind type: {type(setup.setup_kind)}, using string representation")
+                setup_type = str(setup.setup_kind)
             
             # Map phase to Signal session_phase
             session_phase = 'US_CORE_TRADING'
@@ -1160,16 +1163,22 @@ class Command(BaseCommand):
             range_high = None
             range_low = None
             if hasattr(setup, 'breakout') and setup.breakout:
-                if hasattr(setup.breakout, 'range_high'):
-                    range_high = Decimal(str(setup.breakout.range_high))
-                if hasattr(setup.breakout, 'range_low'):
-                    range_low = Decimal(str(setup.breakout.range_low))
+                if hasattr(setup.breakout, 'range_high') and setup.breakout.range_high is not None:
+                    range_high = Decimal(setup.breakout.range_high)
+                if hasattr(setup.breakout, 'range_low') and setup.breakout.range_low is not None:
+                    range_low = Decimal(setup.breakout.range_low)
             
             # Create the Signal
+            # Ensure instrument name fits in field (max 50 chars)
+            instrument = broker_symbol if broker_symbol else setup.epic
+            if len(instrument) > 50:
+                logger.warning(f"Instrument name '{instrument}' exceeds 50 chars, truncating")
+                instrument = instrument[:50]
+            
             signal = Signal.objects.create(
                 setup_type=setup_type,
                 session_phase=session_phase,
-                instrument=broker_symbol[:50] if broker_symbol else setup.epic[:50],
+                instrument=instrument,
                 trading_asset=trading_asset,
                 range_high=range_high,
                 range_low=range_low,
