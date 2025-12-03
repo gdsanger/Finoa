@@ -252,6 +252,102 @@ class TradingLayerLoggingTests(TestCase):
         logger.info('Test execution info message')
 
 
+class RiskDataFilterTests(TestCase):
+    """Tests for RiskDataFilter."""
+    
+    def test_risk_data_filter_adds_empty_string_when_missing(self):
+        """Test that RiskDataFilter adds empty string when risk_data is missing."""
+        from finoa.logging_config import RiskDataFilter
+        
+        record = logging.LogRecord(
+            name='test',
+            level=logging.INFO,
+            pathname='',
+            lineno=0,
+            msg='Test message',
+            args=(),
+            exc_info=None
+        )
+        
+        filter_obj = RiskDataFilter()
+        result = filter_obj.filter(record)
+        
+        self.assertTrue(result)
+        self.assertEqual(record.risk_data, '')
+    
+    def test_risk_data_filter_serializes_dict_to_json(self):
+        """Test that RiskDataFilter serializes dict to JSON."""
+        from finoa.logging_config import RiskDataFilter
+        import json
+        
+        record = logging.LogRecord(
+            name='test',
+            level=logging.INFO,
+            pathname='',
+            lineno=0,
+            msg='Test message',
+            args=(),
+            exc_info=None
+        )
+        record.risk_data = {'setup_id': 'abc123', 'check': 'position_risk', 'reason': 'SL too large'}
+        
+        filter_obj = RiskDataFilter()
+        result = filter_obj.filter(record)
+        
+        self.assertTrue(result)
+        self.assertIsInstance(record.risk_data, str)
+        # Should be valid JSON
+        parsed = json.loads(record.risk_data)
+        self.assertEqual(parsed['setup_id'], 'abc123')
+        self.assertEqual(parsed['check'], 'position_risk')
+    
+    def test_risk_data_filter_serializes_list_to_json(self):
+        """Test that RiskDataFilter serializes list to JSON."""
+        from finoa.logging_config import RiskDataFilter
+        import json
+        
+        record = logging.LogRecord(
+            name='test',
+            level=logging.INFO,
+            pathname='',
+            lineno=0,
+            msg='Test message',
+            args=(),
+            exc_info=None
+        )
+        record.risk_data = ['violation1', 'violation2']
+        
+        filter_obj = RiskDataFilter()
+        result = filter_obj.filter(record)
+        
+        self.assertTrue(result)
+        self.assertIsInstance(record.risk_data, str)
+        parsed = json.loads(record.risk_data)
+        self.assertEqual(len(parsed), 2)
+    
+    def test_risk_data_filter_converts_string_to_string(self):
+        """Test that RiskDataFilter prepends a space to non-empty string values."""
+        from finoa.logging_config import RiskDataFilter
+        
+        record = logging.LogRecord(
+            name='test',
+            level=logging.INFO,
+            pathname='',
+            lineno=0,
+            msg='Test message',
+            args=(),
+            exc_info=None
+        )
+        record.risk_data = 'simple string'
+        
+        filter_obj = RiskDataFilter()
+        result = filter_obj.filter(record)
+        
+        self.assertTrue(result)
+        # Filter should prepend a space for readability
+        self.assertEqual(record.risk_data, ' simple string')
+
+
 class StrategyEngineDebugLoggingTests(TestCase):
     """Tests for Strategy Engine debug logging with price analysis."""
     

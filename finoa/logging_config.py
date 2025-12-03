@@ -129,31 +129,70 @@ def get_date_format() -> str:
     return '%Y-%m-%d %H:%M:%S'
 
 
-class StrategyDataFilter(logging.Filter):
+class StructuredDataFilter(logging.Filter):
+    """Ensure a structured data attribute exists on log records.
+    
+    This generic filter ensures the specified attribute exists on log records
+    and formats it appropriately. Any mapping or list is serialized to JSON for
+    readability; other types are converted to strings. Empty values render as an
+    empty string so the formatter doesn't produce extra spaces.
+    
+    Args:
+        attribute_name: The name of the attribute to ensure exists (e.g., 'strategy_data', 'risk_data').
+    """
+
+    def __init__(self, attribute_name: str):
+        """Initialize the filter with the attribute name to handle."""
+        super().__init__()
+        self.attribute_name = attribute_name
+
+    def filter(self, record: logging.LogRecord) -> bool:  # noqa: D401
+        if not hasattr(record, self.attribute_name) or getattr(record, self.attribute_name) is None:
+            setattr(record, self.attribute_name, "")
+            return True
+
+        value = getattr(record, self.attribute_name)
+        
+        # Format the value appropriately
+        if isinstance(value, (dict, list)):
+            try:
+                formatted = json.dumps(value, default=str)
+            except (TypeError, ValueError):  # Catch JSON serialization errors
+                # Fallback to string representation if JSON serialization fails
+                formatted = str(value)
+        else:
+            formatted = str(value)
+        
+        # Prepend space for better readability when data is present
+        setattr(record, self.attribute_name, " " + formatted if formatted else "")
+        
+        return True
+
+
+class StrategyDataFilter(StructuredDataFilter):
     """Ensure ``strategy_data`` exists on log records.
 
     The verbose formatter includes ``%(strategy_data)s`` so we need to guarantee
     the attribute is present to avoid ``KeyError`` when log calls don't supply
-    extra strategy data. Any mapping or list is serialized to JSON for
-    readability; other types are converted to strings. Empty values render as an
-    empty string so the formatter's trailing space does not cause noisy output.
+    extra strategy data.
     """
 
-    def filter(self, record: logging.LogRecord) -> bool:  # noqa: D401
-        if not hasattr(record, "strategy_data") or record.strategy_data is None:
-            record.strategy_data = ""
-            return True
+    def __init__(self):
+        """Initialize the filter for strategy_data."""
+        super().__init__('strategy_data')
 
-        value = record.strategy_data
-        if isinstance(value, (dict, list)):
-            try:
-                record.strategy_data = json.dumps(value, default=str)
-            except Exception:  # pragma: no cover - defensive fallback
-                record.strategy_data = str(value)
-        else:
-            record.strategy_data = str(value)
 
-        return True
+class RiskDataFilter(StructuredDataFilter):
+    """Ensure ``risk_data`` exists on log records.
+
+    The verbose formatter includes ``%(risk_data)s`` so we need to guarantee
+    the attribute is present to avoid ``KeyError`` when log calls don't supply
+    extra risk data.
+    """
+
+    def __init__(self):
+        """Initialize the filter for risk_data."""
+        super().__init__('risk_data')
 
 
 def configure_logging() -> dict:
@@ -189,6 +228,9 @@ def configure_logging() -> dict:
             'strategy_data': {
                 '()': 'finoa.logging_config.StrategyDataFilter',
             },
+            'risk_data': {
+                '()': 'finoa.logging_config.RiskDataFilter',
+            },
         },
         'formatters': {
             'standard': {
@@ -196,7 +238,7 @@ def configure_logging() -> dict:
                 'datefmt': date_format,
             },
             'verbose': {
-                'format': '%(asctime)s [%(levelname)s] %(name)s (%(process)d:%(thread)d): %(message)s %(strategy_data)s',
+                'format': '%(asctime)s [%(levelname)s] %(name)s (%(process)d:%(thread)d): %(message)s%(strategy_data)s%(risk_data)s',
                 'datefmt': date_format,
             },
         },
@@ -215,7 +257,7 @@ def configure_logging() -> dict:
                 'encoding': 'utf-8',
                 'formatter': 'verbose',
                 'level': log_level,
-                'filters': ['strategy_data'],
+                'filters': ['strategy_data', 'risk_data'],
             },
         },
         'loggers': {
