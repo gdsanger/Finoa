@@ -1356,3 +1356,252 @@ class WorkerAssetDiagnosticsTest(TestCase):
         self.assertEqual(aggregated['record_count'], 2)
         self.assertEqual(aggregated['counters']['setups']['generated_total'], 2)
         self.assertEqual(aggregated['counters']['candles_evaluated'], 2)
+
+
+class WorkerProcessSetupTest(TestCase):
+    """Tests for the _process_setup method to ensure signals are created instead of automatic trade execution."""
+    
+    def setUp(self):
+        """Set up test fixtures."""
+        from trading.models import TradingAsset, AssetBreakoutConfig
+        from core.services.broker import BrokerRegistry, OrderRequest, OrderDirection
+        from core.services.broker.models import AccountState
+        
+        # Create a test trading asset
+        self.asset = TradingAsset.objects.create(
+            name="Test BNB/USDT",
+            symbol="BNBUSDT",
+            epic="BNBUSDT",
+            broker="MEXC",
+            is_active=True,
+            trading_mode="LIVE"
+        )
+        
+        # Create breakout config for the asset
+        AssetBreakoutConfig.objects.create(
+            asset=self.asset,
+            asia_range_start="00:00",
+            asia_range_end="08:00",
+            pre_us_start="13:00",
+            pre_us_end="15:00",
+        )
+        
+        # Mock services
+        self.mock_broker_registry = MagicMock(spec=BrokerRegistry)
+        self.mock_broker = MagicMock()
+        self.mock_broker_registry.get_broker_for_asset.return_value = self.mock_broker
+        self.mock_broker_registry.get_ig_broker.return_value = self.mock_broker
+        
+        # Mock account state
+        self.mock_account = AccountState(
+            account_id="TEST123",
+            account_name="Test Account",
+            balance=Decimal("1000.00"),
+            equity=Decimal("1000.00"),
+            available=Decimal("1000.00"),
+            currency="EUR",
+        )
+        self.mock_broker.get_account_state.return_value = self.mock_account
+        self.mock_broker.get_open_positions.return_value = []
+        
+        # Mock symbol price
+        self.mock_price = SymbolPrice(
+            epic="BNBUSDT",
+            market_name="Binance USDT",
+            bid=Decimal("902.00"),
+            ask=Decimal("902.10"),
+            spread=Decimal("0.10"),
+            high=Decimal("905.00"),
+            low=Decimal("895.00"),
+        )
+        self.mock_broker.get_symbol_price.return_value = self.mock_price
+        
+    def test_process_setup_creates_signal_instead_of_executing_trade(self):
+        """Test that _process_setup creates a Signal record instead of automatically executing trades."""
+        from core.management.commands.run_fiona_worker import Command
+        from core.services.strategy.models import SetupCandidate, SetupKind, BreakoutContext
+        from core.services.risk.models import RiskEvaluationResult
+        from core.services.broker.models import OrderRequest, OrderDirection
+        from trading.models import Signal
+        from io import StringIO
+        
+        # Create a setup candidate
+        now = datetime(2025, 12, 3, 17, 30, 45, tzinfo=timezone.utc)
+        setup = SetupCandidate(
+            id="test-setup-123",
+            created_at=now,
+            epic="BNBUSDT",
+            setup_kind=SetupKind.BREAKOUT,
+            direction="LONG",
+            reference_price=902.05,
+            phase=SessionPhase.US_CORE_TRADING,
+            breakout=BreakoutContext(
+                range_high=900.565,
+                range_low=895.57,
+                range_height=4.995,
+                trigger_price=902.05,
+                direction="LONG",
+                signal_type=None,
+            )
+        )
+        
+        # Create risk evaluation result (approved)
+        order = OrderRequest(
+            epic="BNBUSDT",
+            direction=OrderDirection.BUY,
+            size=Decimal("1.0"),
+            stop_loss=Decimal("873.55"),
+            take_profit=Decimal("940.05"),
+        )
+        risk_result = RiskEvaluationResult(
+            allowed=True,
+            reason="Risk approved",
+            adjusted_order=OrderRequest(
+                epic="BNBUSDT",
+                direction=OrderDirection.BUY,
+                size=Decimal("0.1"),
+                stop_loss=Decimal("873.55"),
+                take_profit=Decimal("940.05"),
+            ),
+            violations=[],
+        )
+        
+        # Create command and mock its dependencies
+        cmd = Command()
+        cmd.broker_registry = self.mock_broker_registry
+        cmd.market_state_provider = MagicMock()
+        cmd.market_state_provider.get_atr.return_value = 1.0
+        cmd.strategy_engine = MagicMock()
+        cmd.risk_engine = MagicMock()
+        cmd.risk_engine.evaluate.return_value = risk_result
+        cmd.execution_service = MagicMock()
+        cmd.weaviate_service = MagicMock()
+        
+        # Mock execution session
+        mock_session = MagicMock()
+        mock_session.id = "test-session-456"
+        mock_session.state = MagicMock()
+        mock_session.state.value = "WAITING_FOR_USER"
+        cmd.execution_service.propose_trade.return_value = mock_session
+        
+        # Capture stdout
+        out = StringIO()
+        cmd.stdout = out
+        cmd.style = MagicMock()
+        cmd.style.SUCCESS = lambda x: x
+        cmd.style.WARNING = lambda x: x
+        cmd.style.ERROR = lambda x: x
+        
+        # Count signals before
+        signal_count_before = Signal.objects.count()
+        
+        # Process the setup
+        cmd._process_setup(
+            setup=setup,
+            shadow_only=False,
+            dry_run=False,
+            now=now,
+            trading_asset=self.asset,
+            diagnostics=None
+        )
+        
+        # Verify that a Signal was created
+        signal_count_after = Signal.objects.count()
+        self.assertEqual(signal_count_after, signal_count_before + 1,
+                        "Expected exactly one Signal to be created")
+        
+        # Verify the Signal has correct attributes
+        signal = Signal.objects.last()
+        self.assertEqual(signal.setup_type, 'BREAKOUT')
+        self.assertEqual(signal.direction, 'LONG')
+        self.assertEqual(signal.status, 'ACTIVE')
+        self.assertEqual(signal.risk_status, 'GREEN')
+        self.assertEqual(signal.trading_asset, self.asset)
+        self.assertIsNotNone(signal.trigger_price)
+        self.assertIsNotNone(signal.stop_loss)
+        self.assertIsNotNone(signal.take_profit)
+        self.assertIsNotNone(signal.position_size)
+        
+        # Verify that execution service was NOT called to execute trades
+        cmd.execution_service.confirm_live_trade.assert_not_called()
+        cmd.execution_service.confirm_shadow_trade.assert_not_called()
+        
+        # Verify output mentions signal creation
+        output = out.getvalue()
+        self.assertIn("Creating signal for UI", output)
+        self.assertIn("Signal created", output)
+        self.assertIn("Signal ready for user confirmation in UI", output)
+    
+    def test_process_setup_creates_signal_for_risk_denied(self):
+        """Test that _process_setup creates a Signal with RED risk status when risk is denied."""
+        from core.management.commands.run_fiona_worker import Command
+        from core.services.strategy.models import SetupCandidate, SetupKind
+        from core.services.risk.models import RiskEvaluationResult
+        from trading.models import Signal
+        from io import StringIO
+        
+        # Create a setup candidate
+        now = datetime(2025, 12, 3, 17, 30, 45, tzinfo=timezone.utc)
+        setup = SetupCandidate(
+            id="test-setup-456",
+            created_at=now,
+            epic="BNBUSDT",
+            setup_kind=SetupKind.BREAKOUT,
+            direction="LONG",
+            reference_price=902.05,
+            phase=SessionPhase.US_CORE_TRADING,
+        )
+        
+        # Create risk evaluation result (denied)
+        risk_result = RiskEvaluationResult(
+            allowed=False,
+            reason="Risk denied: position size too large",
+            adjusted_order=None,
+            violations=["Position size exceeds maximum"],
+        )
+        
+        # Create command and mock its dependencies
+        cmd = Command()
+        cmd.broker_registry = self.mock_broker_registry
+        cmd.market_state_provider = MagicMock()
+        cmd.market_state_provider.get_atr.return_value = 1.0
+        cmd.risk_engine = MagicMock()
+        cmd.risk_engine.evaluate.return_value = risk_result
+        cmd.execution_service = MagicMock()
+        cmd.weaviate_service = MagicMock()
+        
+        # Mock execution session
+        mock_session = MagicMock()
+        mock_session.id = "test-session-789"
+        mock_session.state = MagicMock()
+        mock_session.state.value = "RISK_REJECTED"
+        cmd.execution_service.propose_trade.return_value = mock_session
+        
+        # Capture stdout
+        out = StringIO()
+        cmd.stdout = out
+        cmd.style = MagicMock()
+        cmd.style.SUCCESS = lambda x: x
+        cmd.style.WARNING = lambda x: x
+        cmd.style.ERROR = lambda x: x
+        
+        # Process the setup
+        cmd._process_setup(
+            setup=setup,
+            shadow_only=False,
+            dry_run=False,
+            now=now,
+            trading_asset=self.asset,
+            diagnostics=None
+        )
+        
+        # Verify that a Signal was created with RED risk status
+        signal = Signal.objects.last()
+        self.assertIsNotNone(signal)
+        self.assertEqual(signal.risk_status, 'RED')
+        self.assertEqual(signal.status, 'ACTIVE')
+        self.assertIn("Risk denied", signal.risk_reasoning)
+        
+        # Verify that execution service was NOT called to execute trades
+        cmd.execution_service.confirm_live_trade.assert_not_called()
+        cmd.execution_service.confirm_shadow_trade.assert_not_called()

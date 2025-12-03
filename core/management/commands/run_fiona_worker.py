@@ -1123,35 +1123,89 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR(f"    Failed to create session: {e}"))
             return
         
-        # Execute based on risk result and mode
-        if shadow_only or not risk_result.allowed:
-            # Execute as shadow trade
-            self.stdout.write("    → Executing shadow trade...")
-            try:
-                shadow_trade = self.execution_service.confirm_shadow_trade(session.id)
-                self.stdout.write(self.style.SUCCESS(f"    ✓ Shadow trade created: {shadow_trade.id}"))
-                self.stdout.write(f"      Entry: {shadow_trade.entry_price}")
-                self.stdout.write(f"      SL: {shadow_trade.stop_loss}")
-                self.stdout.write(f"      TP: {shadow_trade.take_profit}")
-            except Exception as e:
-                self.stdout.write(self.style.ERROR(f"    Shadow trade failed: {e}"))
-        else:
-            # Execute as real trade
-            self.stdout.write("    → Executing REAL trade...")
-            try:
-                trade = self.execution_service.confirm_live_trade(session.id)
-                self.stdout.write(self.style.SUCCESS(f"    ✓ Trade executed: {trade.id}"))
-                self.stdout.write(f"      Deal ID: {trade.broker_deal_id}")
-                self.stdout.write(f"      Entry: {trade.entry_price}")
-            except Exception as e:
-                self.stdout.write(self.style.ERROR(f"    Trade execution failed: {e}"))
-                # Fall back to shadow trade
-                self.stdout.write("    → Falling back to shadow trade...")
-                try:
-                    shadow_trade = self.execution_service.confirm_shadow_trade(session.id)
-                    self.stdout.write(f"    ✓ Shadow trade created: {shadow_trade.id}")
-                except Exception as se:
-                    self.stdout.write(self.style.ERROR(f"    Shadow trade also failed: {se}"))
+        # Create Signal for UI presentation (user will decide execution)
+        self.stdout.write("    → Creating signal for UI...")
+        try:
+            from trading.models import Signal
+            
+            # Determine risk status for UI
+            if risk_result.allowed:
+                risk_status = 'GREEN'
+            else:
+                risk_status = 'RED'
+            
+            # Get adjusted order size from risk result if available
+            adjusted_size = None
+            if risk_result.adjusted_order and risk_result.adjusted_order.size:
+                adjusted_size = risk_result.adjusted_order.size
+            elif order.size:
+                adjusted_size = order.size
+            
+            # Map setup_kind to Signal setup_type
+            if hasattr(setup.setup_kind, 'value'):
+                setup_type = setup.setup_kind.value
+            elif isinstance(setup.setup_kind, str):
+                setup_type = setup.setup_kind
+            else:
+                # Log unexpected setup_kind and use string representation
+                logger.warning(f"Unexpected setup_kind type: {type(setup.setup_kind)}, using string representation")
+                setup_type = str(setup.setup_kind)
+            
+            # Map phase to Signal session_phase
+            session_phase = 'US_CORE_TRADING'
+            if hasattr(setup, 'phase') and setup.phase:
+                if hasattr(setup.phase, 'value'):
+                    session_phase = setup.phase.value
+                else:
+                    session_phase = str(setup.phase)
+            
+            # Get range info from setup if available
+            range_high = None
+            range_low = None
+            if hasattr(setup, 'breakout') and setup.breakout:
+                if hasattr(setup.breakout, 'range_high') and setup.breakout.range_high is not None:
+                    range_high = Decimal(setup.breakout.range_high)
+                if hasattr(setup.breakout, 'range_low') and setup.breakout.range_low is not None:
+                    range_low = Decimal(setup.breakout.range_low)
+            
+            # Create the Signal
+            # Ensure instrument name fits in field (max 50 chars)
+            instrument = broker_symbol if broker_symbol else setup.epic
+            if len(instrument) > 50:
+                logger.warning(f"Instrument name '{instrument}' exceeds 50 chars, truncating")
+                instrument = instrument[:50]
+            
+            signal = Signal.objects.create(
+                setup_type=setup_type,
+                session_phase=session_phase,
+                instrument=instrument,
+                trading_asset=trading_asset,
+                range_high=range_high,
+                range_low=range_low,
+                trigger_price=Decimal(str(setup.reference_price)),
+                direction=setup.direction,
+                stop_loss=stop_loss,
+                take_profit=take_profit,
+                position_size=adjusted_size,
+                risk_status=risk_status,
+                risk_allowed_size=adjusted_size,
+                risk_reasoning=risk_result.reason or '',
+                status='ACTIVE',
+            )
+            
+            self.stdout.write(self.style.SUCCESS(f"    ✓ Signal created: {signal.id}"))
+            self.stdout.write(f"      Status: {signal.status}")
+            self.stdout.write(f"      Risk: {signal.risk_status}")
+            self.stdout.write(f"      Direction: {signal.direction}")
+            self.stdout.write(f"      Entry: {signal.trigger_price}")
+            self.stdout.write(f"      SL: {signal.stop_loss}")
+            self.stdout.write(f"      TP: {signal.take_profit}")
+            self.stdout.write(f"      Size: {signal.position_size}")
+            self.stdout.write("      → Signal ready for user confirmation in UI")
+            
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f"    Failed to create signal: {e}"))
+            logger.exception("Signal creation failed")
 
     def _try_reconnect(self) -> None:
         """Try to reconnect to all brokers after an error."""
