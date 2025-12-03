@@ -17,6 +17,11 @@ from .models import RiskConfig, RiskEvaluationResult
 logger = logging.getLogger(__name__)
 
 
+def _format_direction(direction) -> str:
+    """Helper to format order direction for logging."""
+    return direction.value if hasattr(direction, 'value') else str(direction)
+
+
 class RiskEngine:
     """
     Risk Engine v1.0 for trade evaluation.
@@ -90,7 +95,7 @@ class RiskEngine:
                 "risk_data": {
                     "setup_id": setup.id,
                     "epic": order.epic,
-                    "direction": order.direction.value if hasattr(order.direction, 'value') else str(order.direction),
+                    "direction": _format_direction(order.direction),
                     "size": float(order.size),
                     "stop_loss": float(order.stop_loss) if order.stop_loss else None,
                     "take_profit": float(order.take_profit) if order.take_profit else None,
@@ -256,7 +261,7 @@ class RiskEngine:
                     "risk_data": {
                         "setup_id": setup.id,
                         "epic": order.epic,
-                        "direction": order.direction.value if hasattr(order.direction, 'value') else str(order.direction),
+                        "direction": _format_direction(order.direction),
                         "size": float(order.size),
                         "result": "denied",
                         "primary_reason": violations[0],

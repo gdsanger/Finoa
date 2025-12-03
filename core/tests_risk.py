@@ -945,7 +945,7 @@ class RiskEngineDebugLoggingTest(TestCase):
             self.assertTrue(any('risk' in str(c).lower() for c in calls))
 
     def test_evaluate_logs_debug_on_denied(self):
-        """Test that warning logging is called when trade is denied."""
+        """Test that INFO and WARNING logging is called when trade is denied."""
         from unittest.mock import patch
         
         now = datetime(2025, 1, 18, 10, 0, tzinfo=timezone.utc)  # Saturday
