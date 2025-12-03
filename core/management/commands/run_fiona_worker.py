@@ -1091,12 +1091,8 @@ class Command(BaseCommand):
                 else:
                     diagnostics.setups_rejected_by_risk += 1
                 
-                # Track rejection reasons if any
-                if not risk_result.allowed and risk_result.violations:
-                    for violation in risk_result.violations:
-                        # Extract reason code if it matches pattern
-                        if violation.startswith('RISK_'):
-                            diagnostics.increment_risk_reason(violation.split(':')[0].strip())
+                # TODO: Track rejection reason codes once risk engine returns reason codes
+                # Currently risk engine returns plain text violations, not ReasonCode values
             
             if risk_result.allowed:
                 self.stdout.write(self.style.SUCCESS(f"    ✓ Risk approved: {risk_result.reason}"))
