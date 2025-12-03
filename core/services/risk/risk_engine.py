@@ -17,6 +17,11 @@ from .models import RiskConfig, RiskEvaluationResult
 logger = logging.getLogger(__name__)
 
 
+def _format_direction(direction) -> str:
+    """Helper to format order direction for logging."""
+    return direction.value if hasattr(direction, 'value') else str(direction)
+
+
 class RiskEngine:
     """
     Risk Engine v1.0 for trade evaluation.
@@ -90,7 +95,7 @@ class RiskEngine:
                 "risk_data": {
                     "setup_id": setup.id,
                     "epic": order.epic,
-                    "direction": order.direction.value if hasattr(order.direction, 'value') else str(order.direction),
+                    "direction": _format_direction(order.direction),
                     "size": float(order.size),
                     "stop_loss": float(order.stop_loss) if order.stop_loss else None,
                     "take_profit": float(order.take_profit) if order.take_profit else None,
@@ -108,11 +113,12 @@ class RiskEngine:
         time_result = self._check_time_restrictions(now, eia_timestamp, setup)
         if time_result:
             violations.append(time_result)
-            logger.debug(
-                "Risk check: time restriction violated",
+            logger.info(
+                f"Risk check: time restriction violated - {time_result}",
                 extra={
                     "risk_data": {
                         "setup_id": setup.id,
+                        "epic": order.epic,
                         "check": "time_restrictions",
                         "result": "denied",
                         "reason": time_result,
@@ -126,11 +132,12 @@ class RiskEngine:
         loss_result = self._check_loss_limits(account, daily_pnl, weekly_pnl)
         if loss_result:
             violations.append(loss_result)
-            logger.debug(
-                "Risk check: loss limit violated",
+            logger.info(
+                f"Risk check: loss limit violated - {loss_result}",
                 extra={
                     "risk_data": {
                         "setup_id": setup.id,
+                        "epic": order.epic,
                         "check": "loss_limits",
                         "result": "denied",
                         "reason": loss_result,
@@ -146,11 +153,12 @@ class RiskEngine:
         position_result = self._check_open_positions(positions)
         if position_result:
             violations.append(position_result)
-            logger.debug(
-                "Risk check: position limit exceeded",
+            logger.info(
+                f"Risk check: position limit exceeded - {position_result}",
                 extra={
                     "risk_data": {
                         "setup_id": setup.id,
+                        "epic": order.epic,
                         "check": "open_positions",
                         "result": "denied",
                         "reason": position_result,
@@ -165,11 +173,12 @@ class RiskEngine:
             countertrend_result = self._check_countertrend(setup, trend_direction)
             if countertrend_result:
                 violations.append(countertrend_result)
-                logger.debug(
-                    "Risk check: countertrend trade denied",
+                logger.info(
+                    f"Risk check: countertrend trade denied - {countertrend_result}",
                     extra={
                         "risk_data": {
                             "setup_id": setup.id,
+                            "epic": order.epic,
                             "check": "countertrend",
                             "result": "denied",
                             "reason": countertrend_result,
@@ -183,11 +192,12 @@ class RiskEngine:
         sltp_result = self._check_sltp_validity(order)
         if sltp_result:
             violations.append(sltp_result)
-            logger.debug(
-                "Risk check: SL/TP invalid",
+            logger.info(
+                f"Risk check: SL/TP invalid - {sltp_result}",
                 extra={
                     "risk_data": {
                         "setup_id": setup.id,
+                        "epic": order.epic,
                         "check": "sltp_validity",
                         "result": "denied",
                         "reason": sltp_result,
@@ -205,11 +215,12 @@ class RiskEngine:
         
         if risk_result:
             violations.append(risk_result)
-            logger.debug(
-                "Risk check: position risk exceeded",
+            logger.info(
+                f"Risk check: position risk exceeded - {risk_result}",
                 extra={
                     "risk_data": {
                         "setup_id": setup.id,
+                        "epic": order.epic,
                         "check": "position_risk",
                         "result": "denied",
                         "reason": risk_result,
@@ -244,15 +255,19 @@ class RiskEngine:
         
         # Build final result
         if violations:
-            logger.debug(
-                "Risk evaluation: trade denied",
+            logger.warning(
+                f"Risk evaluation: trade DENIED - {violations[0]}",
                 extra={
                     "risk_data": {
                         "setup_id": setup.id,
+                        "epic": order.epic,
+                        "direction": _format_direction(order.direction),
+                        "size": float(order.size),
                         "result": "denied",
                         "primary_reason": violations[0],
                         "all_violations": violations,
                         "risk_metrics": {k: float(v) if isinstance(v, Decimal) else v for k, v in risk_metrics.items()},
+                        "account_equity": float(account.equity),
                     }
                 }
             )
