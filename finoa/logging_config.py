@@ -147,11 +147,15 @@ class StrategyDataFilter(logging.Filter):
         value = record.strategy_data
         if isinstance(value, (dict, list)):
             try:
-                record.strategy_data = json.dumps(value, default=str)
+                formatted = json.dumps(value, default=str)
+                # Prepend space for better readability when data is present
+                record.strategy_data = " " + formatted if formatted else ""
             except Exception:  # pragma: no cover - defensive fallback
-                record.strategy_data = str(value)
+                formatted = str(value)
+                record.strategy_data = " " + formatted if formatted else ""
         else:
-            record.strategy_data = str(value)
+            formatted = str(value)
+            record.strategy_data = " " + formatted if formatted else ""
 
         return True
 
@@ -174,11 +178,15 @@ class RiskDataFilter(logging.Filter):
         value = record.risk_data
         if isinstance(value, (dict, list)):
             try:
-                record.risk_data = json.dumps(value, default=str)
+                formatted = json.dumps(value, default=str)
+                # Prepend space for better readability when data is present
+                record.risk_data = " " + formatted if formatted else ""
             except Exception:  # pragma: no cover - defensive fallback
-                record.risk_data = str(value)
+                formatted = str(value)
+                record.risk_data = " " + formatted if formatted else ""
         else:
-            record.risk_data = str(value)
+            formatted = str(value)
+            record.risk_data = " " + formatted if formatted else ""
 
         return True
 
@@ -226,7 +234,7 @@ def configure_logging() -> dict:
                 'datefmt': date_format,
             },
             'verbose': {
-                'format': '%(asctime)s [%(levelname)s] %(name)s (%(process)d:%(thread)d): %(message)s %(strategy_data)s%(risk_data)s',
+                'format': '%(asctime)s [%(levelname)s] %(name)s (%(process)d:%(thread)d): %(message)s%(strategy_data)s%(risk_data)s',
                 'datefmt': date_format,
             },
         },

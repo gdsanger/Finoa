@@ -326,7 +326,7 @@ class RiskDataFilterTests(TestCase):
         self.assertEqual(len(parsed), 2)
     
     def test_risk_data_filter_converts_string_to_string(self):
-        """Test that RiskDataFilter converts string to string."""
+        """Test that RiskDataFilter converts string to string with leading space."""
         from finoa.logging_config import RiskDataFilter
         
         record = logging.LogRecord(
@@ -344,7 +344,8 @@ class RiskDataFilterTests(TestCase):
         result = filter_obj.filter(record)
         
         self.assertTrue(result)
-        self.assertEqual(record.risk_data, 'simple string')
+        # Filter should prepend a space for readability
+        self.assertEqual(record.risk_data, ' simple string')
 
 
 class StrategyEngineDebugLoggingTests(TestCase):
