@@ -67,7 +67,9 @@ deny_overnight: true
 # -----------------------------------------
 
 # Tick size for the traded instrument (e.g., 0.01 for WTI Crude Oil)
-tick_size: 0.01
+tick_size: 0.1
 
 # Value of one tick in account currency (e.g., $10 for CL mini contract)
-tick_value: 10.0
+tick_value: 1.0
+
+leverage: 20

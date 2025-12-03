@@ -38,6 +38,7 @@ class RiskConfig:
         deny_overnight: Whether to deny overnight positions.
         tick_size: Size of one tick for the traded instrument.
         tick_value: Value of one tick in account currency.
+        leverage: Hebel bei Marginhandel
     """
     max_risk_per_trade_percent: Decimal = Decimal('1.0')
     max_daily_loss_percent: Decimal = Decimal('3.0')
@@ -49,14 +50,15 @@ class RiskConfig:
     
     sl_min_ticks: int = 5
     tp_min_ticks: int = 5
+    leverage: int = 20
     
     deny_eia_window_minutes: int = 5
     deny_friday_after: str = '21:00'
     deny_overnight: bool = True
     
     # Instrument-specific settings
-    tick_size: Decimal = Decimal('0.01')
-    tick_value: Decimal = Decimal('10.0')  # USD per tick for CL contract
+    tick_size: Decimal = Decimal('0.1')
+    tick_value: Decimal = Decimal('0.1')  # USD per tick for CL contract
     
     def __post_init__(self):
         """Ensure values are proper types."""
@@ -90,8 +92,9 @@ class RiskConfig:
             deny_eia_window_minutes=data.get('deny_eia_window_minutes', 5),
             deny_friday_after=data.get('deny_friday_after', '21:00'),
             deny_overnight=data.get('deny_overnight', True),
-            tick_size=Decimal(str(data.get('tick_size', '0.01'))),
-            tick_value=Decimal(str(data.get('tick_value', '10.0'))),
+            tick_size=Decimal(str(data.get('tick_size', '0.1'))),
+            tick_value=Decimal(str(data.get('tick_value', '0.1'))),
+            leverage=data.get('leverage', 20),
         )
 
     @classmethod
@@ -144,6 +147,7 @@ class RiskConfig:
             'deny_overnight': self.deny_overnight,
             'tick_size': float(self.tick_size),
             'tick_value': float(self.tick_value),
+            'leverage' : self.leverage,
         }
 
     def to_yaml(self) -> str:
