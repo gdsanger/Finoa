@@ -152,18 +152,20 @@ class StructuredDataFilter(logging.Filter):
             return True
 
         value = getattr(record, self.attribute_name)
+        
+        # Format the value appropriately
         if isinstance(value, (dict, list)):
             try:
                 formatted = json.dumps(value, default=str)
-                # Prepend space for better readability when data is present
-                setattr(record, self.attribute_name, " " + formatted if formatted else "")
-            except Exception:  # pragma: no cover - defensive fallback
+            except (TypeError, ValueError):  # Catch JSON serialization errors
+                # Fallback to string representation if JSON serialization fails
                 formatted = str(value)
-                setattr(record, self.attribute_name, " " + formatted if formatted else "")
         else:
             formatted = str(value)
-            setattr(record, self.attribute_name, " " + formatted if formatted else "")
-
+        
+        # Prepend space for better readability when data is present
+        setattr(record, self.attribute_name, " " + formatted if formatted else "")
+        
         return True
 
 

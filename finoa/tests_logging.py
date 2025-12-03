@@ -326,7 +326,7 @@ class RiskDataFilterTests(TestCase):
         self.assertEqual(len(parsed), 2)
     
     def test_risk_data_filter_converts_string_to_string(self):
-        """Test that RiskDataFilter converts string to string with leading space."""
+        """Test that RiskDataFilter prepends a space to non-empty string values."""
         from finoa.logging_config import RiskDataFilter
         
         record = logging.LogRecord(
