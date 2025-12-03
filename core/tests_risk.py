@@ -945,7 +945,7 @@ class RiskEngineDebugLoggingTest(TestCase):
             self.assertTrue(any('risk' in str(c).lower() for c in calls))
 
     def test_evaluate_logs_debug_on_denied(self):
-        """Test that debug logging is called when trade is denied."""
+        """Test that warning logging is called when trade is denied."""
         from unittest.mock import patch
         
         now = datetime(2025, 1, 18, 10, 0, tzinfo=timezone.utc)  # Saturday
@@ -959,15 +959,18 @@ class RiskEngineDebugLoggingTest(TestCase):
                 now=now,
             )
             
-            # Should have debug calls
+            # Should have debug calls for initial evaluation
             self.assertTrue(mock_logger.debug.called)
+            
+            # Should have info/warning calls for violations
+            self.assertTrue(mock_logger.info.called or mock_logger.warning.called)
             
             # Trade should be denied
             self.assertFalse(result.allowed)
             
-            # Check that denial is logged
-            calls = [str(c) for c in mock_logger.debug.call_args_list]
-            self.assertTrue(any('denied' in str(c).lower() or 'risk' in str(c).lower() for c in calls))
+            # Check that denial is logged at warning level
+            warning_calls = [str(c) for c in mock_logger.warning.call_args_list]
+            self.assertTrue(any('denied' in str(c).lower() for c in warning_calls))
 
     def test_evaluate_logs_all_violations(self):
         """Test that all violations are logged."""
@@ -994,9 +997,12 @@ class RiskEngineDebugLoggingTest(TestCase):
                 daily_pnl=Decimal("-500"),
             )
             
-            # Should have multiple debug calls for multiple violations
-            self.assertTrue(mock_logger.debug.called)
-            self.assertGreater(mock_logger.debug.call_count, 1)
+            # Should have multiple info calls for multiple violations
+            self.assertTrue(mock_logger.info.called)
+            self.assertGreater(mock_logger.info.call_count, 1)
+            
+            # Should have warning call for final denial
+            self.assertTrue(mock_logger.warning.called)
 
     def test_evaluate_logs_adjusted_order(self):
         """Test that position size adjustment is logged."""
@@ -1023,8 +1029,12 @@ class RiskEngineDebugLoggingTest(TestCase):
                 now=now,
             )
             
-            # Should have debug calls
+            # Should have debug calls for adjustment
             self.assertTrue(mock_logger.debug.called)
+            
+            # Trade should be allowed with adjusted order
+            self.assertTrue(result.allowed)
+            self.assertIsNotNone(result.adjusted_order)
             
             # Check that adjustment is logged
             calls = [str(c) for c in mock_logger.debug.call_args_list]
