@@ -709,6 +709,96 @@ class RiskEngineTest(TestCase):
         # With limit: max is 5.0
         self.assertEqual(size, Decimal("5.0"))
 
+    def test_leverage_in_config(self):
+        """Test that leverage can be loaded from config."""
+        config = RiskConfig(leverage=Decimal("20.0"))
+        self.assertEqual(config.leverage, Decimal("20.0"))
+        
+        # Test from dict
+        data = {'leverage': 15.0}
+        config2 = RiskConfig.from_dict(data)
+        self.assertEqual(config2.leverage, Decimal("15.0"))
+        
+        # Test default
+        config3 = RiskConfig()
+        self.assertEqual(config3.leverage, Decimal("1.0"))
+
+    def test_leverage_in_risk_metrics(self):
+        """Test that leverage is included in risk metrics."""
+        # Create config with 20x leverage
+        config_with_leverage = RiskConfig(leverage=Decimal("20.0"))
+        engine_with_leverage = RiskEngine(config_with_leverage)
+        
+        now = datetime(2025, 1, 15, 10, 0, tzinfo=timezone.utc)
+        
+        result = engine_with_leverage.evaluate(
+            account=self.account,
+            positions=[],
+            setup=self.setup,
+            order=self.order,
+            now=now,
+        )
+        
+        self.assertTrue(result.allowed)
+        self.assertIn('leverage', result.risk_metrics)
+        self.assertEqual(result.risk_metrics['leverage'], 20.0)
+
+    def test_risk_calculation_with_leverage(self):
+        """
+        Test that risk calculations work correctly with leverage.
+        
+        Key insight: Leverage affects margin requirements but NOT P&L risk.
+        The position size should be calculated based on P&L risk, which is
+        independent of leverage.
+        """
+        # Setup with 20x leverage
+        config_leveraged = RiskConfig(leverage=Decimal("20.0"))
+        engine_leveraged = RiskEngine(config_leveraged)
+        
+        # Same setup as default engine
+        # Entry: 75.50, SL: 75.40 (10 ticks)
+        # Risk per contract: 10 ticks * $10/tick = $100
+        # Max risk: 1% of $10,000 = $100
+        # Expected position size: $100 / $100 = 1.0 contract
+        
+        entry = Decimal("75.50")
+        sl = Decimal("75.40")
+        
+        size_no_leverage = self.engine.calculate_position_size(self.account, entry, sl)
+        size_with_leverage = engine_leveraged.calculate_position_size(self.account, entry, sl)
+        
+        # Position size should be THE SAME because P&L risk is the same
+        self.assertEqual(size_no_leverage, size_with_leverage)
+        self.assertEqual(size_with_leverage, Decimal("1.0"))
+        
+    def test_leverage_in_config_serialization(self):
+        """Test that leverage is properly serialized/deserialized."""
+        config = RiskConfig(leverage=Decimal("20.0"))
+        
+        # Test to_dict
+        data = config.to_dict()
+        self.assertIn('leverage', data)
+        self.assertEqual(data['leverage'], 20.0)
+        
+        # Test from_dict round-trip
+        config2 = RiskConfig.from_dict(data)
+        self.assertEqual(config2.leverage, Decimal("20.0"))
+        
+    def test_leverage_from_yaml_string(self):
+        """Test loading leverage from YAML configuration."""
+        yaml_string = """
+max_risk_per_trade_percent: 1.0
+max_daily_loss_percent: 3.0
+max_weekly_loss_percent: 6.0
+max_open_positions: 1
+max_position_size: 5.0
+tick_size: 0.01
+tick_value: 10.0
+leverage: 20.0
+"""
+        config = RiskConfig.from_yaml_string(yaml_string)
+        self.assertEqual(config.leverage, Decimal("20.0"))
+
 
 class RiskEngineIntegrationTest(TestCase):
     """Integration tests for RiskEngine."""

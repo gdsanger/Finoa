@@ -447,6 +447,16 @@ class RiskEngine:
         """
         Check position size and risk per trade limits.
         
+        This method calculates position size based on potential P&L risk, which is
+        the correct approach for both leveraged and non-leveraged trading. The
+        leverage configuration is used for margin calculations and informational
+        purposes, but does NOT change the risk-based position sizing logic.
+        
+        With leverage trading:
+        - Risk (P&L) = price_movement * tick_value * position_size (unchanged by leverage)
+        - Margin required = (notional_value) / leverage (affected by leverage)
+        - Position size is calculated to keep risk within max_risk_per_trade_percent
+        
         Args:
             account: Current account state.
             order: The proposed order request.
@@ -463,6 +473,7 @@ class RiskEngine:
         max_risk_amount = account.equity * (self.config.max_risk_per_trade_percent / Decimal('100'))
         risk_metrics['max_risk_amount'] = float(max_risk_amount)
         risk_metrics['equity'] = float(account.equity)
+        risk_metrics['leverage'] = float(self.config.leverage)
         
         # Log account state for debugging (critical for troubleshooting)
         logger.debug(
@@ -588,6 +599,15 @@ class RiskEngine:
     ) -> Decimal:
         """
         Calculate optimal position size based on risk parameters.
+        
+        This method calculates position size to keep risk within configured limits.
+        The calculation is based on potential P&L, which is correct for both
+        leveraged and non-leveraged trading.
+        
+        Leverage affects margin requirements but not P&L risk:
+        - With 1:1 leverage: 1 contract requires full notional value as margin
+        - With 1:20 leverage: 1 contract requires 1/20th notional value as margin
+        - In both cases: P&L = price_movement * tick_value * position_size
         
         Args:
             account: Current account state.

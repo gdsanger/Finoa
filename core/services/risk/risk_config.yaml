@@ -71,3 +71,8 @@ tick_size: 0.01
 
 # Value of one tick in account currency (e.g., $10 for CL mini contract)
 tick_value: 10.0
+
+# Leverage for margin trading (e.g., 20.0 for 1:20 leverage, 1.0 for no leverage)
+# When trading with leverage, position size calculations must account for this
+# Example: With 1:20 leverage, you can control a $20,000 position with $1,000 margin
+leverage: 20.0
