@@ -1057,20 +1057,40 @@ class Command(BaseCommand):
         
         direction = OrderDirection.BUY if setup.direction == "LONG" else OrderDirection.SELL
         
-        # Calculate basic SL/TP from ATR or default
-        atr = self.market_state_provider.get_atr(setup.epic, '1h', 14)
-        if atr is None:
-            atr = 0.50  # Default for oil
-        
-        sl_distance = atr * 1.5
-        tp_distance = atr * 2.0
-        
-        if setup.direction == "LONG":
-            stop_loss = Decimal(str(setup.reference_price - sl_distance))
-            take_profit = Decimal(str(setup.reference_price + tp_distance))
+       # --- SL/TP Berechnung: breakout-basiert statt ATR-Glaskugel ---
+
+        sl_distance = None
+        tp_distance = None
+
+        if getattr(setup, "breakout", None) and setup.breakout.range_height:
+            # Range-Höhe als Basis
+            range_height = Decimal(str(setup.breakout.range_height))
+
+            # Konfiguration: wie "eng" soll der Trade sein?
+            # z.B. 0.5 Range als SL, RR = 2:1
+            sl_fraction_of_range = Decimal("0.5")   # 50 % der Range
+            rr = Decimal("2.0")                     # Chance/Risiko
+
+            sl_distance = range_height * sl_fraction_of_range
+            tp_distance = sl_distance * rr
         else:
-            stop_loss = Decimal(str(setup.reference_price + sl_distance))
-            take_profit = Decimal(str(setup.reference_price - tp_distance))
+            # Fallback: ATR (für spätere Setups, EIA etc.)
+            atr = self.market_state_provider.get_atr(setup.epic, "1h", 14)
+            if atr is None:
+                atr = Decimal("0.50")  # Notfall-Default, besser später pro Asset
+            atr = Decimal(str(atr))
+
+            sl_distance = atr * Decimal("1.0")
+            tp_distance = atr * Decimal("1.5")
+
+        entry = Decimal(str(setup.reference_price))
+
+        if setup.direction == "LONG":
+            stop_loss = entry - sl_distance
+            take_profit = entry + tp_distance
+        else:
+            stop_loss = entry + sl_distance
+            take_profit = entry - tp_distance
         
         # Use broker_symbol for the order
         order = OrderRequest(
