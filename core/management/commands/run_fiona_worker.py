@@ -1072,11 +1072,19 @@ class Command(BaseCommand):
             stop_loss = Decimal(str(setup.reference_price + sl_distance))
             take_profit = Decimal(str(setup.reference_price - tp_distance))
         
+        # Calculate position size based on 5% of available margin with leverage
+        entry_price = Decimal(str(setup.reference_price))
+        position_size = self.risk_engine.calculate_position_size_from_margin(
+            account=account,
+            entry_price=entry_price,
+            max_margin_percent=Decimal('5.0'),
+        )
+        
         # Use broker_symbol for the order
         order = OrderRequest(
             epic=broker_symbol,
             direction=direction,
-            size=Decimal('1.0'),
+            size=position_size,
             stop_loss=stop_loss,
             take_profit=take_profit,
             currency='EUR',

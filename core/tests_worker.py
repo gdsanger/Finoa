@@ -1474,6 +1474,7 @@ class WorkerProcessSetupTest(TestCase):
         cmd.strategy_engine = MagicMock()
         cmd.risk_engine = MagicMock()
         cmd.risk_engine.evaluate.return_value = risk_result
+        cmd.risk_engine.calculate_position_size_from_margin.return_value = Decimal("0.1")
         cmd.execution_service = MagicMock()
         cmd.weaviate_service = MagicMock()
         
@@ -1567,6 +1568,7 @@ class WorkerProcessSetupTest(TestCase):
         cmd.market_state_provider.get_atr.return_value = 1.0
         cmd.risk_engine = MagicMock()
         cmd.risk_engine.evaluate.return_value = risk_result
+        cmd.risk_engine.calculate_position_size_from_margin.return_value = Decimal("0.1")
         cmd.execution_service = MagicMock()
         cmd.weaviate_service = MagicMock()
         
