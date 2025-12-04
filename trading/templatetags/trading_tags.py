@@ -2,6 +2,8 @@
 Template tags for the trading app.
 """
 from django import template
+from django.utils import timezone
+from datetime import timedelta
 
 register = template.Library()
 
@@ -33,3 +35,40 @@ def get_enabled_phase_configs(asset):
     """
     from trading.models import AssetSessionPhaseConfig
     return AssetSessionPhaseConfig.get_enabled_phases_for_asset(asset)
+
+
+@register.filter
+def timesince_short(value):
+    """
+    Return a human-readable short time difference.
+    
+    Examples:
+        - "vor 2 Min."
+        - "vor 1 Std."
+        - "vor 3 Tagen"
+    
+    Usage:
+        {{ signal.created_at|timesince_short }}
+    """
+    if not value:
+        return ''
+    
+    now = timezone.now()
+    if value > now:
+        return 'in der Zukunft'
+    
+    diff = now - value
+    
+    seconds = diff.total_seconds()
+    
+    if seconds < 60:
+        return f'vor {int(seconds)} Sek.'
+    elif seconds < 3600:
+        minutes = int(seconds / 60)
+        return f'vor {minutes} Min.'
+    elif seconds < 86400:
+        hours = int(seconds / 3600)
+        return f'vor {hours} Std.'
+    else:
+        days = int(seconds / 86400)
+        return f'vor {days} Tag{"en" if days != 1 else ""}'

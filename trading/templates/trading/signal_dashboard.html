@@ -1773,6 +1773,35 @@
             padding: 0.8rem 0.85rem;
         }
     }
+    
+    /* Signal Controls */
+    .signal-controls {
+        background-color: var(--fiona-card-dark);
+        border: 1px solid var(--fiona-border);
+        border-radius: 12px;
+        padding: 1rem;
+    }
+    
+    .signal-controls .btn-group .btn {
+        border-color: var(--fiona-border);
+    }
+    
+    .signal-controls .btn-group .btn.active {
+        background-color: rgba(255, 255, 255, 0.1);
+        border-color: var(--fiona-text-light);
+    }
+    
+    /* Signal Card Checkbox */
+    .signal-card-header .form-check-input {
+        width: 1.2rem;
+        height: 1.2rem;
+        cursor: pointer;
+    }
+    
+    .signal-card-header .form-check-input:checked {
+        background-color: var(--signal-long);
+        border-color: var(--signal-long);
+    }
 </style>
 {% endblock %}
 
@@ -1865,6 +1894,34 @@
             <div class="col-12 col-lg dashboard-main-col">
                 <main class="dashboard-main">
                 
+        <!-- Signal Controls -->
+        <div class="signal-controls mb-3">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div class="btn-group" role="group" aria-label="Signal Filter">
+                    <button type="button" class="btn btn-sm btn-outline-light active" onclick="filterSignals('ALL')">
+                        <i class="bi bi-funnel"></i> Alle
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-success" onclick="filterSignals('GREEN')">
+                        <i class="bi bi-check-circle"></i> Erlaubt
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-warning" onclick="filterSignals('YELLOW')">
+                        <i class="bi bi-exclamation-triangle"></i> Riskant
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="filterSignals('RED')">
+                        <i class="bi bi-x-circle"></i> Verboten
+                    </button>
+                </div>
+                
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteAllForbiddenSignals()" title="Alle verbotenen Signale löschen">
+                        <i class="bi bi-trash"></i> Alle Verbotenen löschen
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" id="delete-selected-btn" onclick="deleteSelectedSignals()" style="display: none;" title="Ausgewählte Signale löschen">
+                        <i class="bi bi-trash"></i> Ausgewählte löschen (<span id="selected-count">0</span>)
+                    </button>
+                </div>
+            </div>
+        </div>
        
         <!-- Signal List Container (refreshable via HTMX) -->
         <div id="signal-list-container">
@@ -1872,32 +1929,44 @@
         <div class="row" id="signals-row">
             {% for signal in signals %}
             <div class="col-lg-6 col-xl-4">
-                <div class="signal-card">
+                <div class="signal-card" data-risk-status="{{ signal.risk_status }}">
                     <div class="signal-card-header">
-                        <div class="d-flex align-items-center gap-2">
-                            <span class="setup-type-badge setup-type-{% if signal.setup_type %}{{ signal.setup_type }}{% else %}BREAKOUT{% endif %}">
-                                {% if signal.setup_type_display %}
-                                    {{ signal.setup_type_display }}
-                                {% else %}
-                                    {{ signal.get_setup_type_display }}
-                                {% endif %}
-                            </span>
-                            <span class="session-phase-tag">
-                                {% if signal.session_phase_display %}
-                                    {{ signal.session_phase_display }}
-                                {% else %}
-                                    {{ signal.get_session_phase_display }}
-                                {% endif %}
-                            </span>
+                        <div class="d-flex align-items-center gap-2 flex-fill">
+                            <input type="checkbox" class="form-check-input signal-checkbox" data-signal-id="{{ signal.id }}" onchange="updateSelectedCount()" style="margin-right: 0.5rem;">
+                            <div class="d-flex flex-column flex-fill">
+                                <div class="d-flex align-items-center gap-2 mb-1">
+                                    <span class="setup-type-badge setup-type-{% if signal.setup_type %}{{ signal.setup_type }}{% else %}BREAKOUT{% endif %}">
+                                        {% if signal.setup_type_display %}
+                                            {{ signal.setup_type_display }}
+                                        {% else %}
+                                            {{ signal.get_setup_type_display }}
+                                        {% endif %}
+                                    </span>
+                                    <span class="session-phase-tag">
+                                        {% if signal.session_phase_display %}
+                                            {{ signal.session_phase_display }}
+                                        {% else %}
+                                            {{ signal.get_session_phase_display }}
+                                        {% endif %}
+                                    </span>
+                                    <span class="direction-badge direction-{{ signal.direction }}">
+                                        {% if signal.direction == 'LONG' %}
+                                            <i class="bi bi-arrow-up-circle-fill"></i>
+                                        {% else %}
+                                            <i class="bi bi-arrow-down-circle-fill"></i>
+                                        {% endif %}
+                                        {{ signal.direction }}
+                                    </span>
+                                </div>
+                                <div class="text-light small">
+                                    <strong>{% if signal.trading_asset %}{{ signal.trading_asset.name }}{% else %}{{ signal.instrument }}{% endif %}</strong>
+                                    <span class="text-muted ms-2">
+                                        {{ signal.created_at|date:"d.m.Y H:i" }} 
+                                        <span class="badge bg-secondary ms-1">{% load trading_tags %}{{ signal.created_at|timesince_short }}</span>
+                                    </span>
+                                </div>
+                            </div>
                         </div>
-                        <span class="direction-badge direction-{{ signal.direction }}">
-                            {% if signal.direction == 'LONG' %}
-                                <i class="bi bi-arrow-up-circle-fill"></i>
-                            {% else %}
-                                <i class="bi bi-arrow-down-circle-fill"></i>
-                            {% endif %}
-                            {{ signal.direction }}
-                        </span>
                     </div>
                     
                     <div class="signal-card-body">
@@ -2128,10 +2197,7 @@
     }
     
     function rejectSignal(signalId) {
-        if (!confirm('Signal wirklich verwerfen?')) {
-            return;
-        }
-        
+        // No confirmation dialog - delete immediately
         fetch(`/fiona/signals/${signalId}/reject/`, {
             method: 'POST',
             headers: {
@@ -2142,10 +2208,114 @@
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                alert(data.message);
-                location.reload();
+                // Remove the signal card from DOM instead of reload for better UX
+                const signalCard = document.querySelector(`[data-signal-id="${signalId}"]`)?.closest('.col-lg-6');
+                if (signalCard) {
+                    signalCard.remove();
+                    updateSelectedCount();
+                }
             } else {
                 alert('Fehler: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Ein Fehler ist aufgetreten.');
+        });
+    }
+    
+    // Filter signals by risk status
+    function filterSignals(status) {
+        const allCards = document.querySelectorAll('.signal-card');
+        const buttons = document.querySelectorAll('.signal-controls .btn-group button');
+        
+        // Update active button
+        buttons.forEach(btn => btn.classList.remove('active'));
+        event.target.classList.add('active');
+        
+        allCards.forEach(card => {
+            const cardStatus = card.getAttribute('data-risk-status');
+            if (status === 'ALL' || cardStatus === status) {
+                card.closest('.col-lg-6').style.display = '';
+            } else {
+                card.closest('.col-lg-6').style.display = 'none';
+            }
+        });
+    }
+    
+    // Update selected signals count
+    function updateSelectedCount() {
+        const checkboxes = document.querySelectorAll('.signal-checkbox:checked');
+        const count = checkboxes.length;
+        const countSpan = document.getElementById('selected-count');
+        const deleteBtn = document.getElementById('delete-selected-btn');
+        
+        if (countSpan) {
+            countSpan.textContent = count;
+        }
+        
+        if (deleteBtn) {
+            deleteBtn.style.display = count > 0 ? '' : 'none';
+        }
+    }
+    
+    // Delete all forbidden signals
+    function deleteAllForbiddenSignals() {
+        if (!confirm('Wirklich alle verbotenen Signale löschen?')) {
+            return;
+        }
+        
+        fetch('/fiona/signals/delete-forbidden/', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Content-Type': 'application/json',
+            },
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(`${data.deleted_count} Signal(e) gelöscht`);
+                location.reload();
+            } else {
+                alert('Fehler: ' + (data.error || 'Unbekannter Fehler'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Ein Fehler ist aufgetreten.');
+        });
+    }
+    
+    // Delete selected signals
+    function deleteSelectedSignals() {
+        const checkboxes = document.querySelectorAll('.signal-checkbox:checked');
+        const signalIds = Array.from(checkboxes).map(cb => cb.getAttribute('data-signal-id'));
+        
+        if (signalIds.length === 0) {
+            alert('Keine Signale ausgewählt');
+            return;
+        }
+        
+        if (!confirm(`Wirklich ${signalIds.length} Signal(e) löschen?`)) {
+            return;
+        }
+        
+        fetch('/fiona/signals/delete-selected/', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ signal_ids: signalIds }),
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(`${data.deleted_count} Signal(e) gelöscht`);
+                location.reload();
+            } else {
+                alert('Fehler: ' + (data.error || 'Unbekannter Fehler'));
             }
         })
         .catch(error => {
