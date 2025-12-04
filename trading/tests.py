@@ -6,6 +6,7 @@ from datetime import timedelta
 from unittest.mock import MagicMock, patch
 import uuid
 import json
+import re
 
 from .models import (
     Signal,
@@ -2198,7 +2199,6 @@ class BreakoutConfigFormTest(TestCase):
         
         # Check that saved values appear in the form correctly using regex
         # to handle different decimal representations
-        import re
         
         # Helper function to check if a value is present in the response
         def check_value(field_name, expected_value):
@@ -3011,8 +3011,6 @@ class PhaseConfigAPITest(TestCase):
     
     def test_api_post_phase_config(self):
         """Test POST /api/assets/{id}/phases/ endpoint to create config."""
-        import json
-        
         response = self.client.post(
             f'/fiona/api/assets/{self.asset.id}/phases/',
             data=json.dumps({
@@ -3039,8 +3037,6 @@ class PhaseConfigAPITest(TestCase):
     
     def test_api_post_phase_config_update(self):
         """Test POST /api/assets/{id}/phases/ endpoint to update config."""
-        import json
-        
         # Create initial config
         AssetSessionPhaseConfig.objects.create(
             asset=self.asset,
