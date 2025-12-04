@@ -1,5 +1,6 @@
 {% extends 'core/base.html' %}
 {% load static %}
+{% load trading_tags %}
 
 {% block title %}Fiona - Signal Dashboard{% endblock %}
 
@@ -1962,7 +1963,7 @@
                                     <strong>{% if signal.trading_asset %}{{ signal.trading_asset.name }}{% else %}{{ signal.instrument }}{% endif %}</strong>
                                     <span class="text-muted ms-2">
                                         {{ signal.created_at|date:"d.m.Y H:i" }} 
-                                        <span class="badge bg-secondary ms-1">{% load trading_tags %}{{ signal.created_at|timesince_short }}</span>
+                                        <span class="badge bg-secondary ms-1">{{ signal.created_at|timesince_short }}</span>
                                     </span>
                                 </div>
                             </div>

@@ -1,4 +1,5 @@
 import logging
+import json
 from datetime import timedelta
 
 from django.shortcuts import render, get_object_or_404, redirect
@@ -231,7 +232,6 @@ def delete_selected_signals(request):
     Delete selected signals by their IDs.
     """
     try:
-        import json
         data = json.loads(request.body)
         signal_ids = data.get('signal_ids', [])
         
