@@ -101,8 +101,8 @@ class RiskConfig:
             deny_eia_window_minutes=data.get('deny_eia_window_minutes', 5),
             deny_friday_after=data.get('deny_friday_after', '21:00'),
             deny_overnight=data.get('deny_overnight', True),
-            tick_size=Decimal(str(data.get('tick_size', '0.1'))),
-            tick_value=Decimal(str(data.get('tick_value', '0.1'))),
+            tick_size=Decimal(str(data.get('tick_size', '0.01'))),
+            tick_value=Decimal(str(data.get('tick_value', '10.0'))),
             leverage=Decimal(str(data.get('leverage', '20.0'))),
         )
 

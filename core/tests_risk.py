@@ -263,13 +263,6 @@ class RiskEngineTest(TestCase):
             now=now,
         )
         
-        # Debug: print result details
-        if not result.allowed:
-            print(f"\n  DEBUG: Trade was DENIED")
-            print(f"  Reason: {result.reason}")
-            print(f"  Violations: {result.violations}")
-            print(f"  Risk Metrics: {result.risk_metrics}")
-        
         self.assertTrue(result.allowed, f"Expected trade to be allowed but got: {result.reason}")
         self.assertEqual(result.reason, "Trade meets all risk requirements")
 

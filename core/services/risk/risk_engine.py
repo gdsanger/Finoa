@@ -671,7 +671,7 @@ class RiskEngine:
             Decimal: Recommended position size based on margin.
         """
         # Get available margin (prefer margin_available, fallback to available)
-        available_margin = account.margin_available if account.margin_available > 0 else account.available
+        available_margin = account.margin_available if (account.margin_available and account.margin_available > 0) else account.available
         
         if available_margin <= 0:
             logger.warning(
