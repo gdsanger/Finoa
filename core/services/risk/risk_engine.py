@@ -635,3 +635,91 @@ class RiskEngine:
         
         # Round to one decimal place
         return Decimal(str(round(float(position_size), 1)))
+
+    def calculate_position_size_from_margin(
+        self,
+        account: AccountState,
+        entry_price: Decimal,
+        max_margin_percent: Decimal = Decimal('5.0'),
+    ) -> Decimal:
+        """
+        Calculate position size based on available margin and leverage.
+        
+        This method calculates position size using a margin-based approach:
+        - Uses a percentage of available margin (default 5%)
+        - Accounts for leverage to determine actual position size
+        - With 1:20 leverage, 5€ margin controls 100€ worth of position
+        
+        Formula:
+            max_margin_to_use = margin_available * (max_margin_percent / 100)
+            notional_value = max_margin_to_use * leverage
+            position_size = notional_value / entry_price
+        
+        Example with 1:20 leverage:
+            - Available margin: 10,000€
+            - Max margin to use (5%): 500€
+            - Notional value: 500€ * 20 = 10,000€
+            - Entry price: 75€
+            - Position size: 10,000€ / 75€ = 133.33 lots
+        
+        Args:
+            account: Current account state with margin information.
+            entry_price: Planned entry price for the position.
+            max_margin_percent: Maximum percentage of available margin to use (default: 5%).
+            
+        Returns:
+            Decimal: Recommended position size based on margin.
+        """
+        # Get available margin (prefer margin_available, fallback to available)
+        available_margin = account.margin_available if account.margin_available > 0 else account.available
+        
+        if available_margin <= 0:
+            logger.warning(
+                "No available margin for position sizing",
+                extra={
+                    "risk_data": {
+                        "margin_available": float(account.margin_available),
+                        "available": float(account.available),
+                        "equity": float(account.equity),
+                    }
+                }
+            )
+            return Decimal('0')
+        
+        if entry_price <= 0:
+            logger.warning("Entry price must be positive for position sizing")
+            return Decimal('0')
+        
+        # Calculate maximum margin to use for this trade
+        max_margin_to_use = available_margin * (max_margin_percent / Decimal('100'))
+        
+        # Calculate notional value using leverage
+        # With 1:20 leverage, 500€ margin controls 10,000€ worth of position
+        notional_value = max_margin_to_use * self.config.leverage
+        
+        # Calculate position size
+        position_size = notional_value / entry_price
+        
+        # Apply maximum position size limit
+        position_size = min(position_size, self.config.max_position_size)
+        
+        # Round to one decimal place
+        result = Decimal(str(round(float(position_size), 1)))
+        
+        logger.debug(
+            "Position size calculated from margin",
+            extra={
+                "risk_data": {
+                    "available_margin": float(available_margin),
+                    "max_margin_percent": float(max_margin_percent),
+                    "max_margin_to_use": float(max_margin_to_use),
+                    "leverage": float(self.config.leverage),
+                    "notional_value": float(notional_value),
+                    "entry_price": float(entry_price),
+                    "calculated_size": float(position_size),
+                    "final_size": float(result),
+                }
+            }
+        )
+        
+        return result

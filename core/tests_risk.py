@@ -263,7 +263,14 @@ class RiskEngineTest(TestCase):
             now=now,
         )
         
-        self.assertTrue(result.allowed)
+        # Debug: print result details
+        if not result.allowed:
+            print(f"\n  DEBUG: Trade was DENIED")
+            print(f"  Reason: {result.reason}")
+            print(f"  Violations: {result.violations}")
+            print(f"  Risk Metrics: {result.risk_metrics}")
+        
+        self.assertTrue(result.allowed, f"Expected trade to be allowed but got: {result.reason}")
         self.assertEqual(result.reason, "Trade meets all risk requirements")
 
     def test_trade_denied_too_many_positions(self):
@@ -719,9 +726,9 @@ class RiskEngineTest(TestCase):
         config2 = RiskConfig.from_dict(data)
         self.assertEqual(config2.leverage, Decimal("15.0"))
         
-        # Test default
+        # Test default (20.0 as per requirements for margin trading)
         config3 = RiskConfig()
-        self.assertEqual(config3.leverage, Decimal("1.0"))
+        self.assertEqual(config3.leverage, Decimal("20.0"))
 
     def test_leverage_in_risk_metrics(self):
         """Test that leverage is included in risk metrics."""
@@ -798,6 +805,113 @@ leverage: 20.0
 """
         config = RiskConfig.from_yaml_string(yaml_string)
         self.assertEqual(config.leverage, Decimal("20.0"))
+
+    def test_calculate_position_size_from_margin(self):
+        """Test margin-based position size calculation."""
+        # Test with 1:20 leverage
+        # Available margin: 10,000€
+        # 5% of margin: 500€
+        # Notional value: 500€ * 20 = 10,000€
+        # Entry price: 75€
+        # Expected size: 10,000€ / 75€ = 133.33 → rounded to 133.3
+        
+        config = RiskConfig(leverage=Decimal("20.0"), max_position_size=Decimal("200.0"))
+        engine = RiskEngine(config)
+        
+        account = AccountState(
+            account_id="TEST-123",
+            account_name="Test Account",
+            balance=Decimal("10000.00"),
+            available=Decimal("10000.00"),
+            equity=Decimal("10000.00"),
+            margin_available=Decimal("10000.00"),
+        )
+        
+        entry_price = Decimal("75.00")
+        size = engine.calculate_position_size_from_margin(
+            account=account,
+            entry_price=entry_price,
+            max_margin_percent=Decimal("5.0"),
+        )
+        
+        # Expected: (10000 * 0.05 * 20) / 75 = 10000 / 75 = 133.33 → 133.3
+        self.assertEqual(size, Decimal("133.3"))
+
+    def test_calculate_position_size_from_margin_limited_by_max(self):
+        """Test that margin-based size is limited by max_position_size."""
+        # With very high margin and low price, calculated size would be huge
+        # but should be capped at max_position_size
+        
+        config = RiskConfig(leverage=Decimal("20.0"), max_position_size=Decimal("5.0"))
+        engine = RiskEngine(config)
+        
+        account = AccountState(
+            account_id="TEST-123",
+            account_name="Test Account",
+            balance=Decimal("100000.00"),
+            available=Decimal("100000.00"),
+            equity=Decimal("100000.00"),
+            margin_available=Decimal("100000.00"),
+        )
+        
+        entry_price = Decimal("10.00")
+        size = engine.calculate_position_size_from_margin(
+            account=account,
+            entry_price=entry_price,
+            max_margin_percent=Decimal("5.0"),
+        )
+        
+        # Without limit: (100000 * 0.05 * 20) / 10 = 100000 / 10 = 10000
+        # With limit: capped at 5.0
+        self.assertEqual(size, Decimal("5.0"))
+
+    def test_calculate_position_size_from_margin_with_zero_margin(self):
+        """Test that zero margin returns zero position size."""
+        config = RiskConfig(leverage=Decimal("20.0"))
+        engine = RiskEngine(config)
+        
+        account = AccountState(
+            account_id="TEST-123",
+            account_name="Test Account",
+            balance=Decimal("0.00"),
+            available=Decimal("0.00"),
+            equity=Decimal("0.00"),
+            margin_available=Decimal("0.00"),
+        )
+        
+        entry_price = Decimal("75.00")
+        size = engine.calculate_position_size_from_margin(
+            account=account,
+            entry_price=entry_price,
+            max_margin_percent=Decimal("5.0"),
+        )
+        
+        self.assertEqual(size, Decimal("0"))
+
+    def test_calculate_position_size_from_margin_fallback_to_available(self):
+        """Test that calculation falls back to 'available' if margin_available is zero."""
+        config = RiskConfig(leverage=Decimal("20.0"), max_position_size=Decimal("200.0"))
+        engine = RiskEngine(config)
+        
+        # margin_available is 0, but available is 10,000
+        account = AccountState(
+            account_id="TEST-123",
+            account_name="Test Account",
+            balance=Decimal("10000.00"),
+            available=Decimal("10000.00"),
+            equity=Decimal("10000.00"),
+            margin_available=Decimal("0.00"),
+        )
+        
+        entry_price = Decimal("75.00")
+        size = engine.calculate_position_size_from_margin(
+            account=account,
+            entry_price=entry_price,
+            max_margin_percent=Decimal("5.0"),
+        )
+        
+        # Should use available instead: (10000 * 0.05 * 20) / 75 = 133.3
+        self.assertEqual(size, Decimal("133.3"))
 
 
 class RiskEngineIntegrationTest(TestCase):
