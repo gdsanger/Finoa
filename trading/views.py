@@ -232,6 +232,13 @@ def delete_selected_signals(request):
     Delete selected signals by their IDs.
     """
     try:
+        # Limit request body size to prevent abuse (max 1MB)
+        if len(request.body) > 1024 * 1024:
+            return JsonResponse({
+                'success': False,
+                'error': 'Request too large.'
+            }, status=413)
+        
         data = json.loads(request.body)
         signal_ids = data.get('signal_ids', [])
         
@@ -239,6 +246,13 @@ def delete_selected_signals(request):
             return JsonResponse({
                 'success': False,
                 'error': 'Keine Signal-IDs angegeben.'
+            }, status=400)
+        
+        # Limit number of signals to delete at once (max 100)
+        if len(signal_ids) > 100:
+            return JsonResponse({
+                'success': False,
+                'error': 'Zu viele Signale ausgewählt (max 100).'
             }, status=400)
         
         # Delete the specified signals

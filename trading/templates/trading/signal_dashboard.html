@@ -2210,10 +2210,13 @@
         .then(data => {
             if (data.success) {
                 // Remove the signal card from DOM instead of reload for better UX
-                const signalCard = document.querySelector(`[data-signal-id="${signalId}"]`)?.closest('.col-lg-6');
-                if (signalCard) {
-                    signalCard.remove();
-                    updateSelectedCount();
+                const checkbox = document.querySelector(`.signal-checkbox[data-signal-id="${signalId}"]`);
+                if (checkbox) {
+                    const signalCard = checkbox.closest('.col-lg-6');
+                    if (signalCard) {
+                        signalCard.remove();
+                        updateSelectedCount();
+                    }
                 }
             } else {
                 alert('Fehler: ' + data.error);
@@ -2230,14 +2233,23 @@
         const allCards = document.querySelectorAll('.signal-card');
         const buttons = document.querySelectorAll('.signal-controls .btn-group button');
         
+        // Status to button text mapping
+        const statusToText = {
+            'ALL': 'Alle',
+            'GREEN': 'Erlaubt',
+            'YELLOW': 'Riskant',
+            'RED': 'Verboten'
+        };
+        
         // Update active button - use buttonElement if passed, otherwise find by status
         buttons.forEach(btn => btn.classList.remove('active'));
         if (buttonElement) {
             buttonElement.classList.add('active');
         } else {
             // Fallback: find button by status text
+            const targetText = statusToText[status] || 'Alle';
             buttons.forEach(btn => {
-                if (btn.textContent.includes(status === 'ALL' ? 'Alle' : status === 'GREEN' ? 'Erlaubt' : status === 'YELLOW' ? 'Riskant' : 'Verboten')) {
+                if (btn.textContent.includes(targetText)) {
                     btn.classList.add('active');
                 }
             });
