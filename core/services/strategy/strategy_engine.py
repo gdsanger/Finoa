@@ -1731,14 +1731,16 @@ class StrategyEngine:
         # For LONG: candle's low must be within max_candle_distance_ticks from range high
         # For SHORT: candle's high must be within max_candle_distance_ticks from range low
         max_ticks = self.config.breakout.max_candle_distance_ticks
-        if max_ticks and self.config.tick_size > 0:
+        if max_ticks is not None and self.config.tick_size > 0:
             # Use a small epsilon for floating-point comparison tolerance (0.1 ticks)
-            epsilon = 0.1
+            # This prevents rejecting candles that are exactly at the boundary due to
+            # floating-point precision errors
+            EPSILON_TICKS = 0.1
             if validation_direction == "LONG":
                 # Check if candle's low is not too far from range high
                 candle_distance = range_high - candle.low
                 candle_distance_ticks = candle_distance / self.config.tick_size
-                if candle_distance_ticks > max_ticks + epsilon:
+                if candle_distance_ticks > max_ticks + EPSILON_TICKS:
                     return False, (
                         f"Candle low {candle.low:.4f} is {candle_distance_ticks:.1f} ticks "
                         f"from range high {range_high:.4f} (max allowed: {max_ticks} ticks)"
@@ -1747,7 +1749,7 @@ class StrategyEngine:
                 # Check if candle's high is not too far from range low
                 candle_distance = candle.high - range_low
                 candle_distance_ticks = candle_distance / self.config.tick_size
-                if candle_distance_ticks > max_ticks + epsilon:
+                if candle_distance_ticks > max_ticks + EPSILON_TICKS:
                     return False, (
                         f"Candle high {candle.high:.4f} is {candle_distance_ticks:.1f} ticks "
                         f"from range low {range_low:.4f} (max allowed: {max_ticks} ticks)"
