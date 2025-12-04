@@ -1797,6 +1797,7 @@
         width: 1.2rem;
         height: 1.2rem;
         cursor: pointer;
+        margin-right: 0.5rem;
     }
     
     .signal-card-header .form-check-input:checked {
@@ -1933,7 +1934,7 @@
                 <div class="signal-card" data-risk-status="{{ signal.risk_status }}">
                     <div class="signal-card-header">
                         <div class="d-flex align-items-center gap-2 flex-fill">
-                            <input type="checkbox" class="form-check-input signal-checkbox" data-signal-id="{{ signal.id }}" onchange="updateSelectedCount()" style="margin-right: 0.5rem;">
+                            <input type="checkbox" class="form-check-input signal-checkbox" data-signal-id="{{ signal.id }}" onchange="updateSelectedCount()">
                             <div class="d-flex flex-column flex-fill">
                                 <div class="d-flex align-items-center gap-2 mb-1">
                                     <span class="setup-type-badge setup-type-{% if signal.setup_type %}{{ signal.setup_type }}{% else %}BREAKOUT{% endif %}">
@@ -2198,7 +2199,9 @@
     }
     
     function rejectSignal(signalId) {
-        // No confirmation dialog - delete immediately
+        // No confirmation dialog - per requirements, individual signals should be deleted immediately
+        // This provides a faster workflow for dismissing single signals
+        // Bulk operations still have confirmations for safety
         fetch(`/fiona/signals/${signalId}/reject/`, {
             method: 'POST',
             headers: {

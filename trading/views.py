@@ -232,6 +232,13 @@ def delete_selected_signals(request):
     Delete selected signals by their IDs.
     """
     try:
+        # Check for empty request body
+        if not request.body:
+            return JsonResponse({
+                'success': False,
+                'error': 'Keine Daten empfangen.'
+            }, status=400)
+        
         # Limit request body size to prevent abuse (max 1MB)
         if len(request.body) > 1024 * 1024:
             return JsonResponse({
