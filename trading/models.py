@@ -362,6 +362,7 @@ class TradingAsset(models.Model):
                 min_breakout_body_fraction=float(breakout_cfg.min_breakout_body_fraction),
                 max_breakout_body_fraction=float(breakout_cfg.max_breakout_body_fraction) if breakout_cfg.max_breakout_body_fraction else None,
                 min_breakout_distance_ticks=breakout_cfg.min_breakout_distance_ticks,
+                max_candle_distance_ticks=breakout_cfg.max_candle_distance_ticks,
                 min_volume_spike=float(breakout_cfg.min_volume_spike) if breakout_cfg.min_volume_spike else None,
             )
             
@@ -575,6 +576,10 @@ class AssetBreakoutConfig(models.Model):
     min_breakout_distance_ticks = models.PositiveIntegerField(
         default=1,
         help_text='Minimum distance from range in ticks for valid breakout'
+    )
+    max_candle_distance_ticks = models.PositiveIntegerField(
+        default=10,
+        help_text='Maximum distance of candle (low for LONG, high for SHORT) from range boundary in ticks'
     )
     
     # =========================================================================
