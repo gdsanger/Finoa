@@ -5,6 +5,7 @@ from decimal import Decimal
 from datetime import timedelta
 from unittest.mock import MagicMock, patch
 import uuid
+import json
 
 from .models import (
     Signal,
@@ -4666,8 +4667,6 @@ class BulkDeleteSignalsTest(TestCase):
     
     def test_delete_selected_signals(self):
         """Test deleting selected signals."""
-        import json
-        
         signal_ids = [str(self.signal_green.id), str(self.signal_red_1.id)]
         response = self.client.post(
             '/fiona/signals/delete-selected/',
@@ -4690,8 +4689,6 @@ class BulkDeleteSignalsTest(TestCase):
     
     def test_delete_selected_signals_empty_list(self):
         """Test deleting with empty signal list."""
-        import json
-        
         response = self.client.post(
             '/fiona/signals/delete-selected/',
             data=json.dumps({'signal_ids': []}),

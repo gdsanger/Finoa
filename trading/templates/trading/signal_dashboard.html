@@ -1899,16 +1899,16 @@
         <div class="signal-controls mb-3">
             <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <div class="btn-group" role="group" aria-label="Signal Filter">
-                    <button type="button" class="btn btn-sm btn-outline-light active" onclick="filterSignals('ALL')">
+                    <button type="button" class="btn btn-sm btn-outline-light active" onclick="filterSignals('ALL', this)">
                         <i class="bi bi-funnel"></i> Alle
                     </button>
-                    <button type="button" class="btn btn-sm btn-outline-success" onclick="filterSignals('GREEN')">
+                    <button type="button" class="btn btn-sm btn-outline-success" onclick="filterSignals('GREEN', this)">
                         <i class="bi bi-check-circle"></i> Erlaubt
                     </button>
-                    <button type="button" class="btn btn-sm btn-outline-warning" onclick="filterSignals('YELLOW')">
+                    <button type="button" class="btn btn-sm btn-outline-warning" onclick="filterSignals('YELLOW', this)">
                         <i class="bi bi-exclamation-triangle"></i> Riskant
                     </button>
-                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="filterSignals('RED')">
+                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="filterSignals('RED', this)">
                         <i class="bi bi-x-circle"></i> Verboten
                     </button>
                 </div>
@@ -2226,13 +2226,22 @@
     }
     
     // Filter signals by risk status
-    function filterSignals(status) {
+    function filterSignals(status, buttonElement) {
         const allCards = document.querySelectorAll('.signal-card');
         const buttons = document.querySelectorAll('.signal-controls .btn-group button');
         
-        // Update active button
+        // Update active button - use buttonElement if passed, otherwise find by status
         buttons.forEach(btn => btn.classList.remove('active'));
-        event.target.classList.add('active');
+        if (buttonElement) {
+            buttonElement.classList.add('active');
+        } else {
+            // Fallback: find button by status text
+            buttons.forEach(btn => {
+                if (btn.textContent.includes(status === 'ALL' ? 'Alle' : status === 'GREEN' ? 'Erlaubt' : status === 'YELLOW' ? 'Riskant' : 'Verboten')) {
+                    btn.classList.add('active');
+                }
+            });
+        }
         
         allCards.forEach(card => {
             const cardStatus = card.getAttribute('data-risk-status');
