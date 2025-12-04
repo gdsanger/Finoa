@@ -5,6 +5,8 @@ from decimal import Decimal
 from datetime import timedelta
 from unittest.mock import MagicMock, patch
 import uuid
+import json
+import re
 
 from .models import (
     Signal,
@@ -2197,7 +2199,6 @@ class BreakoutConfigFormTest(TestCase):
         
         # Check that saved values appear in the form correctly using regex
         # to handle different decimal representations
-        import re
         
         # Helper function to check if a value is present in the response
         def check_value(field_name, expected_value):
@@ -3010,8 +3011,6 @@ class PhaseConfigAPITest(TestCase):
     
     def test_api_post_phase_config(self):
         """Test POST /api/assets/{id}/phases/ endpoint to create config."""
-        import json
-        
         response = self.client.post(
             f'/fiona/api/assets/{self.asset.id}/phases/',
             data=json.dumps({
@@ -3038,8 +3037,6 @@ class PhaseConfigAPITest(TestCase):
     
     def test_api_post_phase_config_update(self):
         """Test POST /api/assets/{id}/phases/ endpoint to update config."""
-        import json
-        
         # Create initial config
         AssetSessionPhaseConfig.objects.create(
             asset=self.asset,
@@ -4596,3 +4593,175 @@ class MarketDataStatusAPITest(TestCase):
         self.client.logout()
         response = self.client.get('/fiona/api/market-data/status/')
         self.assertEqual(response.status_code, 302)
+
+
+class BulkDeleteSignalsTest(TestCase):
+    """Tests for bulk signal deletion functionality."""
+    
+    def setUp(self):
+        """Set up test data."""
+        self.user = User.objects.create_user(username='testuser', password='testpass')
+        self.client.login(username='testuser', password='testpass')
+        
+        # Create test signals with different risk statuses
+        self.signal_green = Signal.objects.create(
+            setup_type='BREAKOUT',
+            session_phase='LONDON_CORE',
+            instrument='CL',
+            direction='LONG',
+            trigger_price=Decimal('78.50'),
+            risk_status='GREEN',
+            status='ACTIVE'
+        )
+        
+        self.signal_yellow = Signal.objects.create(
+            setup_type='BREAKOUT',
+            session_phase='LONDON_CORE',
+            instrument='CL',
+            direction='SHORT',
+            trigger_price=Decimal('77.50'),
+            risk_status='YELLOW',
+            status='ACTIVE'
+        )
+        
+        self.signal_red_1 = Signal.objects.create(
+            setup_type='EIA_REVERSION',
+            session_phase='EIA_POST',
+            instrument='CL',
+            direction='LONG',
+            trigger_price=Decimal('79.00'),
+            risk_status='RED',
+            status='ACTIVE'
+        )
+        
+        self.signal_red_2 = Signal.objects.create(
+            setup_type='EIA_TRENDDAY',
+            session_phase='EIA_POST',
+            instrument='CL',
+            direction='SHORT',
+            trigger_price=Decimal('76.00'),
+            risk_status='RED',
+            status='ACTIVE'
+        )
+    
+    def test_delete_forbidden_signals(self):
+        """Test deleting all forbidden (RED) signals."""
+        response = self.client.post('/fiona/signals/delete-forbidden/')
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['deleted_count'], 2)
+        
+        # Verify RED signals are deleted
+        self.assertFalse(Signal.objects.filter(id=self.signal_red_1.id).exists())
+        self.assertFalse(Signal.objects.filter(id=self.signal_red_2.id).exists())
+        
+        # Verify other signals still exist
+        self.assertTrue(Signal.objects.filter(id=self.signal_green.id).exists())
+        self.assertTrue(Signal.objects.filter(id=self.signal_yellow.id).exists())
+    
+    def test_delete_selected_signals(self):
+        """Test deleting selected signals."""
+        signal_ids = [str(self.signal_green.id), str(self.signal_red_1.id)]
+        response = self.client.post(
+            '/fiona/signals/delete-selected/',
+            data=json.dumps({'signal_ids': signal_ids}),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['deleted_count'], 2)
+        
+        # Verify selected signals are deleted
+        self.assertFalse(Signal.objects.filter(id=self.signal_green.id).exists())
+        self.assertFalse(Signal.objects.filter(id=self.signal_red_1.id).exists())
+        
+        # Verify other signals still exist
+        self.assertTrue(Signal.objects.filter(id=self.signal_yellow.id).exists())
+        self.assertTrue(Signal.objects.filter(id=self.signal_red_2.id).exists())
+    
+    def test_delete_selected_signals_empty_list(self):
+        """Test deleting with empty signal list."""
+        response = self.client.post(
+            '/fiona/signals/delete-selected/',
+            data=json.dumps({'signal_ids': []}),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 400)
+        
+        data = response.json()
+        self.assertFalse(data['success'])
+    
+    def test_delete_selected_signals_invalid_json(self):
+        """Test deleting with invalid JSON."""
+        response = self.client.post(
+            '/fiona/signals/delete-selected/',
+            data='invalid json',
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 400)
+        
+        data = response.json()
+        self.assertFalse(data['success'])
+    
+    def test_delete_forbidden_requires_login(self):
+        """Test that delete forbidden requires authentication."""
+        self.client.logout()
+        response = self.client.post('/fiona/signals/delete-forbidden/')
+        self.assertEqual(response.status_code, 302)
+    
+    def test_delete_selected_requires_login(self):
+        """Test that delete selected requires authentication."""
+        self.client.logout()
+        response = self.client.post('/fiona/signals/delete-selected/')
+        self.assertEqual(response.status_code, 302)
+
+
+class TimeSinceShortFilterTest(TestCase):
+    """Tests for the timesince_short template filter."""
+    
+    def test_timesince_short_seconds(self):
+        """Test timesince_short for seconds."""
+        from trading.templatetags.trading_tags import timesince_short
+        
+        now = timezone.now()
+        time_ago = now - timedelta(seconds=30)
+        result = timesince_short(time_ago)
+        self.assertIn('Sek.', result)
+    
+    def test_timesince_short_minutes(self):
+        """Test timesince_short for minutes."""
+        from trading.templatetags.trading_tags import timesince_short
+        
+        now = timezone.now()
+        time_ago = now - timedelta(minutes=15)
+        result = timesince_short(time_ago)
+        self.assertIn('Min.', result)
+    
+    def test_timesince_short_hours(self):
+        """Test timesince_short for hours."""
+        from trading.templatetags.trading_tags import timesince_short
+        
+        now = timezone.now()
+        time_ago = now - timedelta(hours=3)
+        result = timesince_short(time_ago)
+        self.assertIn('Std.', result)
+    
+    def test_timesince_short_days(self):
+        """Test timesince_short for days."""
+        from trading.templatetags.trading_tags import timesince_short
+        
+        now = timezone.now()
+        time_ago = now - timedelta(days=5)
+        result = timesince_short(time_ago)
+        self.assertIn('Tag', result)
+    
+    def test_timesince_short_none(self):
+        """Test timesince_short with None value."""
+        from trading.templatetags.trading_tags import timesince_short
+        
+        result = timesince_short(None)
+        self.assertEqual(result, '')

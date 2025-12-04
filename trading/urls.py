@@ -17,6 +17,8 @@ urlpatterns = [
     path('signals/<str:signal_id>/live/', views.execute_live_trade, name='execute_live_trade'),
     path('signals/<str:signal_id>/shadow/', views.execute_shadow_trade, name='execute_shadow_trade'),
     path('signals/<str:signal_id>/reject/', views.reject_signal, name='reject_signal'),
+    path('signals/delete-forbidden/', views.delete_forbidden_signals, name='delete_forbidden_signals'),
+    path('signals/delete-selected/', views.delete_selected_signals, name='delete_selected_signals'),
     
     # Asset Management
     path('assets/', views.asset_list, name='asset_list'),
