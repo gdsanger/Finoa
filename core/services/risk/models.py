@@ -52,15 +52,14 @@ class RiskConfig:
     
     sl_min_ticks: int = 5
     tp_min_ticks: int = 5
-    leverage: int = 20
     
     deny_eia_window_minutes: int = 5
     deny_friday_after: str = '21:00'
     deny_overnight: bool = True
     
     # Instrument-specific settings
-    tick_size: Decimal = Decimal('0.1')
-    tick_value: Decimal = Decimal('0.1')  # USD per tick for CL contract
+    tick_size: Decimal = Decimal('0.01')  # Tick size for WTI Crude Oil
+    tick_value: Decimal = Decimal('10.0')  # USD per tick for CL mini contract
     leverage: Decimal = Decimal('20.0')  # Leverage for margin trading (1.0 = no leverage)
     
     def __post_init__(self):
@@ -102,8 +101,8 @@ class RiskConfig:
             deny_eia_window_minutes=data.get('deny_eia_window_minutes', 5),
             deny_friday_after=data.get('deny_friday_after', '21:00'),
             deny_overnight=data.get('deny_overnight', True),
-            tick_size=Decimal(str(data.get('tick_size', '0.1'))),
-            tick_value=Decimal(str(data.get('tick_value', '0.1'))),
+            tick_size=Decimal(str(data.get('tick_size', '0.01'))),
+            tick_value=Decimal(str(data.get('tick_value', '10.0'))),
             leverage=Decimal(str(data.get('leverage', '20.0'))),
         )
 

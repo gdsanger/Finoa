@@ -1,4 +1,5 @@
 import logging
+import json
 from datetime import timedelta
 
 from django.shortcuts import render, get_object_or_404, redirect
@@ -195,6 +196,95 @@ def reject_signal(request, signal_id):
             'success': False,
             'error': 'Signal nicht gefunden.'
         }, status=404)
+
+
+@login_required
+@require_http_methods(['POST'])
+def delete_forbidden_signals(request):
+    """
+    Delete all signals with RED risk status.
+    """
+    try:
+        # Delete all active signals with RED risk status
+        deleted_count, _ = Signal.objects.filter(
+            status='ACTIVE',
+            risk_status='RED'
+        ).delete()
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'{deleted_count} verbotene Signal(e) gelöscht.',
+            'deleted_count': deleted_count
+        })
+        
+    except Exception as e:
+        logger.error(f'Error deleting forbidden signals: {e}')
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+@login_required
+@require_http_methods(['POST'])
+def delete_selected_signals(request):
+    """
+    Delete selected signals by their IDs.
+    """
+    try:
+        # Check for empty request body
+        if not request.body:
+            return JsonResponse({
+                'success': False,
+                'error': 'Keine Daten empfangen.'
+            }, status=400)
+        
+        # Limit request body size to prevent abuse (max 1MB)
+        if len(request.body) > 1024 * 1024:
+            return JsonResponse({
+                'success': False,
+                'error': 'Request too large.'
+            }, status=413)
+        
+        data = json.loads(request.body)
+        signal_ids = data.get('signal_ids', [])
+        
+        if not signal_ids:
+            return JsonResponse({
+                'success': False,
+                'error': 'Keine Signal-IDs angegeben.'
+            }, status=400)
+        
+        # Limit number of signals to delete at once (max 100)
+        if len(signal_ids) > 100:
+            return JsonResponse({
+                'success': False,
+                'error': 'Zu viele Signale ausgewählt (max 100).'
+            }, status=400)
+        
+        # Delete the specified signals
+        deleted_count, _ = Signal.objects.filter(
+            id__in=signal_ids,
+            status='ACTIVE'
+        ).delete()
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'{deleted_count} Signal(e) gelöscht.',
+            'deleted_count': deleted_count
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Ungültiges JSON-Format.'
+        }, status=400)
+    except Exception as e:
+        logger.error(f'Error deleting selected signals: {e}')
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
 
 
 @login_required
