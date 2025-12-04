@@ -1429,3 +1429,268 @@ class StrategyEngineDebugLoggingTest(TestCase):
             # Check for EIA-related logging
             calls = [str(c) for c in mock_logger.debug.call_args_list]
             self.assertTrue(any('eia' in str(c).lower() for c in calls))
+
+
+class StrategyEngineCandleDistanceTest(TestCase):
+    """Tests for max_candle_distance_ticks breakout filter."""
+
+    def test_long_breakout_passes_within_max_distance(self):
+        """Test LONG breakout passes when candle low is within max distance from range high."""
+        ts = datetime(2025, 1, 15, 9, 0, tzinfo=timezone.utc)
+        
+        # Range: 75.00 - 75.20 (20 ticks)
+        # Candle high breaks above range high (75.30)
+        # Candle low is 75.15, which is 0.05 (5 ticks) from range high (75.20)
+        # This should pass with max_candle_distance_ticks = 10
+        candle = Candle(
+            timestamp=ts,
+            open=75.15,
+            high=75.30,
+            low=75.15,
+            close=75.28,  # Body = 0.13 (13 ticks), >= 50% of range (10 ticks)
+        )
+        
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.LONDON_CORE,
+            candles=[candle],
+            asia_range=(75.20, 75.00),
+            atr=0.50,
+        )
+        
+        # Configure with max_candle_distance_ticks = 10 (default)
+        config = StrategyConfig()
+        config.breakout.max_candle_distance_ticks = 10
+        engine = StrategyEngine(provider, config)
+        
+        candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
+        
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0].direction, "LONG")
+
+    def test_long_breakout_rejected_exceeds_max_distance(self):
+        """Test LONG breakout rejected when candle low is too far from range high."""
+        ts = datetime(2025, 1, 15, 9, 0, tzinfo=timezone.utc)
+        
+        # Range: 75.00 - 75.20 (20 ticks)
+        # Candle high breaks above range high (75.40)
+        # Candle low is 75.05, which is 0.15 (15 ticks) from range high (75.20)
+        # This should fail with max_candle_distance_ticks = 10
+        candle = Candle(
+            timestamp=ts,
+            open=75.10,
+            high=75.40,
+            low=75.05,
+            close=75.35,  # Body = 0.25 (25 ticks), >= 50% of range
+        )
+        
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.LONDON_CORE,
+            candles=[candle],
+            asia_range=(75.20, 75.00),
+            atr=0.50,
+        )
+        
+        # Configure with max_candle_distance_ticks = 10
+        config = StrategyConfig()
+        config.breakout.max_candle_distance_ticks = 10
+        engine = StrategyEngine(provider, config)
+        
+        candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
+        
+        self.assertEqual(len(candidates), 0)
+
+    def test_short_breakout_passes_within_max_distance(self):
+        """Test SHORT breakout passes when candle high is within max distance from range low."""
+        ts = datetime(2025, 1, 15, 9, 0, tzinfo=timezone.utc)
+        
+        # Range: 75.00 - 75.20 (20 ticks)
+        # Candle low breaks below range low (74.90)
+        # Candle high is 74.95, which is 0.05 (5 ticks) from range low (75.00)
+        # This should pass with max_candle_distance_ticks = 10
+        candle = Candle(
+            timestamp=ts,
+            open=74.95,
+            high=74.95,
+            low=74.90,
+            close=74.83,  # Body = 0.12 (12 ticks), >= 50% of range
+        )
+        
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.LONDON_CORE,
+            candles=[candle],
+            asia_range=(75.20, 75.00),
+            atr=0.50,
+        )
+        
+        # Configure with max_candle_distance_ticks = 10
+        config = StrategyConfig()
+        config.breakout.max_candle_distance_ticks = 10
+        engine = StrategyEngine(provider, config)
+        
+        candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
+        
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0].direction, "SHORT")
+
+    def test_short_breakout_rejected_exceeds_max_distance(self):
+        """Test SHORT breakout rejected when candle high is too far from range low."""
+        ts = datetime(2025, 1, 15, 9, 0, tzinfo=timezone.utc)
+        
+        # Range: 75.00 - 75.20 (20 ticks)
+        # Candle low breaks below range low (74.70)
+        # Candle high is 74.85, which is 0.15 (15 ticks) from range low (75.00)
+        # This should fail with max_candle_distance_ticks = 10
+        candle = Candle(
+            timestamp=ts,
+            open=74.80,
+            high=74.85,
+            low=74.70,
+            close=74.72,  # Body = 0.08, but more than 50% of range
+        )
+        
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.LONDON_CORE,
+            candles=[candle],
+            asia_range=(75.20, 75.00),
+            atr=0.50,
+        )
+        
+        # Configure with max_candle_distance_ticks = 10
+        config = StrategyConfig()
+        config.breakout.max_candle_distance_ticks = 10
+        engine = StrategyEngine(provider, config)
+        
+        candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
+        
+        self.assertEqual(len(candidates), 0)
+
+    def test_configurable_max_distance(self):
+        """Test that max_candle_distance_ticks is configurable."""
+        ts = datetime(2025, 1, 15, 9, 0, tzinfo=timezone.utc)
+        
+        # Range: 75.00 - 75.20 (20 ticks)
+        # Candle low is 75.00, which is 0.20 (20 ticks) from range high (75.20)
+        candle = Candle(
+            timestamp=ts,
+            open=75.05,
+            high=75.40,
+            low=75.00,
+            close=75.35,  # Body = 0.30, >= 50% of range
+        )
+        
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.LONDON_CORE,
+            candles=[candle],
+            asia_range=(75.20, 75.00),
+            atr=0.50,
+        )
+        
+        # Test with max_candle_distance_ticks = 10 (should reject)
+        config1 = StrategyConfig()
+        config1.breakout.max_candle_distance_ticks = 10
+        engine1 = StrategyEngine(provider, config1)
+        candidates1 = engine1.evaluate("CC.D.CL.UNC.IP", ts)
+        self.assertEqual(len(candidates1), 0)
+        
+        # Test with max_candle_distance_ticks = 25 (should accept)
+        config2 = StrategyConfig()
+        config2.breakout.max_candle_distance_ticks = 25
+        engine2 = StrategyEngine(provider, config2)
+        candidates2 = engine2.evaluate("CC.D.CL.UNC.IP", ts)
+        self.assertEqual(len(candidates2), 1)
+
+    def test_us_core_breakout_with_max_distance(self):
+        """Test US Core Trading breakout with max_candle_distance_ticks filter."""
+        ts = datetime(2025, 1, 15, 16, 0, tzinfo=timezone.utc)
+        
+        # Pre-US Range: 74.50 - 74.70 (20 ticks)
+        # Candle breaks above with low at 74.62 (0.08 = 8 ticks from range high)
+        # Should pass with default max_candle_distance_ticks = 10
+        candle = Candle(
+            timestamp=ts,
+            open=74.65,
+            high=74.80,
+            low=74.62,
+            close=74.78,  # Body = 0.13 >= 50% of range
+        )
+        
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.US_CORE_TRADING,
+            candles=[candle],
+            pre_us_range=(74.70, 74.50),
+            atr=0.50,
+        )
+        
+        engine = StrategyEngine(provider)
+        candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
+        
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0].direction, "LONG")
+
+    def test_zero_max_distance_allows_exact_boundary(self):
+        """Test that max_candle_distance_ticks = 0 allows candles exactly at boundary."""
+        ts = datetime(2025, 1, 15, 9, 0, tzinfo=timezone.utc)
+        
+        # Range: 75.00 - 75.20 (20 ticks)
+        # Candle breaks above with low exactly at range high (0 ticks distance)
+        # This should be allowed with max_distance = 0
+        candle = Candle(
+            timestamp=ts,
+            open=75.20,
+            high=75.30,
+            low=75.20,  # Exactly at range high (0 ticks)
+            close=75.28,  # Body = 0.08 < 50% of range (0.10)
+        )
+        
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.LONDON_CORE,
+            candles=[candle],
+            asia_range=(75.20, 75.00),
+            atr=0.50,
+        )
+        
+        # Configure with max_candle_distance_ticks = 0
+        config = StrategyConfig()
+        config.breakout.max_candle_distance_ticks = 0
+        # Reduce min_body_fraction so we test distance, not body size
+        config.breakout.asia_range.min_breakout_body_fraction = 0.3
+        engine = StrategyEngine(provider, config)
+        
+        candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
+        
+        # Should pass because candle low is exactly at range high (0 ticks away)
+        self.assertEqual(len(candidates), 1)
+
+    def test_zero_max_distance_rejects_any_distance(self):
+        """Test that max_candle_distance_ticks = 0 rejects any distance > 0."""
+        ts = datetime(2025, 1, 15, 9, 0, tzinfo=timezone.utc)
+        
+        # Range: 75.00 - 75.20 (20 ticks)
+        # Candle breaks above with low at 75.19 (0.01 = 1 tick from range high)
+        # This should be rejected with max_distance = 0
+        candle = Candle(
+            timestamp=ts,
+            open=75.20,
+            high=75.30,
+            low=75.19,  # 1 tick below range high
+            close=75.28,  # Body = 0.08 < 50% of range
+        )
+        
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.LONDON_CORE,
+            candles=[candle],
+            asia_range=(75.20, 75.00),
+            atr=0.50,
+        )
+        
+        # Configure with max_candle_distance_ticks = 0
+        config = StrategyConfig()
+        config.breakout.max_candle_distance_ticks = 0
+        # Reduce min_body_fraction so we test distance, not body size
+        config.breakout.asia_range.min_breakout_body_fraction = 0.3
+        engine = StrategyEngine(provider, config)
+        
+        candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
+        
+        # Should be rejected because candle low is 1 tick away from range high
+        self.assertEqual(len(candidates), 0)

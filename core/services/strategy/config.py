@@ -104,6 +104,7 @@ class BreakoutConfig:
     min_breakout_body_fraction: float = 0.5
     max_breakout_body_fraction: Optional[float] = None
     min_breakout_distance_ticks: int = 1
+    max_candle_distance_ticks: int = 10
     min_volume_spike: Optional[float] = None
 
 
@@ -225,6 +226,7 @@ class StrategyConfig:
             min_breakout_body_fraction=breakout_data.get('min_breakout_body_fraction', 0.5),
             max_breakout_body_fraction=breakout_data.get('max_breakout_body_fraction'),
             min_breakout_distance_ticks=breakout_data.get('min_breakout_distance_ticks', 1),
+            max_candle_distance_ticks=breakout_data.get('max_candle_distance_ticks', 10),
             min_volume_spike=breakout_data.get('min_volume_spike'),
         )
 
@@ -304,6 +306,7 @@ class StrategyConfig:
                 'min_breakout_body_fraction': self.breakout.min_breakout_body_fraction,
                 'max_breakout_body_fraction': self.breakout.max_breakout_body_fraction,
                 'min_breakout_distance_ticks': self.breakout.min_breakout_distance_ticks,
+                'max_candle_distance_ticks': self.breakout.max_candle_distance_ticks,
                 'min_volume_spike': self.breakout.min_volume_spike,
             },
             'eia': {
