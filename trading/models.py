@@ -147,6 +147,7 @@ class TradingAsset(models.Model):
     class BrokerKind(models.TextChoices):
         IG = "IG", "IG"
         MEXC = "MEXC", "MEXC"
+        KRAKEN = "KRAKEN", "Kraken"
     
     # Basic identification
     name = models.CharField(
@@ -168,12 +169,12 @@ class TradingAsset(models.Model):
         max_length=16,
         choices=BrokerKind.choices,
         default=BrokerKind.IG,
-        help_text='Broker to use for trading this asset (IG or MEXC)'
+        help_text='Broker to use for trading this asset (IG, MEXC, or Kraken)'
     )
     broker_symbol = models.CharField(
         max_length=64,
         blank=True,
-        help_text='IG-EPIC or MEXC-Symbol (if different from epic field)'
+        help_text='Broker-specific symbol (e.g., IG-EPIC, MEXC-Symbol, or Kraken-Symbol) if different from epic field'
     )
     quote_currency = models.CharField(
         max_length=10,
