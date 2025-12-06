@@ -1963,3 +1963,87 @@ class KrakenBrokerConfigTest(TestCase):
             registry.get_broker_for_asset(asset)
         
         self.assertIn("Unsupported broker type", str(context.exception))
+
+    def test_kraken_get_historical_prices(self):
+        """Test that KrakenBrokerService.get_historical_prices returns aggregated candles."""
+        from core.services.broker.kraken_broker_service import KrakenBrokerService, KrakenBrokerConfig, Candle1m
+        from datetime import datetime, timezone
+        
+        # Create a mock config
+        config = KrakenBrokerConfig(
+            api_key="test-key",
+            api_secret="test-secret",
+            default_symbol="PI_XBTUSD",
+            use_demo=True,
+        )
+        
+        # Create service
+        service = KrakenBrokerService(config)
+        service._connected = True  # Mock connection
+        service._session = MagicMock()  # Mock session
+        
+        # Add some mock candles to the cache
+        mock_candles = [
+            Candle1m(
+                symbol="PI_XBTUSD",
+                time=datetime(2023, 12, 6, 10, 0, 0, tzinfo=timezone.utc),
+                open=42000.0,
+                high=42100.0,
+                low=41900.0,
+                close=42050.0,
+                volume=100.5,
+            ),
+            Candle1m(
+                symbol="PI_XBTUSD",
+                time=datetime(2023, 12, 6, 10, 1, 0, tzinfo=timezone.utc),
+                open=42050.0,
+                high=42200.0,
+                low=42000.0,
+                close=42150.0,
+                volume=150.3,
+            ),
+        ]
+        service._candle_cache["PI_XBTUSD"] = mock_candles
+        
+        # Call get_historical_prices
+        prices = service.get_historical_prices(symbol="PI_XBTUSD", num_points=120)
+        
+        # Verify the return format
+        self.assertEqual(len(prices), 2)
+        
+        # Check first candle
+        self.assertIsInstance(prices[0]["time"], int)  # Unix timestamp
+        self.assertEqual(prices[0]["open"], 42000.0)
+        self.assertEqual(prices[0]["high"], 42100.0)
+        self.assertEqual(prices[0]["low"], 41900.0)
+        self.assertEqual(prices[0]["close"], 42050.0)
+        self.assertEqual(prices[0]["volume"], 100.5)
+        
+        # Check second candle
+        self.assertIsInstance(prices[1]["time"], int)
+        self.assertEqual(prices[1]["close"], 42150.0)
+        
+        # Verify timestamps are 60 seconds apart (1 minute)
+        self.assertEqual(prices[1]["time"] - prices[0]["time"], 60)
+
+    def test_kraken_get_historical_prices_with_epic(self):
+        """Test that get_historical_prices accepts epic parameter for compatibility."""
+        from core.services.broker.kraken_broker_service import KrakenBrokerService, KrakenBrokerConfig
+        
+        config = KrakenBrokerConfig(
+            api_key="test-key",
+            api_secret="test-secret",
+            default_symbol="PI_XBTUSD",
+            use_demo=True,
+        )
+        
+        service = KrakenBrokerService(config)
+        service._connected = True
+        service._session = MagicMock()
+        service._candle_cache["PI_ETHUSD"] = []
+        
+        # Call with epic instead of symbol - should work without error
+        prices = service.get_historical_prices(epic="PI_ETHUSD", num_points=60)
+        
+        # Should return empty list since cache is empty
+        self.assertEqual(prices, [])

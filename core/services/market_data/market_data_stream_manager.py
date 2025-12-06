@@ -421,6 +421,7 @@ class MarketDataStreamManager:
         try:
             from core.services.broker.mexc_broker_service import MexcBrokerService
             from core.services.broker.ig_broker_service import IgBrokerService
+            from core.services.broker.kraken_broker_service import KrakenBrokerService
         except Exception:
             # Fallback to generic call if broker modules cannot be loaded
             return broker.get_historical_prices(epic=epic, num_points=num_points)
@@ -438,6 +439,12 @@ class MarketDataStreamManager:
             resolution = self._timeframe_to_ig_resolution(timeframe)
             capped_points = min(num_points, 50)  # Strict cap to conserve IG allowance
             return broker.get_historical_prices(epic=epic, resolution=resolution, num_points=capped_points)
+
+        # Kraken uses symbol/interval/num_points
+        if isinstance(broker, KrakenBrokerService):
+            # Kraken builds 1m candles from WebSocket trade data (no historical API available)
+            interval = "1m"
+            return broker.get_historical_prices(symbol=symbol, interval=interval, num_points=num_points)
 
         # Generic fallback
         return broker.get_historical_prices(epic=epic, num_points=num_points)
