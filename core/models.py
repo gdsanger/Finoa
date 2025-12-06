@@ -544,3 +544,71 @@ class MexcBrokerConfig(models.Model):
     def __str__(self):
         status = '✓' if self.is_active else '✗'
         return f"{status} {self.name} ({self.get_account_type_display()})"
+
+
+class KrakenBrokerConfig(models.Model):
+    """
+    Configuration for Kraken Pro Future Broker API integration.
+    Used for trading operations via Kraken Futures API.
+    
+    Supports both live and demo trading environments.
+    """
+    ACCOUNT_TYPE_CHOICES = [
+        ('LIVE', 'Live'),
+        ('DEMO', 'Demo'),
+    ]
+    
+    name = models.CharField(
+        max_length=200,
+        help_text='Configuration name for identification'
+    )
+    api_key = models.CharField(
+        max_length=500,
+        help_text='Kraken API key'
+    )
+    api_secret = models.CharField(
+        max_length=500,
+        help_text='Kraken API secret'
+    )
+    account_type = models.CharField(
+        max_length=10,
+        choices=ACCOUNT_TYPE_CHOICES,
+        default='DEMO',
+        help_text='Account type (Live or Demo)'
+    )
+    rest_base_url = models.URLField(
+        blank=True,
+        help_text='REST API base URL (auto-detected based on account type if empty)'
+    )
+    charts_base_url = models.URLField(
+        blank=True,
+        help_text='Charts API base URL (auto-detected based on account type if empty)'
+    )
+    websocket_url = models.URLField(
+        blank=True,
+        help_text='WebSocket URL for real-time data (auto-detected based on account type if empty)'
+    )
+    default_symbol = models.CharField(
+        max_length=50,
+        default='PI_XBTUSD',
+        help_text='Default trading symbol (e.g., PI_XBTUSD for Bitcoin)'
+    )
+    timeout_seconds = models.PositiveIntegerField(
+        default=30,
+        help_text='Request timeout in seconds'
+    )
+    is_active = models.BooleanField(
+        default=False,
+        help_text='Whether this configuration is active'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-is_active', 'name']
+        verbose_name = 'Kraken Broker Configuration'
+        verbose_name_plural = 'Kraken Broker Configurations'
+    
+    def __str__(self):
+        status = '✓' if self.is_active else '✗'
+        return f"{status} {self.name} ({self.get_account_type_display()})"

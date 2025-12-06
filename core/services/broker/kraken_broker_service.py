@@ -18,17 +18,18 @@ from websocket import WebSocketApp  # websocket-client
 
 from django.utils import timezone
 
-from core.models import Broker, BrokerEngine
-from core.services.abstract_broker_service import (
-    AbstractBrokerService,
+from core.models import KrakenBrokerConfig as KrakenBrokerConfigModel
+from .broker_service import BrokerService, BrokerError, AuthenticationError
+from .models import (
     AccountState,
-    BrokerAuthenticationError,
-    BrokerServiceError,
-    Candle1m,
+    Position,
     OrderRequest,
     OrderResult,
-    Position,
     SymbolPrice,
+    OrderDirection,
+    OrderStatus,
+    OrderType,
+    Candle1m,
 )
 
 logger = logging.getLogger("core.services.kraken_broker_service")
@@ -48,11 +49,11 @@ _kraken_service_lock = threading.Lock()
 # =============================================================================
 
 
-class KrakenBrokerError(BrokerServiceError):
+class KrakenBrokerError(BrokerError):
     """Allgemeiner Fehler im KrakenBrokerService."""
 
 
-class KrakenAuthenticationError(KrakenBrokerError, BrokerAuthenticationError):
+class KrakenAuthenticationError(KrakenBrokerError, AuthenticationError):
     """Auth-/API-Key-bezogene Fehler."""
 
 
@@ -90,26 +91,36 @@ def get_active_kraken_broker_config() -> KrakenBrokerConfig:
     """Build a :class:`KrakenBrokerConfig` from the active Kraken broker record."""
 
     try:
-        broker = Broker.objects.get(engine=BrokerEngine.KRAKEN, is_active=True)
-    except Broker.DoesNotExist as exc:
+        config_model = KrakenBrokerConfigModel.objects.get(is_active=True)
+    except KrakenBrokerConfigModel.DoesNotExist as exc:
         raise KrakenBrokerError("No active Kraken broker configured") from exc
-    except Broker.MultipleObjectsReturned as exc:
+    except KrakenBrokerConfigModel.MultipleObjectsReturned as exc:
         raise KrakenBrokerError(
             "Multiple active Kraken brokers configured; expected exactly one",
         ) from exc
 
-    if not broker.api_key or not broker.api_secret:
+    if not config_model.api_key or not config_model.api_secret:
         raise KrakenAuthenticationError(
             "Kraken broker API credentials are not configured",
         )
 
-    config = KrakenBrokerConfig(api_key=broker.api_key, api_secret=broker.api_secret)
+    # Build the config dataclass from the model
+    config = KrakenBrokerConfig(
+        api_key=config_model.api_key,
+        api_secret=config_model.api_secret,
+        default_symbol=config_model.default_symbol,
+        use_demo=(config_model.account_type == 'DEMO'),
+    )
 
-    if broker.base_api_url:
-        config.rest_base_url = broker.base_api_url
+    # Override URLs if specified in the model
+    if config_model.rest_base_url:
+        config.rest_base_url = config_model.rest_base_url
 
-    if broker.websocket_feed:
-        config.ws_public_url = broker.websocket_feed
+    if config_model.charts_base_url:
+        config.charts_base_url = config_model.charts_base_url
+
+    if config_model.websocket_url:
+        config.ws_public_url = config_model.websocket_url
 
     return config
 
@@ -135,7 +146,7 @@ def get_kraken_service() -> "KrakenBrokerService":
 # =============================================================================
 
 
-class KrakenBrokerService(AbstractBrokerService):
+class KrakenBrokerService(BrokerService):
     """
     Voll funktionsfähiger Broker-Adapter für Kraken Futures / Kraken Pro.
 
@@ -194,6 +205,37 @@ class KrakenBrokerService(AbstractBrokerService):
             self._config.use_demo,
             self._config.rest_base_url,
         )
+
+    @classmethod
+    def from_config(cls, config_model: KrakenBrokerConfigModel) -> 'KrakenBrokerService':
+        """
+        Create service from a KrakenBrokerConfig model instance.
+        
+        Args:
+            config_model: KrakenBrokerConfig model instance.
+        
+        Returns:
+            KrakenBrokerService instance.
+        """
+        # Build the config dataclass from the model
+        config = KrakenBrokerConfig(
+            api_key=config_model.api_key,
+            api_secret=config_model.api_secret,
+            default_symbol=config_model.default_symbol,
+            use_demo=(config_model.account_type == 'DEMO'),
+        )
+
+        # Override URLs if specified in the model
+        if config_model.rest_base_url:
+            config.rest_base_url = config_model.rest_base_url
+
+        if config_model.charts_base_url:
+            config.charts_base_url = config_model.charts_base_url
+
+        if config_model.websocket_url:
+            config.ws_public_url = config_model.websocket_url
+
+        return cls(config)
 
     # -------------------------------------------------------------------------
     # Lifecycle
@@ -268,6 +310,15 @@ class KrakenBrokerService(AbstractBrokerService):
         self._account_state_cache_ts = None
 
         logger.info("KrakenBrokerService disconnected")
+
+    def is_connected(self) -> bool:
+        """
+        Check if service is connected.
+        
+        Returns:
+            bool: True if connected, False otherwise.
+        """
+        return self._connected
 
     def _ensure_connected(self) -> None:
         if not self._connected or self._session is None:
@@ -453,12 +504,15 @@ class KrakenBrokerService(AbstractBrokerService):
         # - margin_used = initialMargin
         # - margin_available = availableMargin
         account_state = AccountState(
+            account_id='KRAKEN_FLEX',
+            account_name='Kraken Futures',
             balance=balance_value,
+            available=available_margin,
             equity=portfolio_value,
             margin_used=initial_margin,
             margin_available=available_margin,
+            unrealized_pnl=pnl,
             currency=currency,
-            open_pnl=pnl,
             timestamp=ts,
         )
 
@@ -472,13 +526,19 @@ class KrakenBrokerService(AbstractBrokerService):
     # Symbol Prices (Realtime + Fallback)
     # -------------------------------------------------------------------------
 
-    def get_symbol_price(self, symbol: Optional[str] = None) -> SymbolPrice:
+    def get_symbol_price(self, epic: str) -> SymbolPrice:
         """
-        Liefert aktuellen Bid/Ask/Mark für ein Symbol.
-        Bevorzugt WebSocket-Cache, fallback /derivatives/api/v3/tickers.
+        Get current price information for a market/symbol.
+        
+        Args:
+            epic: Market symbol (e.g., 'PI_XBTUSD').
+        
+        Returns:
+            SymbolPrice with current bid/ask and other price data.
         """
         self._ensure_connected()
-        symbol = symbol or self._config.default_symbol
+        
+        symbol = epic or self._config.default_symbol
 
         with self._lock:
             sp = self._price_cache.get(symbol)
@@ -503,13 +563,31 @@ class KrakenBrokerService(AbstractBrokerService):
         if not ticker:
             raise KrakenBrokerError(f"No ticker found for symbol {symbol}")
 
-        bid = float(ticker.get("bid", 0.0))
-        ask = float(ticker.get("ask", 0.0))
+        from decimal import Decimal
+        bid = Decimal(str(ticker.get("bid", 0.0)))
+        ask = Decimal(str(ticker.get("ask", 0.0)))
+        spread = ask - bid
         mark = ticker.get("markPrice")
-        mark_val = float(mark) if mark is not None else (bid + ask) / 2.0
+        
+        # Get 24h stats if available
+        high = Decimal(str(ticker.get("high24h"))) if ticker.get("high24h") else None
+        low = Decimal(str(ticker.get("low24h"))) if ticker.get("low24h") else None
+        change = Decimal(str(ticker.get("change24h"))) if ticker.get("change24h") else None
+        change_percent = Decimal(str(ticker.get("changePercent24h"))) if ticker.get("changePercent24h") else None
 
         ts = timezone.now()
-        sp = SymbolPrice(symbol=symbol, bid=bid, ask=ask, mark=mark_val, timestamp=ts)
+        sp = SymbolPrice(
+            epic=symbol,
+            market_name=symbol,
+            bid=bid,
+            ask=ask,
+            spread=spread,
+            high=high,
+            low=low,
+            change=change,
+            change_percent=change_percent,
+            timestamp=ts,
+        )
 
         with self._lock:
             self._price_cache[symbol] = sp
@@ -835,16 +913,24 @@ class KrakenBrokerService(AbstractBrokerService):
             if opened_raw is not None:
                 opened_at = self._parse_ws_timestamp(opened_raw)
 
+            from decimal import Decimal
+            
+            # Convert direction string to OrderDirection
+            order_dir = OrderDirection.BUY if direction == "LONG" else OrderDirection.SELL
+            
             result.append(
                 Position(
                     position_id=pos_id,
-                    symbol=symbol,
-                    direction=direction,
-                    size=size,
-                    entry_price=entry_price,
-                    current_price=current_price,
-                    unrealized_pnl=unrealized_pnl,
-                    opened_at=opened_at,
+                    deal_id=pos_id,
+                    epic=symbol,
+                    market_name=symbol,
+                    direction=order_dir,
+                    size=Decimal(str(size)),
+                    open_price=Decimal(str(entry_price)),
+                    current_price=Decimal(str(current_price)) if current_price else Decimal('0'),
+                    unrealized_pnl=Decimal(str(unrealized_pnl)) if unrealized_pnl else Decimal('0'),
+                    currency='USD',
+                    created_at=opened_at,
                 )
             )
 
@@ -852,26 +938,32 @@ class KrakenBrokerService(AbstractBrokerService):
 
     def place_order(self, order: OrderRequest) -> OrderResult:
         """
-        /sendorder – Position eröffnen (MARKET, LIMIT, STOP).
-        SL/TP können später via separaten Orders umgesetzt werden.
+        Place a new order.
+        
+        Args:
+            order: OrderRequest with order details.
+        
+        Returns:
+            OrderResult with deal reference and status.
         """
         self._ensure_connected()
 
-        symbol = order.symbol
-        side = "buy" if order.direction == "BUY" else "sell"
+        symbol = order.epic
+        side = "buy" if order.direction == OrderDirection.BUY else "sell"
 
-        if order.order_type == "MARKET":
+        # Map order type
+        if order.order_type == OrderType.MARKET:
             order_type = "mkt"
             limit_price = None
             stop_price = None
-        elif order.order_type in ("BUY_LIMIT", "SELL_LIMIT"):
+        elif order.order_type in (OrderType.LIMIT, OrderType.BUY_LIMIT, OrderType.SELL_LIMIT):
             order_type = "lmt"
-            limit_price = order.level
+            limit_price = order.limit_price
             stop_price = None
-        elif order.order_type in ("BUY_STOP", "SELL_STOP"):
+        elif order.order_type in (OrderType.STOP, OrderType.BUY_STOP, OrderType.SELL_STOP):
             order_type = "stp"
             limit_price = None
-            stop_price = order.level
+            stop_price = order.stop_price
         else:
             raise KrakenBrokerError(f"Unsupported order type: {order.order_type}")
 
@@ -887,12 +979,6 @@ class KrakenBrokerService(AbstractBrokerService):
         if stop_price is not None:
             body["stopPrice"] = float(stop_price)
 
-        if order.time_in_force:
-            body["timeInForce"] = order.time_in_force
-
-        if order.client_id:
-            body["cliOrdId"] = order.client_id[:32]
-
         payload = self._request(
             "POST",
             "/api/v3/sendorder",
@@ -901,18 +987,26 @@ class KrakenBrokerService(AbstractBrokerService):
         )
 
         send_status = payload.get("sendStatus") or {}
-        status = send_status.get("status", "")
+        status_str = send_status.get("status", "")
         order_id = send_status.get("orderId") or send_status.get("order_id")
 
-        success = status in ("placed", "filled", "open")
-        message = send_status.get("errorMessage") or status or "unknown"
+        success = status_str in ("placed", "filled", "open")
+        message = send_status.get("errorMessage") or status_str or "unknown"
+        
+        # Map status to OrderStatus enum
+        if status_str in ('filled', 'open'):
+            status = OrderStatus.OPEN
+        elif status_str == 'placed':
+            status = OrderStatus.PENDING
+        else:
+            status = OrderStatus.REJECTED
 
         return OrderResult(
             success=success,
-            order_id=order_id,
+            deal_id=order_id,
+            deal_reference=order_id,
             status=status,
-            message=message,
-            raw_response=payload,
+            reason=message if not success else None,
         )
 
     def close_position(self, position_id: str) -> OrderResult:

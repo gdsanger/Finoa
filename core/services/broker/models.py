@@ -446,3 +446,43 @@ class BrokerErrorData:
             'message': self.message,
             'raw': self.raw,
         }
+
+
+@dataclass
+class Candle1m:
+    """
+    Represents a 1-minute candle for chart data.
+    
+    Attributes:
+        symbol: Trading symbol/epic.
+        time: Candle timestamp.
+        open: Open price.
+        high: High price.
+        low: Low price.
+        close: Close price.
+        volume: Trading volume.
+    """
+    symbol: str
+    time: datetime
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float = 0.0
+
+    def to_dict(self) -> dict:
+        """
+        Convert to dictionary for serialization.
+        
+        Returns:
+            dict: Serializable dictionary representation.
+        """
+        return {
+            'symbol': self.symbol,
+            'time': self.time.isoformat() if self.time else None,
+            'open': self.open,
+            'high': self.high,
+            'low': self.low,
+            'close': self.close,
+            'volume': self.volume,
+        }
