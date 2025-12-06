@@ -65,7 +65,7 @@ class BrokerRegistry:
             asset: TradingAsset instance with a broker field.
             
         Returns:
-            BrokerService: The appropriate broker service (IG or MEXC), connected.
+            BrokerService: The appropriate broker service (IG, MEXC, or Kraken), connected.
             
         Raises:
             ImproperlyConfigured: If no active configuration exists for the broker.
@@ -85,6 +85,8 @@ class BrokerRegistry:
                 broker = create_ig_broker_service()
             elif broker_type == TradingAsset.BrokerKind.MEXC:
                 broker = create_mexc_broker_service()
+            elif broker_type == TradingAsset.BrokerKind.KRAKEN:
+                broker = create_kraken_broker_service()
             else:
                 raise ValueError(f"Unsupported broker type: {broker_type}")
             
@@ -312,7 +314,7 @@ def get_broker_service_for_asset(asset) -> 'BrokerService':
         asset: TradingAsset instance with a broker field.
         
     Returns:
-        BrokerService: The appropriate broker service (IG or MEXC).
+        BrokerService: The appropriate broker service (IG, MEXC, or Kraken).
         
     Raises:
         ImproperlyConfigured: If no active configuration exists for the broker.
@@ -324,5 +326,7 @@ def get_broker_service_for_asset(asset) -> 'BrokerService':
         return create_ig_broker_service()
     elif asset.broker == TradingAsset.BrokerKind.MEXC:
         return create_mexc_broker_service()
+    elif asset.broker == TradingAsset.BrokerKind.KRAKEN:
+        return create_kraken_broker_service()
     else:
         raise ValueError(f"Unsupported broker type: {asset.broker}")
