@@ -668,13 +668,27 @@ class IGMarketStateProvider(BaseMarketStateProvider):
             
             price = broker_service.get_symbol_price(symbol)
             now = datetime.now(timezone.utc)
-            
+
+            mid_price = float(price.mid_price)
+            ask_price = float(price.ask) if price.ask is not None else mid_price
+            bid_price = float(price.bid) if price.bid is not None else mid_price
+            high_price = (
+                float(price.high)
+                if price.high is not None
+                else max(ask_price, bid_price, mid_price)
+            )
+            low_price = (
+                float(price.low)
+                if price.low is not None
+                else min(ask_price, bid_price, mid_price)
+            )
+
             candle = Candle(
                 timestamp=now,
-                open=float(price.mid_price),
-                high=float(price.high) if price.high else float(price.mid_price),
-                low=float(price.low) if price.low else float(price.mid_price),
-                close=float(price.mid_price),
+                open=mid_price,
+                high=high_price,
+                low=low_price,
+                close=mid_price,
                 volume=None,
             )
             
