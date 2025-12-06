@@ -30,6 +30,7 @@ from core.services.broker import (
     BrokerRegistry,
     SessionTimesConfig,
 )
+from core.services.broker.models import SymbolPrice
 from trading.models import WorkerStatus, AssetDiagnostics, AssetPriceStatus, PriceSnapshot
 from core.services.strategy import (
     StrategyEngine,
@@ -797,6 +798,43 @@ class Command(BaseCommand):
             str: Phase name for which range was built ('asia', 'london', 'pre_us'), or None if no range built
         """
         if current_price is None:
+            try:
+                from trading.models import AssetPriceStatus
+
+                price_status = AssetPriceStatus.get_for_asset(asset)
+                if price_status and price_status.bid_price is not None and price_status.ask_price is not None:
+                    spread = price_status.spread
+                    if spread is None:
+                        spread = Decimal(price_status.ask_price) - Decimal(price_status.bid_price)
+
+                    current_price = SymbolPrice(
+                        epic=epic,
+                        market_name=getattr(asset, "symbol", epic),
+                        bid=Decimal(price_status.bid_price),
+                        ask=Decimal(price_status.ask_price),
+                        spread=Decimal(spread),
+                        timestamp=price_status.updated_at,
+                    )
+                    logger.debug(
+                        "Using fallback price from AssetPriceStatus for %s in phase %s (updated_at=%s)",
+                        epic,
+                        phase.value,
+                        price_status.updated_at,
+                    )
+            except Exception as exc:
+                logger.debug(
+                    "Failed to build fallback price for %s in phase %s: %s",
+                    epic,
+                    phase.value,
+                    exc,
+                )
+
+        if current_price is None:
+            logger.debug(
+                "No current price available for %s in phase %s, skipping range build",
+                epic,
+                phase.value,
+            )
             return None
         
         # Get phase config to check if this is a range-building phase
@@ -814,6 +852,12 @@ class Command(BaseCommand):
             ]
         
         if not is_range_build:
+            logger.debug(
+                "Phase %s for %s is not marked as range-building (config present=%s), skipping",
+                phase.value,
+                epic,
+                bool(phase_config),
+            )
             return None
         
         # Use mid price to build per-phase ranges. Broker-provided high/low values
