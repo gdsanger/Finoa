@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Account, Category, Booking, RecurringBooking, Payee, KIGateConfig, OpenAIConfig, DocumentUpload, TimeEntry, IgBrokerConfig, MexcBrokerConfig
+from .models import Account, Category, Booking, RecurringBooking, Payee, KIGateConfig, OpenAIConfig, DocumentUpload, TimeEntry, IgBrokerConfig, MexcBrokerConfig, KrakenBrokerConfig
 
 
 @admin.register(Payee)
@@ -185,6 +185,35 @@ class MexcBrokerConfigAdmin(admin.ModelAdmin):
         }),
         ('Connection Settings', {
             'fields': ('api_base_url', 'timeout_seconds')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
+
+@admin.register(KrakenBrokerConfig)
+class KrakenBrokerConfigAdmin(admin.ModelAdmin):
+    list_display = ['name', 'account_type', 'is_active', 'updated_at']
+    list_filter = ['is_active', 'account_type']
+    search_fields = ['name']
+    readonly_fields = ['created_at', 'updated_at']
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('name', 'is_active', 'account_type')
+        }),
+        ('Authentication', {
+            'fields': ('api_key', 'api_secret'),
+            'description': 'Credentials for Kraken API access. Keep these secure!'
+        }),
+        ('Connection Settings', {
+            'fields': ('rest_base_url', 'charts_base_url', 'websocket_url', 'timeout_seconds'),
+            'description': 'Optional: Override default URLs (leave empty for auto-detection based on account type)'
+        }),
+        ('Trading Defaults', {
+            'fields': ('default_symbol',),
+            'description': 'Default trading symbol (e.g., PI_XBTUSD for Bitcoin)'
         }),
         ('Timestamps', {
             'fields': ('created_at', 'updated_at'),

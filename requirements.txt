@@ -6,3 +6,4 @@ PyYAML>=6.0
 weaviate-client>=4.5.0
 sentry-sdk>=2.0.0
 redis>=5.0.0
+websocket-client>=1.6.0

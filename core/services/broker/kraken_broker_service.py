@@ -206,6 +206,37 @@ class KrakenBrokerService(BrokerService):
             self._config.rest_base_url,
         )
 
+    @classmethod
+    def from_config(cls, config_model: KrakenBrokerConfigModel) -> 'KrakenBrokerService':
+        """
+        Create service from a KrakenBrokerConfig model instance.
+        
+        Args:
+            config_model: KrakenBrokerConfig model instance.
+        
+        Returns:
+            KrakenBrokerService instance.
+        """
+        # Build the config dataclass from the model
+        config = KrakenBrokerConfig(
+            api_key=config_model.api_key,
+            api_secret=config_model.api_secret,
+            default_symbol=config_model.default_symbol,
+            use_demo=(config_model.account_type == 'DEMO'),
+        )
+
+        # Override URLs if specified in the model
+        if config_model.rest_base_url:
+            config.rest_base_url = config_model.rest_base_url
+
+        if config_model.charts_base_url:
+            config.charts_base_url = config_model.charts_base_url
+
+        if config_model.websocket_url:
+            config.ws_public_url = config_model.websocket_url
+
+        return cls(config)
+
     # -------------------------------------------------------------------------
     # Lifecycle
     # -------------------------------------------------------------------------
