@@ -13,6 +13,7 @@ from django.core.exceptions import ImproperlyConfigured
 from .broker_service import BrokerService
 from .ig_broker_service import IgBrokerService
 from .mexc_broker_service import MexcBrokerService
+from .kraken_broker_service import KrakenBrokerService
 
 
 logger = logging.getLogger(__name__)
@@ -148,6 +149,31 @@ class BrokerRegistry:
             
             return broker
     
+    def get_kraken_broker(self) -> KrakenBrokerService:
+        """
+        Get the Kraken broker service (creates and connects if needed).
+        
+        Returns:
+            KrakenBrokerService: Connected Kraken broker service.
+        """
+        from trading.models import TradingAsset
+        
+        broker_type = TradingAsset.BrokerKind.KRAKEN
+        
+        with self._lock:
+            if broker_type in self._brokers and self._connected.get(broker_type, False):
+                return self._brokers[broker_type]
+            
+            broker = create_kraken_broker_service()
+            broker.connect()
+            
+            self._brokers[broker_type] = broker
+            self._connected[broker_type] = True
+            
+            logger.info("Created and connected Kraken broker service")
+            
+            return broker
+    
     def disconnect_all(self) -> None:
         """Disconnect all broker services."""
         with self._lock:
@@ -242,6 +268,40 @@ def create_mexc_broker_service() -> MexcBrokerService:
     """
     config = get_active_mexc_broker_config()
     return MexcBrokerService.from_config(config)
+
+
+def get_active_kraken_broker_config():
+    """
+    Get the active Kraken Broker configuration.
+    
+    Returns:
+        KrakenBrokerConfig: The active configuration instance.
+        
+    Raises:
+        ImproperlyConfigured: If no active configuration exists.
+    """
+    from core.models import KrakenBrokerConfig
+    
+    config = KrakenBrokerConfig.objects.filter(is_active=True).first()
+    if not config:
+        raise ImproperlyConfigured(
+            "No active Kraken Broker configuration found. Please configure Kraken Broker in the admin panel."
+        )
+    return config
+
+
+def create_kraken_broker_service() -> KrakenBrokerService:
+    """
+    Create a KrakenBrokerService instance from the active configuration.
+    
+    Returns:
+        KrakenBrokerService: Configured broker service instance.
+        
+    Raises:
+        ImproperlyConfigured: If no active configuration exists.
+    """
+    config = get_active_kraken_broker_config()
+    return KrakenBrokerService.from_config(config)
 
 
 def get_broker_service_for_asset(asset) -> 'BrokerService':
