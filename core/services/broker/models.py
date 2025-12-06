@@ -471,6 +471,7 @@ class Candle1m:
         low: Low price.
         close: Close price.
         volume: Trading volume.
+        trade_count: Number of trades in this candle.
     """
     symbol: str
     time: datetime
@@ -479,6 +480,7 @@ class Candle1m:
     low: float
     close: float
     volume: float = 0.0
+    trade_count: int = 0
 
     def to_dict(self) -> dict:
         """
@@ -495,4 +497,5 @@ class Candle1m:
             'low': self.low,
             'close': self.close,
             'volume': self.volume,
+            'trade_count': self.trade_count,
         }
