@@ -213,6 +213,7 @@ class Position:
             'direction': self.direction.value if isinstance(self.direction, Enum) else self.direction,
             'size': float(self.size),
             'open_price': float(self.open_price),
+            'entry_price': float(self.entry_price),
             'current_price': float(self.current_price),
             'unrealized_pnl': float(self.unrealized_pnl),
             'currency': self.currency,
@@ -220,6 +221,15 @@ class Position:
             'take_profit': float(self.take_profit) if self.take_profit is not None else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }
+
+    @property
+    def entry_price(self) -> Decimal:
+        """Alias for backward compatibility with callers expecting ``entry_price``."""
+        return self.open_price
+
+    @entry_price.setter
+    def entry_price(self, value: Decimal) -> None:
+        self.open_price = Decimal(str(value))
 
 
 @dataclass
