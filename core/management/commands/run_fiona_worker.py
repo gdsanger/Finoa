@@ -670,8 +670,13 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.WARNING(f"     Could not get price: {e}"))
                 result.status_message = f"Could not get price: {e}"
             
-            # 5. Build and persist range if in a range-building phase
-            range_built_phase = self._build_range_for_phase(asset, epic, phase, phase_configs_by_phase, current_price, now)
+            range_built_phase = None
+            if asset.broker != getattr(asset.BrokerKind, 'KRAKEN', 'KRAKEN'):
+                # For Kraken assets the dedicated market data worker builds ranges
+                # from the trade feed. Avoid duplicating range logic here.
+                range_built_phase = self._build_range_for_phase(
+                    asset, epic, phase, phase_configs_by_phase, current_price, now
+                )
             
             # 6. Skip if not in tradeable phase - check using is_trading_phase flag
             # Use pre-fetched phase configs to avoid additional DB query
