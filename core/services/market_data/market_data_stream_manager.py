@@ -442,7 +442,7 @@ class MarketDataStreamManager:
 
         # Kraken uses symbol/interval/num_points
         if isinstance(broker, KrakenBrokerService):
-            # Kraken Charts API currently only supports 1m interval
+            # Kraken builds 1m candles from WebSocket trade data (no historical API available)
             interval = "1m"
             return broker.get_historical_prices(symbol=symbol, interval=interval, num_points=num_points)
 

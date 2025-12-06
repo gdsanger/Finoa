@@ -435,12 +435,9 @@ class KrakenBrokerService(BrokerService):
         data: Optional[str] = None
 
         if auth_required:
-            # Nonce als Query-Parameter mitsenden
             nonce = str(int(time.time() * 1000))
             if params is None:
                 params = {}
-            # if "nonce" not in params:
-              #  params["nonce"] = nonce
 
             headers = self._sign_request(
                 method=method,
