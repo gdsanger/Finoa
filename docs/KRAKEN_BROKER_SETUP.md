@@ -226,6 +226,96 @@ By default, the service subscribes to the `default_symbol`. To subscribe to mult
 6. **Use IP whitelisting** if available on Kraken
 7. **Start with small positions** when testing on Live account
 
+## Running the Market Data Worker
+
+The Kraken Market Data Worker is a continuous service that aggregates real-time trade data into 1-minute candles with OHLCV + trade count.
+
+### Starting the Worker
+
+```bash
+# Run with default settings (5 second polling interval)
+python manage.py run_kraken_market_data_worker
+
+# Run with custom polling interval
+python manage.py run_kraken_market_data_worker --interval 10
+```
+
+### What the Worker Does
+
+1. **Subscribes to Trade Feed**: Connects to Kraken WebSocket for active assets
+2. **Aggregates Trades**: Builds 1-minute candles from individual trades:
+   - **Open**: First trade price in the minute
+   - **High**: Maximum price in the minute
+   - **Low**: Minimum price in the minute
+   - **Close**: Last trade price in the minute
+   - **Volume**: Cumulative volume traded
+   - **Trade Count**: Number of individual trades
+3. **Stores Data**: Persists candles in-memory and Redis
+4. **Builds Ranges**: Calculates session phase ranges for breakout trading
+
+### Data Retention
+
+- **In-Memory**: Last 6 hours of candles for fast access
+- **Redis**: Persistent storage with configurable TTL (default: 72 hours)
+- **Only Active Assets**: Processes only assets marked as `is_active=True` with `broker=KRAKEN`
+
+### Running as a Service
+
+For production, run the worker as a system service:
+
+**Using systemd (Linux)**:
+```bash
+# Create service file: /etc/systemd/system/kraken-market-data.service
+[Unit]
+Description=Kraken Market Data Worker
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/path/to/finoa
+ExecStart=/path/to/venv/bin/python manage.py run_kraken_market_data_worker
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+
+# Enable and start the service
+sudo systemctl enable kraken-market-data
+sudo systemctl start kraken-market-data
+sudo systemctl status kraken-market-data
+```
+
+**Using Docker**:
+```dockerfile
+# Add to your docker-compose.yml
+services:
+  kraken-worker:
+    build: .
+    command: python manage.py run_kraken_market_data_worker
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - postgres
+```
+
+### Monitoring
+
+Check worker logs for:
+- WebSocket connection status
+- Candle aggregation progress
+- Range building updates
+- Error messages
+
+```bash
+# View systemd logs
+sudo journalctl -u kraken-market-data -f
+
+# View Docker logs
+docker-compose logs -f kraken-worker
+```
+
 ## Additional Resources
 
 - [Kraken Futures API Documentation](https://docs.futures.kraken.com/)
@@ -239,20 +329,29 @@ Kraken does not provide historical OHLC/candle data via their API. The integrati
 
 - **Initial Startup**: After connecting, the service needs to accumulate trade data to build candles
 - **Cache Duration**: Up to 6 hours of candles are kept in memory
-- **Persistence**: For longer-term historical data, consider implementing a separate storage solution
-- **Restart Impact**: When the service restarts, it starts building candles from scratch
+- **Persistence**: Candles are persisted to Redis for recovery across restarts
+- **Restart Impact**: Worker loads persisted candles from Redis on restart (last 6 hours)
 
 ### Best Practices
-1. Keep the service running continuously to maintain candle history
+1. Keep the worker running continuously to maintain candle history
 2. Allow 5-10 minutes after startup for initial candle accumulation
 3. Monitor the WebSocket connection to ensure continuous data flow
-4. Consider implementing persistent storage for production use
+4. Configure Redis properly for persistent candle storage
+5. Use the worker as a system service for production deployments
 
 ## Changelog
 
+- **2025-12-06**: Trade count tracking added to 1m candles
+  - Added `trade_count` field to track number of trades per minute
+  - Enhanced market data quality for analysis and debugging
+  - Updated Candle1m and Candle models to support trade count
+  - Added comprehensive tests for trade count tracking
+  
 - **2025-12-06**: Initial Kraken Pro Future integration
   - Added support for REST API v3
   - Implemented WebSocket integration for real-time data
   - Created KrakenBrokerConfig model
   - Added comprehensive admin interface
   - Implemented real-time candle aggregation from trade data (no historical API available)
+  - Created market data worker service for continuous candle aggregation
+  - Redis persistence for candle history across restarts

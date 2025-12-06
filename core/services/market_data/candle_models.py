@@ -25,6 +25,7 @@ class Candle:
         low: Lowest price during the period
         close: Closing price
         volume: Trading volume (optional)
+        trade_count: Number of trades in this candle (optional)
         complete: Whether the candle is complete or still forming
     """
     timestamp: int  # Unix timestamp in seconds
@@ -33,6 +34,7 @@ class Candle:
     low: float
     close: float
     volume: Optional[float] = None
+    trade_count: Optional[int] = None
     complete: bool = True
     
     def to_dict(self) -> Dict[str, Any]:
@@ -46,6 +48,8 @@ class Candle:
         }
         if self.volume is not None:
             result['volume'] = round(self.volume, 4)
+        if self.trade_count is not None:
+            result['trade_count'] = self.trade_count
         if not self.complete:
             result['complete'] = False
         return result
@@ -60,6 +64,7 @@ class Candle:
             low=float(data.get('low', 0)),
             close=float(data.get('close', 0)),
             volume=float(data['volume']) if 'volume' in data and data['volume'] is not None else None,
+            trade_count=int(data['trade_count']) if 'trade_count' in data and data['trade_count'] is not None else None,
             complete=data.get('complete', True),
         )
     

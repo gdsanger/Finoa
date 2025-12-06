@@ -280,6 +280,7 @@ class KrakenBrokerService(BrokerService):
                                     low=float(c.low),
                                     close=float(c.close),
                                     volume=float(c.volume) if c.volume else 0.0,
+                                    trade_count=int(c.trade_count) if c.trade_count else 0,
                                 )
                             )
                         with self._lock:
@@ -806,6 +807,7 @@ class KrakenBrokerService(BrokerService):
                     "low": price,
                     "close": price,
                     "volume": volume,
+                    "trade_count": 1,
                 }
                 self._current_candle[symbol] = cur
             else:
@@ -813,6 +815,7 @@ class KrakenBrokerService(BrokerService):
                 cur["low"] = min(cur["low"], price)
                 cur["close"] = price
                 cur["volume"] += volume
+                cur["trade_count"] += 1
 
     def _append_candle_from_raw(self, symbol: str, candle: Dict[str, Any]) -> None:
         candle_obj = Candle1m(
@@ -823,6 +826,7 @@ class KrakenBrokerService(BrokerService):
             low=float(candle["low"]),
             close=float(candle["close"]),
             volume=float(candle["volume"]),
+            trade_count=int(candle.get("trade_count", 0)),
         )
         
         candles = self._candle_cache.setdefault(symbol, [])
@@ -840,6 +844,7 @@ class KrakenBrokerService(BrokerService):
                     low=float(candle_obj.low),
                     close=float(candle_obj.close),
                     volume=float(candle_obj.volume),
+                    trade_count=int(candle_obj.trade_count),
                     complete=True,
                 )
                 self._candle_store.append_candle(
@@ -966,6 +971,7 @@ class KrakenBrokerService(BrokerService):
                         low=float(current_candle["low"]),
                         close=float(current_candle["close"]),
                         volume=float(current_candle["volume"]),
+                        trade_count=int(current_candle.get("trade_count", 0)),
                     )
                 )
         
@@ -986,6 +992,7 @@ class KrakenBrokerService(BrokerService):
                 "low": float(c.low),
                 "close": float(c.close),
                 "volume": float(c.volume),
+                "trade_count": int(c.trade_count),
             }
             candles.append(candle)
         
@@ -1011,6 +1018,7 @@ class KrakenBrokerService(BrokerService):
                         low=float(cur["low"]),
                         close=float(cur["close"]),
                         volume=float(cur["volume"]),
+                        trade_count=int(cur.get("trade_count", 0)),
                     )
                 )
         candles.sort(key=lambda x: x.time)

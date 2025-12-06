@@ -2047,3 +2047,54 @@ class KrakenBrokerConfigTest(TestCase):
         
         # Should return empty list since cache is empty
         self.assertEqual(prices, [])
+
+    def test_kraken_trade_count_tracking(self):
+        """Test that trade_count is properly tracked in 1m candles."""
+        from core.services.broker.kraken_broker_service import KrakenBrokerService, KrakenBrokerConfig
+        from datetime import datetime, timezone, timedelta
+        from django.utils import timezone as dj_timezone
+        
+        config = KrakenBrokerConfig(
+            api_key="test-key",
+            api_secret="test-secret",
+            default_symbol="PI_XBTUSD",
+            use_demo=True,
+        )
+        
+        service = KrakenBrokerService(config)
+        service._connected = True
+        service._session = MagicMock()
+        
+        # Use current time to avoid being filtered out as too old
+        base_time = dj_timezone.now().astimezone(timezone.utc).replace(second=30, microsecond=0)
+        
+        # Trade 1: First trade in the minute
+        service._update_candle("PI_XBTUSD", 42000.0, 1.5, base_time)
+        
+        # Trade 2: Second trade in same minute
+        service._update_candle("PI_XBTUSD", 42050.0, 2.0, base_time.replace(second=35))
+        
+        # Trade 3: Third trade in same minute
+        service._update_candle("PI_XBTUSD", 41990.0, 1.0, base_time.replace(second=45))
+        
+        # Verify the current candle has correct trade_count
+        current_candle = service._current_candle.get("PI_XBTUSD")
+        self.assertIsNotNone(current_candle)
+        self.assertEqual(current_candle["trade_count"], 3)
+        self.assertEqual(current_candle["open"], 42000.0)
+        self.assertEqual(current_candle["high"], 42050.0)
+        self.assertEqual(current_candle["low"], 41990.0)
+        self.assertEqual(current_candle["close"], 41990.0)
+        self.assertEqual(current_candle["volume"], 4.5)
+        
+        # Get candles including the current forming one
+        candles = service.get_live_candles_1m(symbol="PI_XBTUSD")
+        
+        # Verify the candle has trade_count
+        self.assertEqual(len(candles), 1)
+        self.assertEqual(candles[0].trade_count, 3)
+        self.assertEqual(candles[0].open, 42000.0)
+        self.assertEqual(candles[0].high, 42050.0)
+        self.assertEqual(candles[0].low, 41990.0)
+        self.assertEqual(candles[0].close, 41990.0)
+        self.assertEqual(candles[0].volume, 4.5)
