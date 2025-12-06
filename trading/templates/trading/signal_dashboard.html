@@ -1458,10 +1458,204 @@
         color: var(--fiona-text-muted);
     }
 
-    /* Dashboard Main Content Area */
+    /* Dashboard Main Content Area - Split Layout */
     .dashboard-main {
         flex: 1;
         min-width: 0;
+        display: flex;
+        flex-direction: column;
+        height: calc(100vh - 140px);
+        gap: 1rem;
+    }
+    
+    /* Top Area - Chart (2/3 height) */
+    .dashboard-top-area {
+        flex: 2;
+        min-height: 0;
+        background-color: var(--fiona-card-dark);
+        border: 1px solid var(--fiona-border);
+        border-radius: 12px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    /* Bottom Area - Tabs (1/3 height) */
+    .dashboard-bottom-area {
+        flex: 1;
+        min-height: 0;
+        background-color: var(--fiona-card-dark);
+        border: 1px solid var(--fiona-border);
+        border-radius: 12px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    /* Tab Navigation */
+    .bottom-tabs {
+        display: flex;
+        border-bottom: 1px solid var(--fiona-border);
+        background: rgba(255, 255, 255, 0.02);
+        padding: 0.5rem 1rem;
+        gap: 0.5rem;
+    }
+    
+    .bottom-tab-btn {
+        padding: 0.5rem 1rem;
+        background: transparent;
+        border: none;
+        color: var(--fiona-text-muted);
+        cursor: pointer;
+        border-radius: 6px 6px 0 0;
+        transition: all 0.2s;
+        font-weight: 500;
+    }
+    
+    .bottom-tab-btn:hover {
+        background: rgba(255, 255, 255, 0.05);
+        color: var(--fiona-text-light);
+    }
+    
+    .bottom-tab-btn.active {
+        background: var(--fiona-card-dark);
+        color: var(--fiona-text-light);
+        border-bottom: 2px solid #2563eb;
+    }
+    
+    .bottom-tab-content {
+        display: none;
+        flex: 1;
+        overflow-y: auto;
+        padding: 1rem;
+    }
+    
+    .bottom-tab-content.active {
+        display: block;
+    }
+    
+    /* Chart Container in Top Area */
+    .chart-top-container {
+        flex: 1;
+        position: relative;
+        background: rgba(0, 0, 0, 0.2);
+    }
+    
+    .chart-top-header {
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid var(--fiona-border);
+        background: rgba(255, 255, 255, 0.02);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .chart-top-title {
+        margin: 0;
+        font-size: 0.95rem;
+        color: var(--fiona-text-light);
+    }
+    
+    .chart-placeholder {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: var(--fiona-text-muted);
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .chart-placeholder i {
+        font-size: 3rem;
+        opacity: 0.3;
+    }
+    
+    /* Signals Table */
+    .signals-table {
+        width: 100%;
+        color: var(--fiona-text-light);
+        font-size: 0.9rem;
+    }
+    
+    .signals-table thead {
+        background: rgba(0, 0, 0, 0.3);
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+    
+    .signals-table th {
+        padding: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.5px;
+        color: var(--fiona-text-muted);
+        border-bottom: 1px solid var(--fiona-border);
+    }
+    
+    .signals-table td {
+        padding: 0.75rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        vertical-align: middle;
+    }
+    
+    .signals-table tbody tr:hover {
+        background: rgba(255, 255, 255, 0.02);
+    }
+    
+    /* Positions Table */
+    .positions-table {
+        width: 100%;
+        color: var(--fiona-text-light);
+        font-size: 0.9rem;
+    }
+    
+    .positions-table thead {
+        background: rgba(0, 0, 0, 0.3);
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+    
+    .positions-table th {
+        padding: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.5px;
+        color: var(--fiona-text-muted);
+        border-bottom: 1px solid var(--fiona-border);
+    }
+    
+    .positions-table td {
+        padding: 0.75rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        vertical-align: middle;
+        font-family: 'Roboto Mono', monospace;
+    }
+    
+    .positions-table tbody tr:hover {
+        background: rgba(255, 255, 255, 0.02);
+    }
+    
+    .position-side-long {
+        color: var(--signal-long);
+        font-weight: 600;
+    }
+    
+    .position-side-short {
+        color: var(--signal-short);
+        font-weight: 600;
+    }
+    
+    .position-pnl-positive {
+        color: var(--signal-long);
+    }
+    
+    .position-pnl-negative {
+        color: var(--signal-short);
     }
 
     /* Sidebar Empty State */
@@ -1895,175 +2089,177 @@
             <!-- Main Content Area -->
             <div class="col-12 col-lg dashboard-main-col">
                 <main class="dashboard-main">
-                
-        <!-- Signal Controls -->
-        <div class="signal-controls mb-3">
-            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                <div class="btn-group" role="group" aria-label="Signal Filter">
-                    <button type="button" class="btn btn-sm btn-outline-light active" onclick="filterSignals('ALL', this)">
-                        <i class="bi bi-funnel"></i> Alle
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-success" onclick="filterSignals('GREEN', this)">
-                        <i class="bi bi-check-circle"></i> Erlaubt
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-warning" onclick="filterSignals('YELLOW', this)">
-                        <i class="bi bi-exclamation-triangle"></i> Riskant
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="filterSignals('RED', this)">
-                        <i class="bi bi-x-circle"></i> Verboten
-                    </button>
-                </div>
-                
-                <div class="d-flex gap-2">
-                    <button class="btn btn-sm btn-outline-danger" onclick="deleteAllForbiddenSignals()" title="Alle verbotenen Signale löschen">
-                        <i class="bi bi-trash"></i> Alle Verbotenen löschen
-                    </button>
-                    <button class="btn btn-sm btn-outline-danger" id="delete-selected-btn" onclick="deleteSelectedSignals()" style="display: none;" title="Ausgewählte Signale löschen">
-                        <i class="bi bi-trash"></i> Ausgewählte löschen (<span id="selected-count">0</span>)
-                    </button>
-                </div>
-            </div>
-        </div>
-       
-        <!-- Signal List Container (refreshable via HTMX) -->
-        <div id="signal-list-container">
-        {% if signals %}
-        <div class="row" id="signals-row">
-            {% for signal in signals %}
-            <div class="col-lg-6 col-xl-4">
-                <div class="signal-card" data-risk-status="{{ signal.risk_status }}">
-                    <div class="signal-card-header">
-                        <div class="d-flex align-items-center gap-2 flex-fill">
-                            <input type="checkbox" class="form-check-input signal-checkbox" data-signal-id="{{ signal.id }}" onchange="updateSelectedCount()">
-                            <div class="d-flex flex-column flex-fill">
-                                <div class="d-flex align-items-center gap-2 mb-1">
-                                    <span class="setup-type-badge setup-type-{% if signal.setup_type %}{{ signal.setup_type }}{% else %}BREAKOUT{% endif %}">
-                                        {% if signal.setup_type_display %}
-                                            {{ signal.setup_type_display }}
-                                        {% else %}
-                                            {{ signal.get_setup_type_display }}
-                                        {% endif %}
-                                    </span>
-                                    <span class="session-phase-tag">
-                                        {% if signal.session_phase_display %}
-                                            {{ signal.session_phase_display }}
-                                        {% else %}
-                                            {{ signal.get_session_phase_display }}
-                                        {% endif %}
-                                    </span>
-                                    <span class="direction-badge direction-{{ signal.direction }}">
-                                        {% if signal.direction == 'LONG' %}
-                                            <i class="bi bi-arrow-up-circle-fill"></i>
-                                        {% else %}
-                                            <i class="bi bi-arrow-down-circle-fill"></i>
-                                        {% endif %}
-                                        {{ signal.direction }}
-                                    </span>
-                                </div>
-                                <div class="text-light small">
-                                    <strong>{% if signal.trading_asset %}{{ signal.trading_asset.name }}{% else %}{{ signal.instrument }}{% endif %}</strong>
-                                    <span class="text-muted ms-2">
-                                        {{ signal.created_at|date:"d.m.Y H:i" }} 
-                                        <span class="badge bg-secondary ms-1">{{ signal.created_at|timesince_short }}</span>
-                                    </span>
-                                </div>
+                    <!-- Top Area - Chart (2/3) -->
+                    <div class="dashboard-top-area">
+                        <div class="chart-top-header">
+                            <h5 class="chart-top-title">
+                                <i class="bi bi-graph-up"></i> 
+                                <span id="chart-asset-name">Realtime Chart</span>
+                            </h5>
+                            <div class="d-flex align-items-center gap-2">
+                                <span id="chart-data-status" class="data-status-badge offline">
+                                    <i class="bi bi-circle-fill"></i> 
+                                    <span id="chart-status-text">OFFLINE</span>
+                                </span>
+                            </div>
+                        </div>
+                        <div class="chart-top-container" id="top-chart-container">
+                            <div class="chart-placeholder">
+                                <i class="bi bi-bar-chart-line"></i>
+                                <p>Wählen Sie ein Asset aus der Sidebar, um das Chart anzuzeigen</p>
                             </div>
                         </div>
                     </div>
                     
-                    <div class="signal-card-body">
-                        <!-- Range Info -->
-                        <div class="range-info">
-                            <div class="section-label">Range Info</div>
-                            <div class="range-info-row">
-                                <span class="range-label">Range High</span>
-                                <span class="range-value">{{ signal.range_high }}</span>
-                            </div>
-                            <div class="range-info-row">
-                                <span class="range-label">Range Low</span>
-                                <span class="range-value">{{ signal.range_low }}</span>
-                            </div>
-                            <div class="range-info-row">
-                                <span class="range-label">Trigger</span>
-                                <span class="range-value text-warning">{{ signal.trigger_price }}</span>
-                            </div>
+                    <!-- Bottom Area - Tabs (1/3) -->
+                    <div class="dashboard-bottom-area">
+                        <div class="bottom-tabs">
+                            <button class="bottom-tab-btn active" onclick="switchBottomTab('signals', this)">
+                                <i class="bi bi-lightning-charge"></i> Signals
+                            </button>
+                            <button class="bottom-tab-btn" onclick="switchBottomTab('open-positions', this)">
+                                <i class="bi bi-graph-up-arrow"></i> Open Positions
+                            </button>
+                            <button class="bottom-tab-btn" onclick="switchBottomTab('positions-today', this)">
+                                <i class="bi bi-calendar-check"></i> Positions Today
+                            </button>
                         </div>
                         
-                        <!-- Stats -->
-                        <div class="stats-grid">
-                            <div class="stat-item">
-                                <div class="stat-value text-danger">{{ signal.stop_loss }}</div>
-                                <div class="stat-label">SL</div>
+                        <!-- Signals Tab -->
+                        <div id="signals-tab" class="bottom-tab-content active">
+                            <div class="signal-controls mb-3">
+                                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                    <div class="btn-group" role="group" aria-label="Signal Filter">
+                                        <button type="button" class="btn btn-sm btn-outline-light active" onclick="filterSignals('ALL', this)">
+                                            <i class="bi bi-funnel"></i> Alle
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-outline-success" onclick="filterSignals('GREEN', this)">
+                                            <i class="bi bi-check-circle"></i> Erlaubt
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-outline-warning" onclick="filterSignals('YELLOW', this)">
+                                            <i class="bi bi-exclamation-triangle"></i> Riskant
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="filterSignals('RED', this)">
+                                            <i class="bi bi-x-circle"></i> Verboten
+                                        </button>
+                                    </div>
+                                    
+                                    <div class="d-flex gap-2">
+                                        <button class="btn btn-sm btn-outline-danger" onclick="deleteAllForbiddenSignals()" title="Alle verbotenen Signale löschen">
+                                            <i class="bi bi-trash"></i> Alle Verbotenen löschen
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-danger" id="delete-selected-btn" onclick="deleteSelectedSignals()" style="display: none;" title="Ausgewählte Signale löschen">
+                                            <i class="bi bi-trash"></i> Ausgewählte löschen (<span id="selected-count">0</span>)
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="stat-item">
-                                <div class="stat-value text-success">{{ signal.take_profit }}</div>
-                                <div class="stat-label">TP</div>
-                            </div>
-                            <div class="stat-item">
-                                <div class="stat-value">{{ signal.position_size }}</div>
-                                <div class="stat-label">Size</div>
-                            </div>
-                        </div>
-                        
-                        <!-- KI & Risk Badges -->
-                        <div class="d-flex flex-wrap gap-2 mt-3">
-                            {% with gpt_conf=signal.gpt_confidence|floatformat:0 %}
-                            <span class="confidence-badge {% if gpt_conf >= 80 %}confidence-high{% elif gpt_conf >= 60 %}confidence-medium{% else %}confidence-low{% endif %}">
-                                <i class="bi bi-cpu"></i> GPT {{ gpt_conf }}%
-                            </span>
-                            {% endwith %}
                             
-                            <span class="risk-badge risk-{{ signal.risk_status }}">
-                                {% if signal.risk_status == 'GREEN' %}
-                                    <i class="bi bi-check-circle-fill"></i> Erlaubt
-                                {% elif signal.risk_status == 'YELLOW' %}
-                                    <i class="bi bi-exclamation-triangle-fill"></i> Riskant
-                                {% else %}
-                                    <i class="bi bi-x-circle-fill"></i> Verboten
-                                {% endif %}
-                            </span>
+                            {% if signals %}
+                            <div class="table-responsive">
+                                <table class="signals-table">
+                                    <thead>
+                                        <tr>
+                                            <th><input type="checkbox" id="select-all-signals" onclick="toggleAllSignals(this)"></th>
+                                            <th>Asset</th>
+                                            <th>Setup</th>
+                                            <th>Direction</th>
+                                            <th>Trigger</th>
+                                            <th>SL / TP</th>
+                                            <th>Size</th>
+                                            <th>Risk</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="signals-table-body">
+                                        {% for signal in signals %}
+                                        <tr data-risk-status="{{ signal.risk_status }}" data-signal-id="{{ signal.id }}">
+                                            <td>
+                                                <input type="checkbox" class="form-check-input signal-checkbox" data-signal-id="{{ signal.id }}" onchange="updateSelectedCount()">
+                                            </td>
+                                            <td>
+                                                <strong>{% if signal.trading_asset %}{{ signal.trading_asset.name }}{% else %}{{ signal.instrument }}{% endif %}</strong>
+                                                <br>
+                                                <small class="text-muted">{{ signal.created_at|date:"d.m.Y H:i" }}</small>
+                                            </td>
+                                            <td>
+                                                <span class="setup-type-badge setup-type-{% if signal.setup_type %}{{ signal.setup_type }}{% else %}BREAKOUT{% endif %}">
+                                                    {% if signal.setup_type_display %}{{ signal.setup_type_display }}{% else %}{{ signal.get_setup_type_display }}{% endif %}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <span class="direction-badge direction-{{ signal.direction }}">
+                                                    {% if signal.direction == 'LONG' %}<i class="bi bi-arrow-up-circle-fill"></i>{% else %}<i class="bi bi-arrow-down-circle-fill"></i>{% endif %}
+                                                    {{ signal.direction }}
+                                                </span>
+                                            </td>
+                                            <td>{{ signal.trigger_price }}</td>
+                                            <td>
+                                                <span class="text-danger">{{ signal.stop_loss }}</span> / 
+                                                <span class="text-success">{{ signal.take_profit }}</span>
+                                            </td>
+                                            <td>{{ signal.position_size }}</td>
+                                            <td>
+                                                <span class="risk-badge risk-{{ signal.risk_status }}">
+                                                    {% if signal.risk_status == 'GREEN' %}
+                                                        <i class="bi bi-check-circle-fill"></i>
+                                                    {% elif signal.risk_status == 'YELLOW' %}
+                                                        <i class="bi bi-exclamation-triangle-fill"></i>
+                                                    {% else %}
+                                                        <i class="bi bi-x-circle-fill"></i>
+                                                    {% endif %}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <div class="btn-group btn-group-sm" role="group">
+                                                    <button class="btn btn-trade-live btn-sm" 
+                                                            {% if not signal.can_execute_live %}disabled{% endif %}
+                                                            onclick="executeTrade('{{ signal.id }}', 'live')"
+                                                            title="Live Trade">
+                                                        <i class="bi bi-lightning-fill"></i>
+                                                    </button>
+                                                    <a href="{% url 'signal_detail' signal.id %}" class="btn btn-trade-details btn-sm" title="Details">
+                                                        <i class="bi bi-eye"></i>
+                                                    </a>
+                                                    <button class="btn btn-trade-reject btn-sm"
+                                                            onclick="rejectSignal('{{ signal.id }}')"
+                                                            title="Reject">
+                                                        <i class="bi bi-x-lg"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {% else %}
+                            <div class="empty-state">
+                                <i class="bi bi-graph-up-arrow"></i>
+                                <h3>Keine aktiven Signale</h3>
+                                <p>Es sind derzeit keine aktiven Trading-Signale vorhanden.</p>
+                            </div>
+                            {% endif %}
                         </div>
                         
-                        <!-- KI Reasoning -->
-                        <div class="ki-info">
-                            <div class="section-label">KI-Begründung</div>
-                            <p class="ki-reasoning mb-0">{{ signal.ki_reasoning|truncatechars:120 }}</p>
+                        <!-- Open Positions Tab -->
+                        <div id="open-positions-tab" class="bottom-tab-content">
+                            <div id="open-positions-container" hx-get="{% url 'htmx_open_positions' %}" hx-trigger="load, every 5s" hx-swap="innerHTML">
+                                <div class="text-center py-4">
+                                    <i class="bi bi-hourglass-split"></i> Lädt Positionen...
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Positions Today Tab -->
+                        <div id="positions-today-tab" class="bottom-tab-content">
+                            <div id="positions-today-container" hx-get="{% url 'htmx_positions_today' %}" hx-trigger="load" hx-swap="innerHTML">
+                                <div class="text-center py-4">
+                                    <i class="bi bi-hourglass-split"></i> Lädt Positionen...
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    
-                    <div class="signal-card-footer">
-                        <a href="{% url 'signal_detail' signal.id %}" class="btn btn-trade-details btn-sm">
-                            <i class="bi bi-eye"></i> Details
-                        </a>
-                        
-                        <button class="btn btn-trade-live btn-sm" 
-                                {% if not signal.can_execute_live %}disabled{% endif %}
-                                onclick="executeTrade('{{ signal.id }}', 'live')">
-                            <i class="bi bi-lightning-fill"></i> Live Trade
-                        </button>
-                        
-                        <button class="btn btn-trade-shadow btn-sm"
-                                onclick="executeTrade('{{ signal.id }}', 'shadow')">
-                            <i class="bi bi-eye-slash"></i> Shadow
-                        </button>
-                        
-                        <button class="btn btn-trade-reject btn-sm"
-                                onclick="rejectSignal('{{ signal.id }}')">
-                            <i class="bi bi-x-lg"></i>
-                        </button>
-                    </div>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-        {% else %}
-        <div class="empty-state" id="empty-state">
-            <i class="bi bi-graph-up-arrow"></i>
-            <h3>Keine aktiven Signale</h3>
-            <p>Es sind derzeit keine aktiven Trading-Signale vorhanden.</p>
-        </div>
-        {% endif %}
-        </div>
                 </main>
                 <!-- End Main Content Area -->
             </div>
@@ -2072,80 +2268,7 @@
     </div>
 </div>
 
-<div id="asset-chart-modal" class="chart-modal" aria-hidden="true">
-    <div class="chart-modal-dialog" role="dialog" aria-modal="true">
-        <div class="chart-modal-header">
-            <div>
-                <h5 class="chart-modal-title" id="asset-chart-title"><i class="bi bi-graph-up"></i> Realtime Chart</h5>
-                <small class="text-muted" id="asset-chart-subtitle">Breakout Distance Dashboard</small>
-            </div>
-            <div class="d-flex align-items-center gap-2">
-                <span id="asset-chart-status" class="data-status-badge offline">
-                    <i class="bi bi-circle-fill"></i> <span id="asset-chart-status-text">OFFLINE</span>
-                </span>
-                <button type="button" class="chart-control-btn" id="asset-chart-fullscreen-btn" aria-label="Fullscreen umschalten" title="Fullscreen umschalten">
-                    <i class="bi bi-arrows-fullscreen"></i>
-                </button>
-                <button type="button" class="btn-close btn-close-white" aria-label="Close" onclick="closeAssetChartModal()"></button>
-            </div>
-        </div>
-        <div class="chart-modal-body">
-            <div class="chart-modal-meta">
-                <div class="meta-item">
-                    <span>Asset</span>
-                    <strong id="asset-chart-asset">--</strong>
-                </div>
-                <div class="meta-item">
-                    <span>Phase</span>
-                    <strong id="asset-chart-phase" class="phase-label">--</strong>
-                </div>
-                <div class="meta-item">
-                    <span>Fenster</span>
-                    <strong id="asset-chart-window">--</strong>
-                </div>
-                <div class="meta-item">
-                    <span>Preis</span>
-                    <strong id="asset-chart-current-price" class="current-price">--</strong>
-                </div>
-            </div>
-            <div id="asset-chart-container" class="chart-modal-canvas"></div>
-            <div class="chart-modal-info-grid">
-                <div class="info-tile">
-                    <span class="label">Referenz-Range</span>
-                    <span class="value emphasis" id="asset-chart-reference">--</span>
-                </div>
-                <div class="info-tile">
-                    <span class="label">Range High</span>
-                    <span class="value price-high" id="asset-chart-range-high">--</span>
-                </div>
-                <div class="info-tile">
-                    <span class="label">Range Low</span>
-                    <span class="value price-low" id="asset-chart-range-low">--</span>
-                </div>
-                <div class="info-tile">
-                    <span class="label">Breakout Long</span>
-                    <span class="value breakout-long" id="asset-chart-breakout-long">--</span>
-                </div>
-                <div class="info-tile">
-                    <span class="label">Breakout Short</span>
-                    <span class="value breakout-short" id="asset-chart-breakout-short">--</span>
-                </div>
-                <div class="info-tile">
-                    <span class="label">Distance High</span>
-                    <span class="value distance-high" id="asset-chart-distance-high">--</span>
-                </div>
-                <div class="info-tile">
-                    <span class="label">Distance Low</span>
-                    <span class="value distance-low" id="asset-chart-distance-low">--</span>
-                </div>
-                <div class="info-tile">
-                    <span class="label">Status</span>
-                    <span class="value emphasis" id="asset-chart-range-status">--</span>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+
 {% endblock %}
 
 {% block extra_js %}
@@ -2925,8 +3048,8 @@
             }
         } else {
             startAutoRefresh();
-            const modal = document.getElementById('asset-chart-modal');
-            if (modal && modal.classList.contains('open') && assetChartWidget) {
+            // Restart chart if it was active
+            if (assetChartWidget) {
                 assetChartWidget.refresh();
                 assetChartWidget.startAutoRefresh();
             }
@@ -3218,27 +3341,29 @@
         }
 
         if (!assetChartWidget) {
+            // Create chart in the top container (not modal)
             assetChartWidget = new BreakoutDistanceChartWidget({
-                chartContainer: 'asset-chart-container',
+                chartContainer: 'top-chart-container',
                 assetSymbol: '',
                 assetId: '',
                 hours: ASSET_CHART_WINDOW_HOURS,
                 refreshMs: ASSET_CHART_REFRESH_MS,
-                dataStatusBadge: '#asset-chart-status',
-                dataStatusText: '#asset-chart-status-text',
+                dataStatusBadge: '#chart-data-status',
+                dataStatusText: '#chart-status-text',
                 infoSelectors: {
-                    asset: '#asset-chart-asset',
-                    phase: '#asset-chart-phase',
-                    referencePhase: '#asset-chart-reference',
-                    rangeHigh: '#asset-chart-range-high',
-                    rangeLow: '#asset-chart-range-low',
-                    breakoutLong: '#asset-chart-breakout-long',
-                    breakoutShort: '#asset-chart-breakout-short',
-                    currentPrice: '#asset-chart-current-price',
-                    window: '#asset-chart-window',
-                    distanceHigh: '#asset-chart-distance-high',
-                    distanceLow: '#asset-chart-distance-low',
-                    status: '#asset-chart-range-status',
+                    // We'll add info tiles later or use a different display
+                    asset: null,
+                    phase: null,
+                    referencePhase: null,
+                    rangeHigh: null,
+                    rangeLow: null,
+                    breakoutLong: null,
+                    breakoutShort: null,
+                    currentPrice: null,
+                    window: null,
+                    distanceHigh: null,
+                    distanceLow: null,
+                    status: null,
                 },
             });
             assetChartWidget.init();
@@ -3250,20 +3375,20 @@
     function openAssetChartModalFromButton(button) {
         if (!button) return;
         const { symbol, assetId } = button.dataset;
-        openAssetChartModal(symbol, assetId);
+        loadAssetChart(symbol, assetId);
     }
 
-    function openAssetChartModal(symbol, assetId) {
+    function loadAssetChart(symbol, assetId) {
         if (!symbol || !assetId) return;
-        const modal = document.getElementById('asset-chart-modal');
+        
         const widget = getAssetChartWidget();
+        if (!widget) return;
 
-        if (!modal || !widget) return;
-
-        setAssetChartFullscreen(false);
-        modal.classList.add('open');
-        modal.setAttribute('aria-hidden', 'false');
-        document.body.style.overflow = 'hidden';
+        // Remove placeholder
+        const placeholder = document.querySelector('.chart-placeholder');
+        if (placeholder) {
+            placeholder.style.display = 'none';
+        }
 
         widget.setAsset(symbol, assetId);
         widget.setHours(ASSET_CHART_WINDOW_HOURS);
@@ -3271,74 +3396,45 @@
         widget.startAutoRefresh();
         setTimeout(() => widget.resizeToContainer(), 100);
 
-        const titleEl = document.getElementById('asset-chart-title');
+        // Update header title
+        const titleEl = document.getElementById('chart-asset-name');
         if (titleEl) {
-            titleEl.innerHTML = `<i class="bi bi-graph-up"></i> ${escapeHtml(symbol)} Realtime Chart`;
+            titleEl.textContent = `${symbol} Realtime Chart`;
         }
     }
 
-    function closeAssetChartModal() {
-        const modal = document.getElementById('asset-chart-modal');
-        if (modal) {
-            setAssetChartFullscreen(false);
-            modal.classList.remove('open');
-            modal.setAttribute('aria-hidden', 'true');
-        }
-        document.body.style.overflow = '';
-        if (assetChartWidget) {
-            assetChartWidget.stopAutoRefresh();
-        }
-    }
-
-    function setAssetChartFullscreen(isFullscreen) {
-        const modal = document.getElementById('asset-chart-modal');
-        const toggleBtn = document.getElementById('asset-chart-fullscreen-btn');
-
-        if (modal) {
-            modal.classList.toggle('fullscreen', Boolean(isFullscreen));
-        }
-
-        if (toggleBtn) {
-            toggleBtn.innerHTML = isFullscreen
-                ? '<i class="bi bi-fullscreen-exit"></i>'
-                : '<i class="bi bi-arrows-fullscreen"></i>';
-            toggleBtn.setAttribute('aria-label', isFullscreen ? 'Fullscreen verlassen' : 'Fullscreen öffnen');
-            toggleBtn.setAttribute('title', isFullscreen ? 'Fullscreen verlassen' : 'Fullscreen öffnen');
-        }
-
-        if (assetChartWidget) {
-            setTimeout(() => assetChartWidget.resizeToContainer(), 50);
-        }
-    }
-
-    function toggleAssetChartFullscreen() {
-        const modal = document.getElementById('asset-chart-modal');
-        const isCurrentlyFullscreen = modal?.classList.contains('fullscreen');
-        setAssetChartFullscreen(!isCurrentlyFullscreen);
-    }
-
-    const assetChartModalEl = document.getElementById('asset-chart-modal');
-    if (assetChartModalEl) {
-        assetChartModalEl.addEventListener('click', function(event) {
-            if (event.target === assetChartModalEl) {
-                closeAssetChartModal();
-            }
+    // Tab switching function
+    function switchBottomTab(tabName, buttonElement) {
+        // Hide all tab content
+        document.querySelectorAll('.bottom-tab-content').forEach(content => {
+            content.classList.remove('active');
         });
-    }
-
-    const assetChartFullscreenBtn = document.getElementById('asset-chart-fullscreen-btn');
-    if (assetChartFullscreenBtn) {
-        assetChartFullscreenBtn.addEventListener('click', function(event) {
-            event.stopPropagation();
-            toggleAssetChartFullscreen();
+        
+        // Remove active class from all buttons
+        document.querySelectorAll('.bottom-tab-btn').forEach(btn => {
+            btn.classList.remove('active');
         });
+        
+        // Show selected tab content
+        const tabContent = document.getElementById(tabName + '-tab');
+        if (tabContent) {
+            tabContent.classList.add('active');
+        }
+        
+        // Activate selected button if provided
+        if (buttonElement) {
+            buttonElement.classList.add('active');
+        }
     }
 
-    document.addEventListener('keydown', function(event) {
-        if (event.key === 'Escape') {
-            closeAssetChartModal();
-        }
-    });
+    // Function to toggle all signals checkboxes
+    function toggleAllSignals(checkbox) {
+        const checkboxes = document.querySelectorAll('.signal-checkbox');
+        checkboxes.forEach(cb => {
+            cb.checked = checkbox.checked;
+        });
+        updateSelectedCount();
+    }
 
     // ============================================================================
     // Signal Polling & Desktop Notifications

@@ -1,0 +1,63 @@
+{% load tz %}
+{% if error %}
+<div class="alert alert-danger mb-0">
+    <i class="bi bi-exclamation-triangle"></i> {{ error }}
+</div>
+{% elif positions %}
+<div class="table-responsive">
+    <table class="positions-table">
+        <thead>
+            <tr>
+                <th>Asset</th>
+                <th>Side</th>
+                <th>Typ</th>
+                <th>Menge</th>
+                <th>Eröffnungspreis</th>
+                <th>Schlusspreis</th>
+                <th>PNL</th>
+                <th>Eröffnet</th>
+                <th>Geschlossen</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for position in positions %}
+            <tr>
+                <td><strong>{{ position.asset }}</strong></td>
+                <td>
+                    <span class="position-side-{{ position.direction|lower }}">
+                        {% if position.direction == 'LONG' %}
+                            <i class="bi bi-arrow-up-circle-fill"></i> Long
+                        {% else %}
+                            <i class="bi bi-arrow-down-circle-fill"></i> Short
+                        {% endif %}
+                    </span>
+                </td>
+                <td>
+                    <span class="badge bg-secondary">{{ position.trade_type }}</span>
+                </td>
+                <td>{{ position.size|floatformat:2 }}</td>
+                <td>{{ position.entry_price|floatformat:4 }}</td>
+                <td>{{ position.exit_price|floatformat:4 }}</td>
+                <td>
+                    <span class="{% if position.pnl >= 0 %}position-pnl-positive{% else %}position-pnl-negative{% endif %}">
+                        {{ position.pnl|floatformat:2 }}
+                    </span>
+                </td>
+                <td>
+                    <small>{{ position.opened_at|date:"H:i" }}</small>
+                </td>
+                <td>
+                    <small>{{ position.closed_at|date:"H:i" }}</small>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="empty-state">
+    <i class="bi bi-inbox"></i>
+    <h5>Keine geschlossenen Positionen heute</h5>
+    <p>Es wurden heute noch keine Positionen geschlossen.</p>
+</div>
+{% endif %}
