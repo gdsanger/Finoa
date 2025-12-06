@@ -240,7 +240,7 @@ By default, the service subscribes to the `default_symbol`. To subscribe to mult
 
 ## Changelog
 
-- **2024-12-06**: Initial Kraken Pro Future integration
+- **2025-12-06**: Initial Kraken Pro Future integration
   - Added support for REST API v3
   - Implemented WebSocket integration for real-time data
   - Created KrakenBrokerConfig model
