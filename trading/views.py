@@ -2725,7 +2725,8 @@ def htmx_open_positions(request):
     """
     try:
         # Get Kraken broker service
-        broker_service = BrokerRegistry.get_kraken_broker()
+        registry = BrokerRegistry()
+        broker_service = registry.get_kraken_broker()
         
         if not broker_service:
             return render(request, 'trading/partials/open_positions.html', {
