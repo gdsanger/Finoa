@@ -2036,15 +2036,15 @@
                     <span class="small text-danger">P/L</span>
                  </li>
                   <li class="list-group-item text-center"  style="background-color: #2e3440">
-                    <span class="lead text-white" id="mexc-balance">--</span><br>
-                    <span class="small text-info">MEXC Kontostand</span>
+                    <span class="lead text-white" id="kraken-balance">--</span><br>
+                    <span class="small text-info">Kraken Kontostand</span>
                  </li>
                  <li class="list-group-item text-center"  style="background-color: #2e3440">
-                    <span class="lead text-white" id="mexc-margin-available">--</span><br>
-                    <span class="small text-info">MEXC Margin</span>
+                    <span class="lead text-white" id="kraken-margin-available">--</span><br>
+                    <span class="small text-info">Kraken Margin</span>
                  </li>
                   <li class="list-group-item text-center"  style="background-color: #2e3440">
-                    <span class="lead text-white" id="mexc-pnl">--</span><br>
+                    <span class="lead text-white" id="kraken-pnl">--</span><br>
                     <span class="small text-info">P/L</span>
                  </li>
                 </ul>
@@ -2564,7 +2564,7 @@
     }
     
     function updateBrokerAccountInfo(broker, data) {
-        const currency = data.currency || (broker === 'mexc' ? 'USDT' : 'EUR');
+        const currency = data.currency || (broker === 'kraken' ? 'USD' : 'EUR');
         const prefix = broker + '-';
         
         // Update balance
@@ -2648,9 +2648,9 @@
     function refreshAllBrokersAccountState() {
         setRefreshButtonLoading(true);
         updateBrokerStatusDot('ig', 'loading');
-        updateBrokerStatusDot('mexc', 'loading');
+        updateBrokerStatusDot('kraken', 'loading');
         resetBrokerAccountGrid('ig');
-        resetBrokerAccountGrid('mexc');
+        resetBrokerAccountGrid('kraken');
         
         fetch('/fiona/api/all-brokers-account-state/', {
             method: 'GET',
@@ -2672,23 +2672,23 @@
                 showBrokerError('ig', data.ig.error || 'Nicht verbunden');
             }
             
-            // Update MEXC broker
-            if (data.mexc.connected) {
-                updateBrokerStatusDot('mexc', 'connected');
-                resetBrokerAccountGrid('mexc');
-                updateBrokerAccountInfo('mexc', data.mexc.data);
+            // Update Kraken broker
+            if (data.kraken.connected) {
+                updateBrokerStatusDot('kraken', 'connected');
+                resetBrokerAccountGrid('kraken');
+                updateBrokerAccountInfo('kraken', data.kraken.data);
             } else {
-                updateBrokerStatusDot('mexc', 'disconnected');
-                showBrokerError('mexc', data.mexc.error || 'Nicht verbunden');
+                updateBrokerStatusDot('kraken', 'disconnected');
+                showBrokerError('kraken', data.kraken.error || 'Nicht verbunden');
             }
         })
         .catch(error => {
             console.error('All brokers account state error:', error);
             setRefreshButtonLoading(false);
             updateBrokerStatusDot('ig', 'disconnected');
-            updateBrokerStatusDot('mexc', 'disconnected');
+            updateBrokerStatusDot('kraken', 'disconnected');
             showBrokerError('ig', 'Verbindungsfehler');
-            showBrokerError('mexc', 'Verbindungsfehler');
+            showBrokerError('kraken', 'Verbindungsfehler');
         });
     }
     

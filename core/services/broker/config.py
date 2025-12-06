@@ -14,6 +14,7 @@ from .broker_service import BrokerService
 from .ig_broker_service import IgBrokerService
 from .kraken_broker_service import KrakenBrokerService
 from .mexc_broker_service import MexcBrokerService
+from .kraken_broker_service import KrakenBrokerService
 
 
 logger = logging.getLogger(__name__)

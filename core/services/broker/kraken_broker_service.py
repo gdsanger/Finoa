@@ -11,6 +11,7 @@ import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone as dt_timezone
+from decimal import Decimal
 from typing import Any, Dict, List, Optional, Literal
 from urllib.parse import urlencode
 import requests
@@ -563,7 +564,6 @@ class KrakenBrokerService(BrokerService):
         if not ticker:
             raise KrakenBrokerError(f"No ticker found for symbol {symbol}")
 
-        from decimal import Decimal
         bid = Decimal(str(ticker.get("bid", 0.0)))
         ask = Decimal(str(ticker.get("ask", 0.0)))
         spread = ask - bid
@@ -690,19 +690,19 @@ class KrakenBrokerService(BrokerService):
         if not product_id:
             return
 
-        bid = float(data.get("bid", 0.0))
-        ask = float(data.get("ask", 0.0))
-        mark = data.get("markPrice")
-        mark_val = float(mark) if mark is not None else (bid + ask) / 2.0
+        bid = Decimal(str(data.get("bid", 0.0)))
+        ask = Decimal(str(data.get("ask", 0.0)))
+        spread = ask - bid
 
         ts_raw = data.get("time") or data.get("timestamp")
         ts = self._parse_ws_timestamp(ts_raw)
 
         sp = SymbolPrice(
-            symbol=product_id,
+            epic=product_id,
+            market_name=product_id,
             bid=bid,
             ask=ask,
-            mark=mark_val,
+            spread=spread,
             timestamp=ts,
         )
 
@@ -913,8 +913,6 @@ class KrakenBrokerService(BrokerService):
             if opened_raw is not None:
                 opened_at = self._parse_ws_timestamp(opened_raw)
 
-            from decimal import Decimal
-            
             # Convert direction string to OrderDirection
             order_dir = OrderDirection.BUY if direction == "LONG" else OrderDirection.SELL
             
