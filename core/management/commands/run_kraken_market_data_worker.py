@@ -115,6 +115,7 @@ class KrakenMarketDataWorker:
         self._phase_resolvers: Dict[int, AssetPhaseResolver] = {}
         self._range_state: Dict[int, RangeState] = {}
         self._last_candle_ts: Dict[int, datetime] = {}
+        self._next_range_persist_ts: float = time.monotonic()
 
         for asset in assets:
             configs = AssetSessionPhaseConfig.get_enabled_phases_for_asset(asset)
@@ -124,6 +125,10 @@ class KrakenMarketDataWorker:
         return asset.broker_symbol or asset.epic
 
     def _finalize_range(self, asset: TradingAsset, state: RangeState) -> None:
+        self._persist_range_snapshot(asset, state)
+        self._range_state.pop(asset.id, None)
+
+    def _persist_range_snapshot(self, asset: TradingAsset, state: RangeState) -> None:
         if state.candle_count == 0:
             return
 
@@ -164,9 +169,7 @@ class KrakenMarketDataWorker:
 
         if phase is None or not resolver.is_range_phase(phase):
             # End any open range if we left the window
-            prev = self._range_state.pop(asset.id, None)
-            if prev:
-                self._finalize_range(asset, prev)
+            self._range_state.pop(asset.id, None)
             return
 
         current = self._range_state.get(asset.id)
@@ -174,7 +177,7 @@ class KrakenMarketDataWorker:
 
         if current is None or current.phase != phase:
             if current is not None:
-                self._finalize_range(asset, current)
+                self._range_state.pop(asset.id, None)
             self._range_state[asset.id] = RangeState(
                 phase=phase,
                 start_time=candle.time,
@@ -189,6 +192,13 @@ class KrakenMarketDataWorker:
         current.low = min(current.low, candle.low)
         current.candle_count += 1
         current.last_candle_end = candle_end
+
+    def _persist_active_ranges(self) -> None:
+        for asset_id, state in self._range_state.items():
+            asset = next((a for a in self.assets if a.id == asset_id), None)
+            if asset is None:
+                continue
+            self._persist_range_snapshot(asset, state)
 
     def _process_asset(self, asset: TradingAsset) -> None:
         symbol = self._get_symbol(asset)
@@ -219,9 +229,15 @@ class KrakenMarketDataWorker:
         logger.info("Starting Kraken price stream for assets: %s", ", ".join(symbols))
         self.broker.start_price_stream(symbols)
 
+        persist_interval = 60
+
         while not self.shutdown.should_stop:
             for asset in self.assets:
                 self._process_asset(asset)
+            now = time.monotonic()
+            if now >= self._next_range_persist_ts:
+                self._persist_active_ranges()
+                self._next_range_persist_ts = now + persist_interval
             time.sleep(interval_seconds)
 
         self._finalize_all()
