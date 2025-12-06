@@ -26,7 +26,7 @@ class CategoryAdmin(admin.ModelAdmin):
 @admin.register(Booking)
 class BookingAdmin(admin.ModelAdmin):
     list_display = ['booking_date', 'account', 'amount', 'category', 'payee', 'status', 'is_transfer']
-    list_filter = ['status', 'is_transfer', 'booking_date', 'account', 'payee']
+    list_filter = ['status', 'is_transfer', 'booking_date', 'account', 'payee', 'category']
     search_fields = ['description']
     date_hierarchy = 'booking_date'
 

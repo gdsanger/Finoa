@@ -101,6 +101,7 @@ class BreakoutRangeAdmin(admin.ModelAdmin):
         'last_adjusted_by',
         'last_adjusted_at',
     ]
+    list_filter = ['asset', 'phase']
     fieldsets = (
         (
             'Range Window',
