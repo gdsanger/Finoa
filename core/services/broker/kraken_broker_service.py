@@ -841,6 +841,90 @@ class KrakenBrokerService(BrokerService):
 
         return candles
 
+    def get_historical_prices(
+        self,
+        symbol: Optional[str] = None,
+        epic: Optional[str] = None,
+        interval: str = "1m",
+        num_points: int = 360,
+        **_: object,
+    ) -> List[dict]:
+        """
+        Get historical price data (candles) for a market.
+        
+        Uses the Kraken Charts API to fetch historical OHLC candlestick data.
+        This method provides compatibility with the broker-agnostic market data interface.
+        
+        Args:
+            symbol: Market symbol (e.g., 'PI_XBTUSD').
+            epic: Optional alias for symbol for compatibility with other broker interfaces.
+            interval: Candle interval ('1m' - currently only 1m is supported by Kraken Charts API).
+            num_points: Number of data points to retrieve (converted to hours for API call).
+            
+        Returns:
+            List of price data dictionaries, each containing:
+                - time: Unix timestamp in seconds
+                - open: Open price
+                - high: High price
+                - low: Low price
+                - close: Close price
+                - volume: Trading volume
+                
+        Raises:
+            ConnectionError: If not connected to the broker.
+            KrakenBrokerError: If prices cannot be retrieved.
+        """
+        self._ensure_connected()
+        
+        # Accept both symbol and epic for compatibility with broker-agnostic callers
+        symbol = symbol or epic or self._config.default_symbol
+        
+        # Calculate time window based on num_points
+        # For 1m candles: num_points minutes = num_points/60 hours
+        hours = max(1, int(num_points / 60))
+        
+        to_ts = timezone.now()
+        from_ts = to_ts - timedelta(hours=hours)
+        
+        params = {
+            "from": int(from_ts.timestamp() * 1000),
+            "to": int(to_ts.timestamp() * 1000),
+        }
+        path = f"/trade/{symbol}/1m"
+        
+        try:
+            payload = self._request(
+                "GET",
+                path,
+                params=params,
+                is_charts=True,
+                auth_required=False,
+            )
+            
+            candles_raw = payload.get("candles") or payload.get("result") or []
+            
+            candles = []
+            for c in candles_raw:
+                t_raw = c.get("time")
+                dt = self._parse_ws_timestamp(t_raw)
+                
+                candle = {
+                    "time": int(dt.timestamp()),  # Unix timestamp in seconds
+                    "open": float(c.get("open", 0.0)),
+                    "high": float(c.get("high", 0.0)),
+                    "low": float(c.get("low", 0.0)),
+                    "close": float(c.get("close", 0.0)),
+                    "volume": float(c.get("volume", 0.0)),
+                }
+                candles.append(candle)
+            
+            return candles
+            
+        except KrakenBrokerError:
+            raise
+        except Exception as e:
+            raise KrakenBrokerError(f"Failed to get historical prices for {symbol}: {e}")
+
     def get_live_candles_1m(self, symbol: Optional[str] = None) -> List[Candle1m]:
         """
         Liefert 1m-Candles (History + aktuelle laufende Candle).
