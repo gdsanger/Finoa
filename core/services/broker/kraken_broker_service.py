@@ -260,12 +260,10 @@ class KrakenBrokerService(BrokerService):
             for symbol in symbols:
                 try:
                     # Load last 6 hours of candles
-                    from_time = timezone.now() - timedelta(hours=6)
-                    candles = self._candle_store.get_range(
+                    candles = self._candle_store.load_candles(
                         asset_id=symbol,
                         timeframe='1m',
-                        start_time=from_time,
-                        end_time=timezone.now()
+                        window_hours=6
                     )
                     if candles:
                         # Convert to Candle1m format
