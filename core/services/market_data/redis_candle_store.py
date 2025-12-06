@@ -257,10 +257,42 @@ class RedisCandleStore:
         if window_hours is not None:
             min_ts = int((datetime.now(timezone.utc) - timedelta(hours=window_hours)).timestamp())
             candles = [c for c in candles if c.timestamp >= min_ts]
-        
+
         if count is not None:
             candles = candles[-count:]
-        
+
+        return sorted(candles, key=lambda c: c.timestamp)
+
+    def get_range(
+        self,
+        asset_id: str,
+        timeframe: str,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> List[Candle]:
+        """Load candles within a timestamp range (inclusive)."""
+        key = self._get_key(asset_id, timeframe)
+        start_ts = int(start_time.timestamp())
+        end_ts = int(end_time.timestamp())
+
+        redis_client = self._get_redis_client()
+        if redis_client:
+            try:
+                results = redis_client.zrangebyscore(key, start_ts, end_ts)
+                candles = [self._json_to_candle(r) for r in results]
+                return sorted(candles, key=lambda c: c.timestamp)
+            except Exception as e:
+                logger.error(f"Failed to load candle range from Redis: {e}")
+
+        # Fallback to in-memory store
+        if key not in self._fallback_store:
+            return []
+
+        candles = [
+            c
+            for c in self._fallback_store[key]
+            if start_ts <= c.timestamp <= end_ts
+        ]
         return sorted(candles, key=lambda c: c.timestamp)
     
     def get_latest_candle(
