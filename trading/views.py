@@ -498,9 +498,9 @@ def api_all_brokers_account_state(request):
     """
     GET /api/all-brokers-account-state - Return account state from all configured brokers.
     
-    Returns JSON with account information for both IG and MEXC brokers:
+    Returns JSON with account information for both IG and Kraken brokers:
     - ig: IG broker account state (if configured and connected)
-    - mexc: MEXC broker account state (if configured and connected)
+    - kraken: Kraken broker account state (if configured and connected)
     
     Each broker section contains:
     - connected: Whether the broker is connected
@@ -514,7 +514,7 @@ def api_all_brokers_account_state(request):
             'data': None,
             'error': None,
         },
-        'mexc': {
+        'kraken': {
             'connected': False,
             'data': None,
             'error': None,
@@ -556,38 +556,38 @@ def api_all_brokers_account_state(request):
         logger.error(f"Unexpected error fetching IG account state: {e}")
         result['ig']['error'] = 'Unbekannter Fehler'
     
-    # Try to get MEXC account state
+    # Try to get Kraken account state
     try:
-        mexc_broker = registry.get_mexc_broker()
-        mexc_account_state = mexc_broker.get_account_state()
-        result['mexc'] = {
+        kraken_broker = registry.get_kraken_broker()
+        kraken_account_state = kraken_broker.get_account_state()
+        result['kraken'] = {
             'connected': True,
             'data': {
-                'account_id': mexc_account_state.account_id,
-                'account_name': mexc_account_state.account_name,
-                'balance': str(mexc_account_state.balance),
-                'available': str(mexc_account_state.available),
-                'equity': str(mexc_account_state.equity),
-                'margin_used': str(mexc_account_state.margin_used),
-                'margin_available': str(mexc_account_state.margin_available),
-                'unrealized_pnl': str(mexc_account_state.unrealized_pnl),
-                'currency': mexc_account_state.currency,
-                'timestamp': mexc_account_state.timestamp.isoformat() if mexc_account_state.timestamp else None,
+                'account_id': kraken_account_state.account_id,
+                'account_name': kraken_account_state.account_name,
+                'balance': str(kraken_account_state.balance),
+                'available': str(kraken_account_state.available),
+                'equity': str(kraken_account_state.equity),
+                'margin_used': str(kraken_account_state.margin_used),
+                'margin_available': str(kraken_account_state.margin_available),
+                'unrealized_pnl': str(kraken_account_state.unrealized_pnl),
+                'currency': kraken_account_state.currency,
+                'timestamp': kraken_account_state.timestamp.isoformat() if kraken_account_state.timestamp else None,
             },
             'error': None,
         }
     except ImproperlyConfigured as e:
-        logger.warning(f"MEXC Broker not configured: {e}")
-        result['mexc']['error'] = 'Nicht konfiguriert'
+        logger.warning(f"Kraken Broker not configured: {e}")
+        result['kraken']['error'] = 'Nicht konfiguriert'
     except AuthenticationError as e:
-        logger.error(f"MEXC Broker authentication failed: {e}")
-        result['mexc']['error'] = 'Authentifizierung fehlgeschlagen'
+        logger.error(f"Kraken Broker authentication failed: {e}")
+        result['kraken']['error'] = 'Authentifizierung fehlgeschlagen'
     except (BrokerError, ConnectionError) as e:
-        logger.error(f"MEXC Broker error: {e}")
-        result['mexc']['error'] = f'Verbindungsfehler: {str(e)}'
+        logger.error(f"Kraken Broker error: {e}")
+        result['kraken']['error'] = f'Verbindungsfehler: {str(e)}'
     except Exception as e:
-        logger.error(f"Unexpected error fetching MEXC account state: {e}")
-        result['mexc']['error'] = 'Unbekannter Fehler'
+        logger.error(f"Unexpected error fetching Kraken account state: {e}")
+        result['kraken']['error'] = 'Unbekannter Fehler'
     
     # Clean up registry connections
     try:
