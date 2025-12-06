@@ -797,6 +797,11 @@ class Command(BaseCommand):
             str: Phase name for which range was built ('asia', 'london', 'pre_us'), or None if no range built
         """
         if current_price is None:
+            logger.debug(
+                "No current price available for %s in phase %s, skipping range build",
+                epic,
+                phase.value,
+            )
             return None
         
         # Get phase config to check if this is a range-building phase
@@ -814,6 +819,12 @@ class Command(BaseCommand):
             ]
         
         if not is_range_build:
+            logger.debug(
+                "Phase %s for %s is not marked as range-building (config present=%s), skipping",
+                phase.value,
+                epic,
+                bool(phase_config),
+            )
             return None
         
         # Use mid price to build per-phase ranges. Broker-provided high/low values
