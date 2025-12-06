@@ -1774,3 +1774,192 @@ class IGMarketStateProviderTest(TestCase):
         
         # Verify result
         self.assertEqual(result, (76.00, 74.50))
+
+
+class KrakenBrokerConfigTest(TestCase):
+    """Tests for Kraken Broker configuration and integration."""
+
+    def test_get_active_kraken_broker_config_success(self):
+        """Test retrieving active Kraken broker configuration."""
+        from core.models import KrakenBrokerConfig
+        from core.services.broker.config import get_active_kraken_broker_config
+        
+        # Create an active Kraken config
+        KrakenBrokerConfig.objects.create(
+            name="Test Kraken Config",
+            api_key="test-kraken-key",
+            api_secret="test-kraken-secret",
+            default_symbol="PF_ADAUSD",
+            account_type="DEMO",
+            is_active=True,
+        )
+        
+        config = get_active_kraken_broker_config()
+        self.assertEqual(config.name, "Test Kraken Config")
+        self.assertEqual(config.api_key, "test-kraken-key")
+        self.assertEqual(config.default_symbol, "PF_ADAUSD")
+
+    def test_get_active_kraken_broker_config_no_active(self):
+        """Test error when no active Kraken configuration exists."""
+        from core.models import KrakenBrokerConfig
+        from core.services.broker.config import get_active_kraken_broker_config
+        
+        # Create an inactive config
+        KrakenBrokerConfig.objects.create(
+            name="Inactive Kraken Config",
+            api_key="test-key",
+            api_secret="test-secret",
+            is_active=False,
+        )
+        
+        with self.assertRaises(ImproperlyConfigured) as context:
+            get_active_kraken_broker_config()
+        
+        self.assertIn("No active Kraken Broker configuration", str(context.exception))
+
+    @patch('core.services.broker.config.KrakenBrokerService')
+    def test_create_kraken_broker_service(self, mock_kraken_service_class):
+        """Test creating Kraken broker service from configuration."""
+        from core.models import KrakenBrokerConfig
+        from core.services.broker.config import create_kraken_broker_service
+        
+        # Create active config
+        config = KrakenBrokerConfig.objects.create(
+            name="Test Kraken",
+            api_key="test-key",
+            api_secret="test-secret",
+            default_symbol="PF_ADAUSD",
+            account_type="DEMO",
+            is_active=True,
+        )
+        
+        # Mock the from_config method
+        mock_service = MagicMock()
+        mock_kraken_service_class.from_config.return_value = mock_service
+        
+        # Create service
+        service = create_kraken_broker_service()
+        
+        # Verify from_config was called with the config
+        mock_kraken_service_class.from_config.assert_called_once()
+        call_args = mock_kraken_service_class.from_config.call_args[0][0]
+        self.assertEqual(call_args.name, "Test Kraken")
+        
+        # Verify service returned
+        self.assertEqual(service, mock_service)
+
+    @patch('core.services.broker.config.create_kraken_broker_service')
+    def test_broker_registry_get_kraken_broker(self, mock_create_kraken):
+        """Test BrokerRegistry.get_kraken_broker() method."""
+        from core.services.broker.config import BrokerRegistry
+        
+        # Reset registry for clean test
+        BrokerRegistry.reset_instance()
+        
+        # Mock broker service
+        mock_broker = MagicMock()
+        mock_create_kraken.return_value = mock_broker
+        
+        # Get registry instance and kraken broker
+        registry = BrokerRegistry.get_instance()
+        broker = registry.get_kraken_broker()
+        
+        # Verify broker was created and connected
+        mock_create_kraken.assert_called_once()
+        mock_broker.connect.assert_called_once()
+        self.assertEqual(broker, mock_broker)
+        
+        # Call again - should return cached broker without creating new one
+        broker2 = registry.get_kraken_broker()
+        self.assertEqual(broker2, mock_broker)
+        # Still only one call to create
+        mock_create_kraken.assert_called_once()
+
+    @patch('core.services.broker.config.create_kraken_broker_service')
+    def test_broker_registry_get_broker_for_kraken_asset(self, mock_create_kraken):
+        """Test BrokerRegistry.get_broker_for_asset() with KRAKEN asset."""
+        from core.services.broker.config import BrokerRegistry
+        from trading.models import TradingAsset
+        
+        # Reset registry for clean test
+        BrokerRegistry.reset_instance()
+        
+        # Create a Kraken asset
+        asset = TradingAsset.objects.create(
+            name="ADA/USD",
+            symbol="ADAUSD",
+            epic="PF_ADAUSD",
+            broker=TradingAsset.BrokerKind.KRAKEN,
+            broker_symbol="PF_ADAUSD",
+            category="crypto",
+            tick_size="0.0001",
+            is_active=True,
+        )
+        
+        # Mock broker service
+        mock_broker = MagicMock()
+        mock_create_kraken.return_value = mock_broker
+        
+        # Get broker for asset
+        registry = BrokerRegistry.get_instance()
+        broker = registry.get_broker_for_asset(asset)
+        
+        # Verify broker was created and connected
+        mock_create_kraken.assert_called_once()
+        mock_broker.connect.assert_called_once()
+        self.assertEqual(broker, mock_broker)
+
+    @patch('core.services.broker.config.create_kraken_broker_service')
+    def test_get_broker_service_for_kraken_asset(self, mock_create_kraken):
+        """Test get_broker_service_for_asset() function with KRAKEN asset."""
+        from core.services.broker.config import get_broker_service_for_asset
+        from trading.models import TradingAsset
+        
+        # Create a Kraken asset
+        asset = TradingAsset.objects.create(
+            name="ETH/USD",
+            symbol="ETHUSD",
+            epic="PF_ETHUSD",
+            broker=TradingAsset.BrokerKind.KRAKEN,
+            broker_symbol="PF_ETHUSD",
+            category="crypto",
+            tick_size="0.01",
+            is_active=True,
+        )
+        
+        # Mock broker service
+        mock_broker = MagicMock()
+        mock_create_kraken.return_value = mock_broker
+        
+        # Get broker service
+        broker = get_broker_service_for_asset(asset)
+        
+        # Verify broker was created
+        mock_create_kraken.assert_called_once()
+        self.assertEqual(broker, mock_broker)
+
+    def test_unsupported_broker_type_still_raises_error(self):
+        """Test that unsupported broker types still raise ValueError."""
+        from core.services.broker.config import BrokerRegistry
+        from trading.models import TradingAsset
+        
+        # Reset registry for clean test
+        BrokerRegistry.reset_instance()
+        
+        # Create an asset with an invalid broker type
+        asset = TradingAsset.objects.create(
+            name="Test Asset",
+            symbol="TEST",
+            epic="TEST",
+            broker="INVALID_BROKER",  # Not a valid BrokerKind
+            category="other",
+            tick_size="0.01",
+            is_active=True,
+        )
+        
+        # Try to get broker for asset
+        registry = BrokerRegistry.get_instance()
+        with self.assertRaises(ValueError) as context:
+            registry.get_broker_for_asset(asset)
+        
+        self.assertIn("Unsupported broker type", str(context.exception))
