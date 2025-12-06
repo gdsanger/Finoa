@@ -2743,7 +2743,7 @@ def htmx_open_positions(request):
             try:
                 # Get current price for the position's epic
                 current_price_obj = broker_service.get_symbol_price(position.epic)
-                current_price = float(current_price_obj.mid_price()) if current_price_obj else float(position.current_price)
+                current_price = float(current_price_obj.mid_price) if current_price_obj else float(position.current_price)
                 
                 # Calculate current value and PNL
                 entry_price = float(position.entry_price)
