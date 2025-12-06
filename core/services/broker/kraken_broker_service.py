@@ -74,7 +74,6 @@ class KrakenBrokerConfig:
 
     # Nur Host, ohne Pfad
     rest_base_url: str = "https://futures.kraken.com/derivatives"
-    charts_base_url: str = "https://futures.kraken.com/api/charts/v1"
     ws_public_url: str = "wss://futures.kraken.com/ws/v1"
 
     default_symbol: str = "PI_XBTUSD"
@@ -84,7 +83,6 @@ class KrakenBrokerConfig:
     def apply_demo(self) -> None:
         if self.use_demo:
             self.rest_base_url = "https://demo-futures.kraken.com/derivatives"
-            self.charts_base_url = "https://demo-futures.kraken.com/api/charts/v1"
             self.ws_public_url = "wss://demo-futures.kraken.com/ws/v1"
 
 
@@ -179,7 +177,7 @@ class KrakenBrokerService(BrokerService):
         candles = svc.get_live_candles_1m("PI_XBTUSD")
     """
 
-    def __init__(self, config: KrakenBrokerConfig) -> None:
+    def __init__(self, config: KrakenBrokerConfig, candle_store=None) -> None:
         self._config = config
         self._config.apply_demo()
 
@@ -198,6 +196,10 @@ class KrakenBrokerService(BrokerService):
         self._account_state_cache: Optional[AccountState] = None
         self._account_state_cache_ts: Optional[float] = None
         self._account_state_cache_ttl = 5.0  # seconds
+
+        # Candle persistence (lazy initialization to avoid import cycles)
+        self._candle_store = candle_store
+        self._candle_store_enabled = False
 
         self._lock = threading.Lock()
 
@@ -230,9 +232,6 @@ class KrakenBrokerService(BrokerService):
         if config_model.rest_base_url:
             config.rest_base_url = config_model.rest_base_url
 
-        if config_model.charts_base_url:
-            config.charts_base_url = config_model.charts_base_url
-
         if config_model.websocket_url:
             config.ws_public_url = config_model.websocket_url
 
@@ -241,6 +240,53 @@ class KrakenBrokerService(BrokerService):
     # -------------------------------------------------------------------------
     # Lifecycle
     # -------------------------------------------------------------------------
+
+    def _init_candle_store(self) -> None:
+        """Initialize candle store and load persisted candles."""
+        if self._candle_store is None:
+            try:
+                from core.services.market_data.redis_candle_store import get_candle_store
+                self._candle_store = get_candle_store()
+                self._candle_store_enabled = True
+                logger.info("Candle persistence enabled via Redis")
+            except Exception as e:
+                logger.warning(f"Could not initialize candle store: {e}. Candles will not be persisted.")
+                self._candle_store_enabled = False
+                return
+        
+        # Load persisted candles for configured symbols
+        if self._candle_store_enabled:
+            symbols = self._config.symbols or [self._config.default_symbol]
+            for symbol in symbols:
+                try:
+                    # Load last 6 hours of candles
+                    from_time = timezone.now() - timedelta(hours=6)
+                    candles = self._candle_store.get_range(
+                        asset_id=symbol,
+                        timeframe='1m',
+                        start_time=from_time,
+                        end_time=timezone.now()
+                    )
+                    if candles:
+                        # Convert to Candle1m format
+                        candle_objs = []
+                        for c in candles:
+                            candle_objs.append(
+                                Candle1m(
+                                    symbol=symbol,
+                                    time=datetime.fromtimestamp(c.timestamp, tz=dt_timezone.utc),
+                                    open=float(c.open),
+                                    high=float(c.high),
+                                    low=float(c.low),
+                                    close=float(c.close),
+                                    volume=float(c.volume) if c.volume else 0.0,
+                                )
+                            )
+                        with self._lock:
+                            self._candle_cache[symbol] = candle_objs
+                        logger.info(f"Loaded {len(candle_objs)} persisted candles for {symbol}")
+                except Exception as e:
+                    logger.warning(f"Could not load persisted candles for {symbol}: {e}")
 
     def connect(self) -> None:
         """
@@ -270,6 +316,9 @@ class KrakenBrokerService(BrokerService):
 
         self._connected = True
         logger.info("Successfully connected to Kraken Futures (REST v3)")
+
+        # Initialize candle store and load persisted candles
+        self._init_candle_store()
 
         symbols = self._config.symbols or [self._config.default_symbol]
         try:
@@ -373,13 +422,10 @@ class KrakenBrokerService(BrokerService):
         body: Optional[Dict[str, Any]] = None,
         params: Optional[Dict[str, Any]] = None,
         *,
-        is_charts: bool = False,
         auth_required: bool = False,
         timeout: int = 15,
     ) -> Dict[str, Any]:
-        base_url = (
-            self._config.charts_base_url if is_charts else self._config.rest_base_url
-        )
+        base_url = self._config.rest_base_url
         url = f"{base_url}{path}"
 
         if self._session is None:
@@ -403,7 +449,7 @@ class KrakenBrokerService(BrokerService):
                 params=params,
                 nonce=nonce,
             )
-        elif not is_charts:
+        else:
             headers["Content-Type"] = "application/json"
 
         if body:
@@ -433,15 +479,14 @@ class KrakenBrokerService(BrokerService):
                 f"Invalid JSON response from Kraken: {ex}"
             ) from ex
 
-        if not is_charts:
-            error_msg = payload.get("error")
-            if error_msg:
-                msg = str(error_msg)
-                if "auth" in msg.lower():
-                    raise KrakenAuthenticationError(
-                        f"Kraken v3 authentication error for {path}: {msg}"
-                    )
-                raise KrakenBrokerError(f"Kraken v3 error for {path}: {msg}")
+        error_msg = payload.get("error")
+        if error_msg:
+            msg = str(error_msg)
+            if "auth" in msg.lower():
+                raise KrakenAuthenticationError(
+                    f"Kraken v3 authentication error for {path}: {msg}"
+                )
+            raise KrakenBrokerError(f"Kraken v3 error for {path}: {msg}")
 
         return payload
 
@@ -773,18 +818,40 @@ class KrakenBrokerService(BrokerService):
                 cur["volume"] += volume
 
     def _append_candle_from_raw(self, symbol: str, candle: Dict[str, Any]) -> None:
-        candles = self._candle_cache.setdefault(symbol, [])
-        candles.append(
-            Candle1m(
-                symbol=symbol,
-                time=candle["time"],
-                open=float(candle["open"]),
-                high=float(candle["high"]),
-                low=float(candle["low"]),
-                close=float(candle["close"]),
-                volume=float(candle["volume"]),
-            )
+        candle_obj = Candle1m(
+            symbol=symbol,
+            time=candle["time"],
+            open=float(candle["open"]),
+            high=float(candle["high"]),
+            low=float(candle["low"]),
+            close=float(candle["close"]),
+            volume=float(candle["volume"]),
         )
+        
+        candles = self._candle_cache.setdefault(symbol, [])
+        candles.append(candle_obj)
+
+        # Persist to Redis if enabled
+        if self._candle_store_enabled and self._candle_store:
+            try:
+                from core.services.market_data.candle_models import Candle
+                # Convert to Candle model for Redis storage
+                redis_candle = Candle(
+                    timestamp=int(candle_obj.time.timestamp()),
+                    open=float(candle_obj.open),
+                    high=float(candle_obj.high),
+                    low=float(candle_obj.low),
+                    close=float(candle_obj.close),
+                    volume=float(candle_obj.volume),
+                    complete=True,
+                )
+                self._candle_store.append_candle(
+                    asset_id=symbol,
+                    timeframe='1m',
+                    candle=redis_candle,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to persist candle to Redis: {e}")
 
         six_hours_ago = timezone.now() - timedelta(hours=6)
         self._candle_cache[symbol] = [
@@ -793,52 +860,33 @@ class KrakenBrokerService(BrokerService):
 
     def get_candles_1m(self, symbol: Optional[str] = None, hours: int = 6) -> List[Candle1m]:
         """
-        Holt historische 1m-Candles der letzten `hours` Stunden aus der Charts-API
-        und befüllt den internen Cache.
+        Get 1-minute candles aggregated from WebSocket trade data.
+        
+        Kraken does not provide historical OHLC data via API. This method returns
+        candles that have been built from real-time trade data received via WebSocket.
+        
+        Args:
+            symbol: Market symbol (e.g., 'PI_XBTUSD'). Defaults to default_symbol.
+            hours: Time window in hours (up to 6 hours are cached).
+        
+        Returns:
+            List of Candle1m objects sorted by time.
+        
+        Note:
+            The service must be running and receiving WebSocket trade data for candles
+            to be available. After startup, it may take time to build up historical data.
         """
         self._ensure_connected()
         symbol = symbol or self._config.default_symbol
 
-        to_ts = timezone.now()
-        from_ts = to_ts - timedelta(hours=hours)
-
-        params = {
-            "from": int(from_ts.timestamp() * 1000),
-            "to": int(to_ts.timestamp() * 1000),
-        }
-        path = f"/trade/{symbol}/1m"
-
-        payload = self._request(
-            "GET",
-            path,
-            params=params,
-            is_charts=True,
-            auth_required=False,
-        )
-
-        candles_raw = payload.get("candles") or payload.get("result") or []
-
-        candles: List[Candle1m] = []
-        for c in candles_raw:
-            t_raw = c.get("time")
-            dt = self._parse_ws_timestamp(t_raw)
-            candles.append(
-                Candle1m(
-                    symbol=symbol,
-                    time=dt,
-                    open=float(c.get("open", 0.0)),
-                    high=float(c.get("high", 0.0)),
-                    low=float(c.get("low", 0.0)),
-                    close=float(c.get("close", 0.0)),
-                    volume=float(c.get("volume", 0.0)),
-                )
-            )
-
-        candles.sort(key=lambda x: x.time)
+        # Calculate cutoff time
+        cutoff = timezone.now() - timedelta(hours=hours)
 
         with self._lock:
-            self._candle_cache[symbol] = candles
-
+            # Get candles from cache
+            candles = [c for c in self._candle_cache.get(symbol, []) if c.time >= cutoff]
+        
+        candles.sort(key=lambda x: x.time)
         return candles
 
     def get_historical_prices(
@@ -852,14 +900,16 @@ class KrakenBrokerService(BrokerService):
         """
         Get historical price data (candles) for a market.
         
-        Uses the Kraken Charts API to fetch historical OHLC candlestick data.
+        Returns candles aggregated from WebSocket trade data. Kraken does not provide
+        historical OHLC data via API, so we build candles from real-time trades.
+        
         This method provides compatibility with the broker-agnostic market data interface.
         
         Args:
             symbol: Market symbol (e.g., 'PI_XBTUSD').
             epic: Optional alias for symbol for compatibility with other broker interfaces.
-            interval: Candle interval ('1m' - currently only 1m is supported by Kraken Charts API).
-            num_points: Number of data points to retrieve (converted to hours for API call).
+            interval: Candle interval ('1m' - only 1m is supported).
+            num_points: Number of data points to retrieve (up to 6 hours = 360 candles).
             
         Returns:
             List of price data dictionaries, each containing:
@@ -873,57 +923,57 @@ class KrakenBrokerService(BrokerService):
         Raises:
             ConnectionError: If not connected to the broker.
             KrakenBrokerError: If prices cannot be retrieved.
+        
+        Note:
+            Candles are built from WebSocket trade data. The service must be running
+            and receiving trade data for candles to be available. Initial startup may
+            have limited historical data until candles are aggregated.
         """
         self._ensure_connected()
         
         # Accept both symbol and epic for compatibility with broker-agnostic callers
         symbol = symbol or epic or self._config.default_symbol
         
-        # Calculate time window based on num_points
-        # For 1m candles: num_points minutes = num_points/60 hours
-        hours = max(1, int(num_points / 60))
+        # Get candles from cache (built from WebSocket trades)
+        with self._lock:
+            cached_candles = list(self._candle_cache.get(symbol, []))
+            current_candle = self._current_candle.get(symbol)
+            
+            # Include the current forming candle if available
+            if current_candle:
+                cached_candles.append(
+                    Candle1m(
+                        symbol=symbol,
+                        time=current_candle["time"],
+                        open=float(current_candle["open"]),
+                        high=float(current_candle["high"]),
+                        low=float(current_candle["low"]),
+                        close=float(current_candle["close"]),
+                        volume=float(current_candle["volume"]),
+                    )
+                )
         
-        to_ts = timezone.now()
-        from_ts = to_ts - timedelta(hours=hours)
+        # Sort by time
+        cached_candles.sort(key=lambda c: c.time)
         
-        params = {
-            "from": int(from_ts.timestamp() * 1000),
-            "to": int(to_ts.timestamp() * 1000),
-        }
-        path = f"/trade/{symbol}/1m"
+        # Limit to requested number of points
+        if num_points and len(cached_candles) > num_points:
+            cached_candles = cached_candles[-num_points:]
         
-        try:
-            payload = self._request(
-                "GET",
-                path,
-                params=params,
-                is_charts=True,
-                auth_required=False,
-            )
-            
-            candles_raw = payload.get("candles") or payload.get("result") or []
-            
-            candles = []
-            for c in candles_raw:
-                t_raw = c.get("time")
-                dt = self._parse_ws_timestamp(t_raw)
-                
-                candle = {
-                    "time": int(dt.timestamp()),  # Unix timestamp in seconds
-                    "open": float(c.get("open", 0.0)),
-                    "high": float(c.get("high", 0.0)),
-                    "low": float(c.get("low", 0.0)),
-                    "close": float(c.get("close", 0.0)),
-                    "volume": float(c.get("volume", 0.0)),
-                }
-                candles.append(candle)
-            
-            return candles
-            
-        except KrakenBrokerError:
-            raise
-        except Exception as e:
-            raise KrakenBrokerError(f"Failed to get historical prices for {symbol}: {e}")
+        # Convert to dictionary format expected by market data system
+        candles = []
+        for c in cached_candles:
+            candle = {
+                "time": int(c.time.timestamp()),  # Unix timestamp in seconds
+                "open": float(c.open),
+                "high": float(c.high),
+                "low": float(c.low),
+                "close": float(c.close),
+                "volume": float(c.volume),
+            }
+            candles.append(candle)
+        
+        return candles
 
     def get_live_candles_1m(self, symbol: Optional[str] = None) -> List[Candle1m]:
         """

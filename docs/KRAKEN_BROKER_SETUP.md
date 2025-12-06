@@ -6,8 +6,8 @@ This guide explains how to set up and configure the Kraken Pro Future broker int
 
 Kraken Pro Future provides a robust futures trading platform with:
 - **REST API v3** for account management and order execution
-- **Charts API** for historical candle data
 - **WebSocket v1** for real-time price feeds and trade data
+- **Candle Aggregation** - 1-minute candles built from WebSocket trade data (Kraken does not provide historical OHLC data)
 
 ## Prerequisites
 
@@ -66,9 +66,6 @@ Leave these empty for auto-detection, or override with custom URLs:
 - **REST Base URL**: Default is auto-detected based on account type
   - Demo: `https://demo-futures.kraken.com/derivatives`
   - Live: `https://futures.kraken.com/derivatives`
-- **Charts Base URL**: For historical data
-  - Demo: `https://demo-futures.kraken.com/api/charts/v1`
-  - Live: `https://futures.kraken.com/api/charts/v1`
 - **WebSocket URL**: For real-time data
   - Demo: `wss://demo-futures.kraken.com/ws/v1`
   - Live: `wss://futures.kraken.com/ws/v1`
@@ -120,8 +117,8 @@ The Kraken integration automatically connects to WebSocket feeds for:
 
 2. **Trade Data for Charting** (`trade` feed):
    - Individual trade execution data
-   - Automatic 1-minute candle aggregation
-   - Historical candle data from Charts API
+   - Automatic 1-minute candle aggregation from real-time trades
+   - Candles cached for the last 6 hours
 
 ### Position Management
 - View open positions
@@ -215,12 +212,9 @@ By default, the service subscribes to the `default_symbol`. To subscribe to mult
 - `GET /api/v3/openpositions` - Open positions
 - `POST /api/v3/sendorder` - Place orders
 
-### Charts API
-- `GET /trade/{symbol}/1m` - Historical 1-minute candles
-
 ### WebSocket v1
 - Subscribe to `ticker_lite` - Real-time prices
-- Subscribe to `trade` - Trade execution data
+- Subscribe to `trade` - Trade execution data (aggregated into 1-minute candles)
 
 ## Security Best Practices
 
@@ -238,6 +232,22 @@ By default, the service subscribes to the `default_symbol`. To subscribe to mult
 - [Kraken Support](https://support.kraken.com/)
 - Finoa Trading Setup Guide: `docs/TRADING_SETUP_GUIDE.md`
 
+## Important Notes
+
+### Candle Data Availability
+Kraken does not provide historical OHLC/candle data via their API. The integration builds 1-minute candles in real-time from WebSocket trade data:
+
+- **Initial Startup**: After connecting, the service needs to accumulate trade data to build candles
+- **Cache Duration**: Up to 6 hours of candles are kept in memory
+- **Persistence**: For longer-term historical data, consider implementing a separate storage solution
+- **Restart Impact**: When the service restarts, it starts building candles from scratch
+
+### Best Practices
+1. Keep the service running continuously to maintain candle history
+2. Allow 5-10 minutes after startup for initial candle accumulation
+3. Monitor the WebSocket connection to ensure continuous data flow
+4. Consider implementing persistent storage for production use
+
 ## Changelog
 
 - **2025-12-06**: Initial Kraken Pro Future integration
@@ -245,3 +255,4 @@ By default, the service subscribes to the `default_symbol`. To subscribe to mult
   - Implemented WebSocket integration for real-time data
   - Created KrakenBrokerConfig model
   - Added comprehensive admin interface
+  - Implemented real-time candle aggregation from trade data (no historical API available)
