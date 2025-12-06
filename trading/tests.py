@@ -4275,17 +4275,43 @@ class RedisCandleStoreTest(TestCase):
     def test_get_latest_candle(self):
         """Test getting latest candle."""
         from core.services.market_data import Candle
-        
+
         candles = [
             Candle(timestamp=1700000000 + i * 60, open=75.0, high=75.5, low=74.5, close=75.0 + i * 0.1)
             for i in range(5)
         ]
         self.store.append_candles(self.asset_id, self.timeframe, candles)
-        
+
         latest = self.store.get_latest_candle(self.asset_id, self.timeframe)
         self.assertIsNotNone(latest)
         self.assertEqual(latest.timestamp, 1700000000 + 4 * 60)
-    
+
+    def test_get_range(self):
+        """Test loading candles within a time range."""
+        from core.services.market_data import Candle
+
+        base_ts = 1700000000
+        candles = [
+            Candle(
+                timestamp=base_ts + i * 60,
+                open=75.0,
+                high=75.5,
+                low=74.5,
+                close=75.0 + i * 0.1,
+            )
+            for i in range(6)
+        ]
+        self.store.append_candles(self.asset_id, self.timeframe, candles)
+
+        start_time = timezone.datetime.fromtimestamp(base_ts + 2 * 60, tz=timezone.utc)
+        end_time = timezone.datetime.fromtimestamp(base_ts + 4 * 60, tz=timezone.utc)
+
+        ranged = self.store.get_range(self.asset_id, self.timeframe, start_time, end_time)
+
+        self.assertEqual(len(ranged), 3)
+        self.assertEqual(ranged[0].timestamp, base_ts + 2 * 60)
+        self.assertEqual(ranged[-1].timestamp, base_ts + 4 * 60)
+
     def test_clear_candles(self):
         """Test clearing candles."""
         from core.services.market_data import Candle
