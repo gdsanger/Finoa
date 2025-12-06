@@ -690,19 +690,22 @@ class KrakenBrokerService(BrokerService):
         if not product_id:
             return
 
-        bid = float(data.get("bid", 0.0))
-        ask = float(data.get("ask", 0.0))
+        from decimal import Decimal
+        bid = Decimal(str(data.get("bid", 0.0)))
+        ask = Decimal(str(data.get("ask", 0.0)))
+        spread = ask - bid
         mark = data.get("markPrice")
-        mark_val = float(mark) if mark is not None else (bid + ask) / 2.0
+        mark_val = float(mark) if mark is not None else (float(bid) + float(ask)) / 2.0
 
         ts_raw = data.get("time") or data.get("timestamp")
         ts = self._parse_ws_timestamp(ts_raw)
 
         sp = SymbolPrice(
-            symbol=product_id,
+            epic=product_id,
+            market_name=product_id,
             bid=bid,
             ask=ask,
-            mark=mark_val,
+            spread=spread,
             timestamp=ts,
         )
 
