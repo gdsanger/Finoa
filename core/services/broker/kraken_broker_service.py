@@ -855,6 +855,23 @@ class KrakenBrokerService(BrokerService):
             c for c in candles if c.time >= six_hours_ago
         ]
 
+    def flush_open_candles(self) -> None:
+        """Persist candles whose minute has completed even if no new trade arrived."""
+
+        cutoff = timezone.now().astimezone(dt_timezone.utc)
+        cutoff_minute = cutoff.replace(second=0, microsecond=0)
+
+        with self._lock:
+            stale_symbols: List[str] = []
+            for symbol, candle in list(self._current_candle.items()):
+                bucket_time: datetime = candle.get("time")
+                if bucket_time <= cutoff_minute - timedelta(minutes=1):
+                    self._append_candle_from_raw(symbol, candle)
+                    stale_symbols.append(symbol)
+
+            for symbol in stale_symbols:
+                self._current_candle.pop(symbol, None)
+
     def get_candles_1m(self, symbol: Optional[str] = None, hours: int = 6) -> List[Candle1m]:
         """
         Get 1-minute candles aggregated from WebSocket trade data.
@@ -874,6 +891,7 @@ class KrakenBrokerService(BrokerService):
             to be available. After startup, it may take time to build up historical data.
         """
         self._ensure_connected()
+        self.flush_open_candles()
         symbol = symbol or self._config.default_symbol
 
         # Calculate cutoff time
@@ -927,6 +945,7 @@ class KrakenBrokerService(BrokerService):
             have limited historical data until candles are aggregated.
         """
         self._ensure_connected()
+        self.flush_open_candles()
         
         # Accept both symbol and epic for compatibility with broker-agnostic callers
         symbol = symbol or epic or self._config.default_symbol
@@ -977,6 +996,7 @@ class KrakenBrokerService(BrokerService):
         Liefert 1m-Candles (History + aktuelle laufende Candle).
         Perfekt für das Dashboard (letzte 6h).
         """
+        self.flush_open_candles()
         symbol = symbol or self._config.default_symbol
         with self._lock:
             candles = list(self._candle_cache.get(symbol, []))
