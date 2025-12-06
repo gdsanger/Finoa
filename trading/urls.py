@@ -77,5 +77,9 @@ urlpatterns = [
     
     # Sidebar API
     path('api/sidebar/assets/', views.api_sidebar_assets, name='api_sidebar_assets'),
+    
+    # HTMX Endpoints for Dashboard Tabs
+    path('htmx/open-positions/', views.htmx_open_positions, name='htmx_open_positions'),
+    path('htmx/positions-today/', views.htmx_positions_today, name='htmx_positions_today'),
 ]
 

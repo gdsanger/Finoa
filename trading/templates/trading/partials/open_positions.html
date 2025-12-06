@@ -1,0 +1,52 @@
+{% if error %}
+<div class="alert alert-danger mb-0">
+    <i class="bi bi-exclamation-triangle"></i> {{ error }}
+</div>
+{% elif positions %}
+<div class="table-responsive">
+    <table class="positions-table">
+        <thead>
+            <tr>
+                <th>Asset</th>
+                <th>Side</th>
+                <th>Menge</th>
+                <th>Eröffnungspreis</th>
+                <th>Aktueller Preis</th>
+                <th>Wert</th>
+                <th>PNL</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for position in positions %}
+            <tr>
+                <td><strong>{{ position.epic }}</strong></td>
+                <td>
+                    <span class="position-side-{{ position.direction|lower }}">
+                        {% if position.direction == 'LONG' %}
+                            <i class="bi bi-arrow-up-circle-fill"></i> Long
+                        {% else %}
+                            <i class="bi bi-arrow-down-circle-fill"></i> Short
+                        {% endif %}
+                    </span>
+                </td>
+                <td>{{ position.size|floatformat:2 }}</td>
+                <td>{{ position.entry_price|floatformat:4 }}</td>
+                <td>{{ position.current_price|floatformat:4 }}</td>
+                <td>{{ position.current_value|floatformat:2 }} {{ position.currency }}</td>
+                <td>
+                    <span class="{% if position.pnl >= 0 %}position-pnl-positive{% else %}position-pnl-negative{% endif %}">
+                        {{ position.pnl|floatformat:2 }} {{ position.currency }}
+                    </span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="empty-state">
+    <i class="bi bi-inbox"></i>
+    <h5>Keine offenen Positionen</h5>
+    <p>Es sind derzeit keine offenen Positionen vorhanden.</p>
+</div>
+{% endif %}

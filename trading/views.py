@@ -2714,3 +2714,128 @@ def api_sidebar_assets(request):
             'success': False,
             'error': 'Fehler beim Laden der Assets',
         }, status=500)
+
+
+@login_required
+def htmx_open_positions(request):
+    """
+    HTMX endpoint for open positions table.
+    Returns HTML partial with open positions from Kraken broker.
+    Auto-refreshes every 5 seconds via HTMX.
+    """
+    try:
+        # Get Kraken broker service
+        broker_service = BrokerRegistry.get_kraken_broker()
+        
+        if not broker_service:
+            return render(request, 'trading/partials/open_positions.html', {
+                'error': 'Kraken Broker nicht konfiguriert',
+                'positions': []
+            })
+        
+        # Fetch open positions
+        positions = broker_service.get_open_positions()
+        
+        # Get current prices for PNL calculation
+        positions_data = []
+        for position in positions:
+            try:
+                # Get current price for the position's epic
+                current_price_obj = broker_service.get_symbol_price(position.epic)
+                current_price = float(current_price_obj.mid_price()) if current_price_obj else float(position.current_price)
+                
+                # Calculate current value and PNL
+                entry_price = float(position.entry_price)
+                size = float(position.size)
+                
+                if position.direction.name == 'LONG':
+                    pnl = (current_price - entry_price) * size
+                    current_value = current_price * size
+                else:  # SHORT
+                    pnl = (entry_price - current_price) * size
+                    current_value = current_price * size
+                
+                positions_data.append({
+                    'position_id': position.position_id,
+                    'epic': position.epic,
+                    'direction': position.direction.name,
+                    'size': size,
+                    'entry_price': entry_price,
+                    'current_price': current_price,
+                    'current_value': current_value,
+                    'pnl': pnl,
+                    'currency': position.currency or 'USD',
+                })
+            except Exception as e:
+                logger.error(f"Error processing position {position.position_id}: {e}")
+                continue
+        
+        return render(request, 'trading/partials/open_positions.html', {
+            'positions': positions_data,
+            'error': None
+        })
+        
+    except (BrokerError, AuthenticationError) as e:
+        logger.error(f"Broker error fetching open positions: {e}")
+        return render(request, 'trading/partials/open_positions.html', {
+            'error': f'Broker Fehler: {str(e)}',
+            'positions': []
+        })
+    except Exception as e:
+        logger.error(f"Error fetching open positions: {e}")
+        return render(request, 'trading/partials/open_positions.html', {
+            'error': 'Fehler beim Laden der Positionen',
+            'positions': []
+        })
+
+
+@login_required
+def htmx_positions_today(request):
+    """
+    HTMX endpoint for today's closed positions table.
+    Returns HTML partial with positions closed today from database.
+    """
+    try:
+        # Get today's date range
+        today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_end = today_start + timedelta(days=1)
+        
+        # Fetch closed trades from today
+        trades = Trade.objects.filter(
+            status='CLOSED',
+            closed_at__gte=today_start,
+            closed_at__lt=today_end
+        ).select_related('signal', 'signal__trading_asset').order_by('-closed_at')
+        
+        positions_data = []
+        for trade in trades:
+            try:
+                asset_name = trade.signal.trading_asset.name if trade.signal.trading_asset else trade.signal.instrument
+                
+                positions_data.append({
+                    'id': str(trade.id),
+                    'asset': asset_name,
+                    'direction': trade.signal.direction,
+                    'size': float(trade.position_size) if trade.position_size else 0,
+                    'entry_price': float(trade.entry_price) if trade.entry_price else 0,
+                    'exit_price': float(trade.exit_price) if trade.exit_price else 0,
+                    'pnl': float(trade.realized_pnl) if trade.realized_pnl else 0,
+                    'opened_at': trade.opened_at,
+                    'closed_at': trade.closed_at,
+                    'trade_type': trade.get_trade_type_display(),
+                })
+            except Exception as e:
+                logger.error(f"Error processing trade {trade.id}: {e}")
+                continue
+        
+        return render(request, 'trading/partials/positions_today.html', {
+            'positions': positions_data,
+            'error': None
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching today's positions: {e}")
+        return render(request, 'trading/partials/positions_today.html', {
+            'error': 'Fehler beim Laden der Positionen',
+            'positions': []
+        })
