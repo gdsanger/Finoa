@@ -2249,10 +2249,10 @@ class KrakenBrokerConfigTest(TestCase):
             resolution="1m",
         )
         
-        # Verify request was made correctly
+        # Verify request was made correctly with default tick_type='mark'
         service._session.get.assert_called_once()
         call_args = service._session.get.call_args
-        self.assertIn("https://futures.kraken.com/api/charts/v1/trade/PI_XBTUSD/1m", call_args[0])
+        self.assertIn("https://futures.kraken.com/api/charts/v1/mark/PI_XBTUSD/1m", call_args[0])
         
         # Verify candles were parsed correctly
         self.assertEqual(len(candles), 3)

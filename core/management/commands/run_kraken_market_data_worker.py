@@ -4,7 +4,7 @@ Fetches Kraken 1m candle data from Charts API v1, stores them in Redis,
 and builds session-phase ranges for breakout trading.
 
 Uses the public Kraken Charts API endpoint:
-https://futures.kraken.com/api/charts/v1/trade/:symbol/1m
+https://futures.kraken.com/api/charts/v1/mark/:symbol/1m
 
 Polls once per minute (configurable) to fetch the latest candle data.
 Only active Kraken assets are processed. Session times are taken from each
@@ -27,6 +27,7 @@ from django.db import transaction
 from core.services.broker.config import BrokerRegistry
 from core.services.broker.kraken_broker_service import KrakenBrokerService
 from core.services.broker.models import Candle1m
+from core.services.market_data.redis_candle_store import get_candle_store
 from core.services.strategy.models import SessionPhase
 from trading.models import AssetSessionPhaseConfig, BreakoutRange, TradingAsset
 
@@ -134,6 +135,26 @@ class KrakenMarketDataWorker:
 
     def _get_symbol(self, asset: TradingAsset) -> str:
         return asset.broker_symbol or asset.epic
+    
+    def _trim_to_720_candles(self, symbol: str) -> None:
+        """Ensure Redis contains at most 720 candles (12 hours) for the symbol."""
+        try:
+            candle_store = get_candle_store()
+            
+            if not candle_store.is_connected:
+                return
+            
+            redis_client = candle_store._get_redis_client()
+            if redis_client:
+                key = candle_store._get_key(symbol, '1m')
+                count = redis_client.zcard(key)
+                if count > 720:
+                    # Remove oldest candles to keep exactly 720
+                    excess = count - 720
+                    redis_client.zpopmin(key, excess)
+                    logger.debug("Trimmed %d old candles for %s (keeping 720)", excess, symbol)
+        except Exception as exc:
+            logger.debug("Failed to trim candles for %s: %s", symbol, exc)
 
     def _finalize_range(self, asset: TradingAsset, state: RangeState) -> None:
         self._persist_range_snapshot(asset, state)
@@ -261,48 +282,87 @@ class KrakenMarketDataWorker:
         """
         Fetch candles from Charts API and process them.
         
-        Fetches the last 12 hours of candle data and stores them in Redis.
-        Only processes candles that are newer than the last seen candle.
+        First run: Fetches last 12 hours (720 candles) and overwrites Redis.
+        Subsequent runs: Fetches latest data and appends only newest candle.
         """
         try:
             symbol = self._get_symbol(asset)
             last_ts = self._last_candle_ts.get(asset.id)
+            is_first_run = last_ts is None
 
-            # Calculate time window for fetching (last 12 hours)
+            # Calculate time window for fetching
             now = datetime.now(timezone.utc)
-            from_time = now - timedelta(hours=12)
             
-            # Fetch candles from Charts API
+            if is_first_run:
+                # First run: fetch 12 hours of history
+                from_time = now - timedelta(hours=12)
+                logger.info("First run for %s: fetching 12h of candles from Charts API", symbol)
+            else:
+                # Subsequent runs: fetch recent data (last 5 minutes to ensure we get the latest)
+                from_time = now - timedelta(minutes=5)
+            
+            # Fetch candles from Charts API with tick_type='mark'
             try:
                 candles = self.broker.fetch_candles_from_charts_api(
                     symbol=symbol,
                     resolution="1m",
                     from_timestamp=int(from_time.timestamp() * 1000),
                     to_timestamp=int(now.timestamp() * 1000),
+                    tick_type="mark",
                 )
             except Exception as exc:
                 logger.warning("Failed to fetch candles for %s from Charts API: %s", symbol, exc)
                 return
             
-            logger.debug("Fetched %d candles for %s", len(candles), symbol)
-            
-            # Store all candles in Redis via the broker's candle store
-            if self.broker.is_candle_store_enabled():
-                for candle in candles:
-                    self.broker.store_candle_to_redis(symbol, candle)
-
-            # Filter for new candles only
-            new_candles = [c for c in candles if last_ts is None or c.time > last_ts]
-
-            if not new_candles:
+            if not candles:
+                logger.debug("No candles returned for %s", symbol)
                 return
-
-            new_candles.sort(key=lambda c: c.time)
-            for candle in new_candles:
-                self._handle_candle(asset, candle)
-
-            self._last_candle_ts[asset.id] = new_candles[-1].time
-            logger.debug("Processed %d new candles for %s", len(new_candles), symbol)
+            
+            # Sort candles by time ascending
+            candles.sort(key=lambda c: c.time)
+            
+            if is_first_run:
+                # First run: take last 720 candles and overwrite Redis
+                candles_to_store = candles[-720:] if len(candles) > 720 else candles
+                logger.info("Storing %d candles for %s (12h history)", len(candles_to_store), symbol)
+                
+                # Clear existing data and store all 720 candles
+                if self.broker.is_candle_store_enabled():
+                    # Clear existing candles for this asset
+                    candle_store = get_candle_store()
+                    candle_store.clear(asset_id=symbol, timeframe='1m')
+                    
+                    # Store all candles
+                    for candle in candles_to_store:
+                        self.broker.store_candle_to_redis(symbol, candle)
+                    
+                    # Verify we have exactly 720 candles
+                    logger.info("Stored %d candles for %s in Redis", len(candles_to_store), symbol)
+                
+                # Process all candles for range building
+                for candle in candles_to_store:
+                    self._handle_candle(asset, candle)
+                
+                if candles_to_store:
+                    self._last_candle_ts[asset.id] = candles_to_store[-1].time
+                    logger.info("Initialized %s with %d candles", symbol, len(candles_to_store))
+            else:
+                # Subsequent runs: only process the newest candle
+                newest_candle = candles[-1]
+                
+                # Only store if it's actually newer than what we've seen
+                if newest_candle.time > last_ts:
+                    if self.broker.is_candle_store_enabled():
+                        self.broker.store_candle_to_redis(symbol, newest_candle)
+                        # Ensure we maintain at most 720 candles
+                        self._trim_to_720_candles(symbol)
+                    
+                    self._handle_candle(asset, newest_candle)
+                    self._last_candle_ts[asset.id] = newest_candle.time
+                    logger.debug("Stored new candle for %s at %s", symbol, newest_candle.time)
+                else:
+                    logger.debug("No new candles for %s (latest: %s)", symbol, newest_candle.time)
+                    
         except Exception as exc:
             # Catch any exception to ensure one asset's error doesn't stop others
             logger.exception("Error processing asset %s: %s", asset.symbol, exc)

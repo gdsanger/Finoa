@@ -49,7 +49,7 @@ class KrakenMarketDataWorkerTest(TestCase):
             tick_size=0.05,
         )
         
-        # Create sample candles
+        # Create sample candles (mimicking Charts API response - no trade_count)
         now = datetime.now(timezone.utc)
         self.sample_candles = [
             Candle1m(
@@ -60,13 +60,13 @@ class KrakenMarketDataWorkerTest(TestCase):
                 low=49900.0 + i,
                 close=50050.0 + i,
                 volume=100.0,
-                trade_count=10,
+                trade_count=0,  # Charts API doesn't provide trade count
             )
             for i in range(5)
         ]
 
     def test_process_asset_fetches_12_hours(self):
-        """Test that _process_asset fetches 12 hours of candle data."""
+        """Test that _process_asset fetches 12 hours of candle data with mark tick_type."""
         # Mock the fetch_candles_from_charts_api method
         self.mock_broker.fetch_candles_from_charts_api.return_value = self.sample_candles
         
@@ -80,6 +80,8 @@ class KrakenMarketDataWorkerTest(TestCase):
         # Verify symbol parameter
         self.assertEqual(call_args.kwargs['symbol'], 'PI_XBTUSD')
         self.assertEqual(call_args.kwargs['resolution'], '1m')
+        # Verify tick_type is 'mark'
+        self.assertEqual(call_args.kwargs['tick_type'], 'mark')
         
         # Verify time window is 12 hours
         from_ts = call_args.kwargs['from_timestamp']
@@ -156,6 +158,44 @@ class KrakenMarketDataWorkerTest(TestCase):
             worker._process_asset(self.asset1)
         except Exception as e:
             self.fail(f"_process_asset raised exception instead of catching it: {e}")
+    
+    def test_subsequent_run_fetches_only_newest_candle(self):
+        """Test that subsequent runs only fetch and store the newest candle."""
+        # First run - establish last_ts
+        self.mock_broker.fetch_candles_from_charts_api.return_value = self.sample_candles
+        worker = KrakenMarketDataWorker(self.mock_broker, [self.asset1])
+        worker._process_asset(self.asset1)
+        
+        # Reset mock
+        self.mock_broker.reset_mock()
+        
+        # Second run - should fetch recent data and only store newest
+        now = datetime.now(timezone.utc)
+        new_candle = Candle1m(
+            symbol="PI_XBTUSD",
+            time=now,
+            open=51000.0,
+            high=51100.0,
+            low=50900.0,
+            close=51050.0,
+            volume=150.0,
+            trade_count=0,  # Charts API doesn't provide trade count
+        )
+        self.mock_broker.fetch_candles_from_charts_api.return_value = [new_candle]
+        
+        worker._process_asset(self.asset1)
+        
+        # Verify fetch was called with shorter time window (5 minutes)
+        call_args = self.mock_broker.fetch_candles_from_charts_api.call_args
+        from_ts = call_args.kwargs['from_timestamp']
+        to_ts = call_args.kwargs['to_timestamp']
+        time_diff_minutes = (to_ts - from_ts) / (1000 * 60)  # Convert ms to minutes
+        self.assertAlmostEqual(time_diff_minutes, 5.0, delta=0.5)
+        
+        # Verify only one candle was stored (the newest)
+        self.mock_broker.store_candle_to_redis.assert_called_once()
+        stored_candle = self.mock_broker.store_candle_to_redis.call_args[0][1]
+        self.assertEqual(stored_candle.time, new_candle.time)
 
 
 class KrakenMarketDataWorkerCommandTest(TestCase):
