@@ -49,7 +49,7 @@ class KrakenMarketDataWorkerTest(TestCase):
             tick_size=0.05,
         )
         
-        # Create sample candles
+        # Create sample candles (mimicking Charts API response - no trade_count)
         now = datetime.now(timezone.utc)
         self.sample_candles = [
             Candle1m(
@@ -60,7 +60,7 @@ class KrakenMarketDataWorkerTest(TestCase):
                 low=49900.0 + i,
                 close=50050.0 + i,
                 volume=100.0,
-                trade_count=10,
+                trade_count=0,  # Charts API doesn't provide trade count
             )
             for i in range(5)
         ]
@@ -179,7 +179,7 @@ class KrakenMarketDataWorkerTest(TestCase):
             low=50900.0,
             close=51050.0,
             volume=150.0,
-            trade_count=15,
+            trade_count=0,  # Charts API doesn't provide trade count
         )
         self.mock_broker.fetch_candles_from_charts_api.return_value = [new_candle]
         
