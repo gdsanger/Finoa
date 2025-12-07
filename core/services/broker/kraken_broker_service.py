@@ -241,6 +241,42 @@ class KrakenBrokerService(BrokerService):
     # Lifecycle
     # -------------------------------------------------------------------------
 
+    def _load_persisted_candles_for_symbol(self, symbol: str) -> None:
+        """Load persisted candles for a specific symbol from the candle store."""
+        if not self._candle_store_enabled or symbol in self._candle_cache:
+            return
+        
+        try:
+            # Load last 6 hours of candles
+            from_time = timezone.now() - timedelta(hours=6)
+            candles = self._candle_store.get_range(
+                asset_id=symbol,
+                timeframe='1m',
+                start_time=from_time,
+                end_time=timezone.now()
+            )
+            if candles:
+                # Convert to Candle1m format
+                candle_objs = []
+                for c in candles:
+                    candle_objs.append(
+                        Candle1m(
+                            symbol=symbol,
+                            time=datetime.fromtimestamp(c.timestamp, tz=dt_timezone.utc),
+                            open=float(c.open),
+                            high=float(c.high),
+                            low=float(c.low),
+                            close=float(c.close),
+                            volume=float(c.volume) if c.volume else 0.0,
+                            trade_count=int(c.trade_count) if c.trade_count else 0,
+                        )
+                    )
+                with self._lock:
+                    self._candle_cache[symbol] = candle_objs
+                logger.info(f"Loaded {len(candle_objs)} persisted candles for {symbol}")
+        except Exception as e:
+            logger.warning(f"Could not load persisted candles for {symbol}: {e}")
+
     def _init_candle_store(self) -> None:
         """Initialize candle store and load persisted candles."""
         if self._candle_store is None:
@@ -258,36 +294,7 @@ class KrakenBrokerService(BrokerService):
         if self._candle_store_enabled:
             symbols = self._config.symbols or [self._config.default_symbol]
             for symbol in symbols:
-                try:
-                    # Load last 6 hours of candles
-                    from_time = timezone.now() - timedelta(hours=6)
-                    candles = self._candle_store.get_range(
-                        asset_id=symbol,
-                        timeframe='1m',
-                        start_time=from_time,
-                        end_time=timezone.now()
-                    )
-                    if candles:
-                        # Convert to Candle1m format
-                        candle_objs = []
-                        for c in candles:
-                            candle_objs.append(
-                                Candle1m(
-                                    symbol=symbol,
-                                    time=datetime.fromtimestamp(c.timestamp, tz=dt_timezone.utc),
-                                    open=float(c.open),
-                                    high=float(c.high),
-                                    low=float(c.low),
-                                    close=float(c.close),
-                                    volume=float(c.volume) if c.volume else 0.0,
-                                    trade_count=int(c.trade_count) if c.trade_count else 0,
-                                )
-                            )
-                        with self._lock:
-                            self._candle_cache[symbol] = candle_objs
-                        logger.info(f"Loaded {len(candle_objs)} persisted candles for {symbol}")
-                except Exception as e:
-                    logger.warning(f"Could not load persisted candles for {symbol}: {e}")
+                self._load_persisted_candles_for_symbol(symbol)
 
     def connect(self) -> None:
         """
@@ -334,21 +341,8 @@ class KrakenBrokerService(BrokerService):
         """
         self._connected = False
 
-        if self._ws:
-            try:
-                self._ws_stop_event.set()
-                sock = getattr(self._ws, "sock", None)
-                if sock and getattr(sock, "connected", False):
-                    self._ws.close()
-                else:
-                    self._ws.keep_running = False
-            except Exception:
-                logger.exception("Error while closing Kraken WebSocket")
-            self._ws = None
-
-        if self._ws_thread and self._ws_thread.is_alive():
-            self._ws_thread.join(timeout=5.0)
-            self._ws_thread = None
+        # Stop the price stream
+        self._stop_price_stream()
 
         if self._session:
             try:
@@ -641,19 +635,64 @@ class KrakenBrokerService(BrokerService):
     # WebSocket – Ticker & Trades
     # -------------------------------------------------------------------------
 
+    def _stop_price_stream(self) -> None:
+        """
+        Stop the WebSocket price stream.
+        Internal helper method used when restarting with different symbols.
+        """
+        if self._ws:
+            try:
+                self._ws_stop_event.set()
+                sock = getattr(self._ws, "sock", None)
+                if sock and getattr(sock, "connected", False):
+                    self._ws.close()
+                else:
+                    self._ws.keep_running = False
+            except Exception:
+                logger.exception("Error while closing Kraken WebSocket")
+            self._ws = None
+
+        if self._ws_thread and self._ws_thread.is_alive():
+            self._ws_thread.join(timeout=5.0)
+            self._ws_thread = None
+        
+        logger.debug("Price stream stopped")
+
     def start_price_stream(self, symbols: Optional[List[str]] = None) -> None:
         """
         Startet öffentlichen WebSocket-Feed für:
         - ticker_lite → Live-Bid/Ask
         - trade → Candle-Aggregation (1m)
+        
+        If symbols are provided and differ from currently streaming symbols,
+        the stream will be restarted with the new symbol list.
         """
+        # Determine the target symbols
+        target_symbols = symbols if symbols else (self._config.symbols or [self._config.default_symbol])
+        
+        # If stream is already running, check if we need to restart with different symbols
         if self._ws_thread and self._ws_thread.is_alive():
-            return
+            current_symbols = self._config.symbols or [self._config.default_symbol]
+            # Compare as sets to ignore order differences
+            if set(target_symbols) == set(current_symbols):
+                logger.debug("Price stream already running with same symbols, no restart needed")
+                return
+            
+            # Symbols changed - need to restart the stream
+            logger.info("Restarting price stream with updated symbols: %s -> %s", current_symbols, target_symbols)
+            self._stop_price_stream()
 
+        # Update config with new symbols
         if symbols:
             self._config.symbols = symbols
 
         symbols = self._config.symbols or [self._config.default_symbol]
+        
+        # Load persisted candles for any new symbols
+        if self._candle_store_enabled:
+            for symbol in symbols:
+                self._load_persisted_candles_for_symbol(symbol)
+        
         self._ws_stop_event.clear()
 
         def _on_open(wsapp: WebSocketApp) -> None:
