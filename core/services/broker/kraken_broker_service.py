@@ -1271,7 +1271,7 @@ class KrakenBrokerService(BrokerService):
                         low=float(candle_data[3]),
                         close=float(candle_data[4]),
                         volume=float(candle_data[5]),
-                        trade_count=0,  # Charts API doesn't provide trade count
+                        trade_count=0,  # Charts API doesn't provide trade count, use 0 as default
                     )
                     candles.append(candle)
             

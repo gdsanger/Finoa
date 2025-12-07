@@ -27,6 +27,7 @@ from django.db import transaction
 from core.services.broker.config import BrokerRegistry
 from core.services.broker.kraken_broker_service import KrakenBrokerService
 from core.services.broker.models import Candle1m
+from core.services.market_data.redis_candle_store import get_candle_store
 from core.services.strategy.models import SessionPhase
 from trading.models import AssetSessionPhaseConfig, BreakoutRange, TradingAsset
 
@@ -138,7 +139,6 @@ class KrakenMarketDataWorker:
     def _trim_to_720_candles(self, symbol: str) -> None:
         """Ensure Redis contains at most 720 candles (12 hours) for the symbol."""
         try:
-            from core.services.market_data.redis_candle_store import get_candle_store
             candle_store = get_candle_store()
             
             if not candle_store.is_connected:
@@ -329,7 +329,6 @@ class KrakenMarketDataWorker:
                 # Clear existing data and store all 720 candles
                 if self.broker.is_candle_store_enabled():
                     # Clear existing candles for this asset
-                    from core.services.market_data.redis_candle_store import get_candle_store
                     candle_store = get_candle_store()
                     candle_store.clear(asset_id=symbol, timeframe='1m')
                     
