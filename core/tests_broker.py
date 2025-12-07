@@ -2152,7 +2152,7 @@ class KrakenBrokerConfigTest(TestCase):
                 mock_stop.assert_called_once()
                 
                 # Verify config was updated with new symbols
-                self.assertEqual(set(service._config.symbols), set(new_symbols))
+                self.assertSetEqual(set(service._config.symbols), set(new_symbols))
                 
                 # Verify new WebSocket was created
                 mock_ws_app.assert_called_once()
