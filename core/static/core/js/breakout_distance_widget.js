@@ -347,7 +347,7 @@
             // Update volume histogram if series exists
             if (this.volumeSeries) {
                 const volumeData = this.currentCandles
-                    .filter(c => c.volume !== null && c.volume !== undefined)
+                    .filter(c => c.volume != null)
                     .map(c => ({
                         time: c.time,
                         value: c.volume,
