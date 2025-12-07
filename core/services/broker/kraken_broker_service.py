@@ -243,8 +243,13 @@ class KrakenBrokerService(BrokerService):
 
     def _load_persisted_candles_for_symbol(self, symbol: str) -> None:
         """Load persisted candles for a specific symbol from the candle store."""
-        if not self._candle_store_enabled or symbol in self._candle_cache:
+        if not self._candle_store_enabled:
             return
+        
+        # Check if already loaded (with lock to prevent race condition)
+        with self._lock:
+            if symbol in self._candle_cache:
+                return
         
         try:
             # Load last 6 hours of candles
@@ -272,8 +277,10 @@ class KrakenBrokerService(BrokerService):
                         )
                     )
                 with self._lock:
-                    self._candle_cache[symbol] = candle_objs
-                logger.info(f"Loaded {len(candle_objs)} persisted candles for {symbol}")
+                    # Double-check in case another thread loaded it while we were loading
+                    if symbol not in self._candle_cache:
+                        self._candle_cache[symbol] = candle_objs
+                        logger.info(f"Loaded {len(candle_objs)} persisted candles for {symbol}")
         except Exception as e:
             logger.warning(f"Could not load persisted candles for {symbol}: {e}")
 
@@ -686,11 +693,11 @@ class KrakenBrokerService(BrokerService):
         if symbols:
             self._config.symbols = symbols
 
-        symbols = self._config.symbols or [self._config.default_symbol]
+        active_symbols = self._config.symbols or [self._config.default_symbol]
         
         # Load persisted candles for any new symbols
         if self._candle_store_enabled:
-            for symbol in symbols:
+            for symbol in active_symbols:
                 self._load_persisted_candles_for_symbol(symbol)
         
         self._ws_stop_event.clear()
@@ -700,14 +707,14 @@ class KrakenBrokerService(BrokerService):
             sub_ticker = {
                 "event": "subscribe",
                 "feed": "ticker_lite",
-                "product_ids": symbols,
+                "product_ids": active_symbols,
             }
             wsapp.send(json.dumps(sub_ticker))
 
             sub_trade = {
                 "event": "subscribe",
                 "feed": "trade",
-                "product_ids": symbols,
+                "product_ids": active_symbols,
             }
             wsapp.send(json.dumps(sub_trade))
 
@@ -765,7 +772,7 @@ class KrakenBrokerService(BrokerService):
         )
         self._ws_thread.start()
 
-        logger.info("Kraken WebSocket stream started for symbols=%s", symbols)
+        logger.info("Kraken WebSocket stream started for symbols=%s", active_symbols)
 
     def _handle_ticker_message(self, data: Dict[str, Any]) -> None:
         product_id = data.get("product_id") or data.get("symbol")
