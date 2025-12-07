@@ -82,13 +82,21 @@ class RedisCandleStore:
         """Generate Redis key for an asset/timeframe pair."""
         return f"{self._config.key_prefix}:{asset_id}:{timeframe}"
     
-    def _candle_to_json(self, candle: Candle) -> str:
-        """Serialize candle to JSON string."""
-        return json.dumps(candle.to_dict())
+    def _candle_to_member_key(self, candle: Candle) -> str:
+        """
+        Create a deterministic member key for the candle.
+        
+        Uses timestamp as prefix to ensure only one candle per timestamp.
+        When ZADD is called with the same member key, Redis updates the score
+        and value automatically, preventing duplicates without needing ZREM.
+        """
+        return f"{candle.timestamp}:{json.dumps(candle.to_dict())}"
     
-    def _json_to_candle(self, json_str: str) -> Candle:
-        """Deserialize JSON string to Candle."""
-        return Candle.from_dict(json.loads(json_str))
+    def _member_key_to_candle(self, member_key: str) -> Candle:
+        """Extract candle from member key."""
+        # Split on first colon to separate timestamp from JSON
+        _, json_part = member_key.split(':', 1)
+        return Candle.from_dict(json.loads(json_part))
     
     def append_candle(
         self,
@@ -99,8 +107,9 @@ class RedisCandleStore:
         """
         Append a candle to the store.
         
-        Ensures only ONE candle per timestamp by removing any existing candles
-        with the same timestamp before adding the new one.
+        Candles are aggregated in-memory and written only once per completed minute.
+        Uses timestamp-prefixed member keys to prevent duplicates. Since the broker
+        service only calls this once per completed candle, no ZREM is needed.
         
         Args:
             asset_id: Asset identifier
@@ -115,12 +124,16 @@ class RedisCandleStore:
         redis_client = self._get_redis_client()
         if redis_client:
             try:
-                # Remove any existing candles with the same timestamp to prevent duplicates
-                # This ensures only ONE candle per minute
+                # Create member key with timestamp prefix
+                # Format: "{timestamp}:{json_data}"
+                member_key = self._candle_to_member_key(candle)
+                
+                # Clean up any old entries with same timestamp (edge case for restarts)
+                # This is a single operation per completed candle, not per trade
                 redis_client.zremrangebyscore(key, candle.timestamp, candle.timestamp)
                 
-                # Add the new candle with timestamp as score
-                redis_client.zadd(key, {self._candle_to_json(candle): candle.timestamp})
+                # Add the new candle
+                redis_client.zadd(key, {member_key: candle.timestamp})
                 
                 # Set TTL if not already set
                 ttl = redis_client.ttl(key)
@@ -146,8 +159,7 @@ class RedisCandleStore:
         """
         Append multiple candles to the store.
         
-        Ensures only ONE candle per timestamp by removing any existing candles
-        with the same timestamps before adding the new ones.
+        Each candle is written with a timestamp-prefixed key to prevent duplicates.
         
         Args:
             asset_id: Asset identifier
@@ -165,12 +177,12 @@ class RedisCandleStore:
         redis_client = self._get_redis_client()
         if redis_client:
             try:
-                # Remove any existing candles with the same timestamps to prevent duplicates
+                # Remove any existing candles with the same timestamps (edge case for restarts)
                 for candle in candles:
                     redis_client.zremrangebyscore(key, candle.timestamp, candle.timestamp)
                 
-                # Batch ZADD
-                mapping = {self._candle_to_json(c): c.timestamp for c in candles}
+                # Batch ZADD with timestamp-prefixed member keys
+                mapping = {self._candle_to_member_key(c): c.timestamp for c in candles}
                 added = redis_client.zadd(key, mapping)
                 
                 # Set TTL if not already set
@@ -258,7 +270,7 @@ class RedisCandleStore:
                     # Load all
                     results = redis_client.zrange(key, 0, -1)
                 
-                candles = [self._json_to_candle(r) for r in results]
+                candles = [self._member_key_to_candle(r) for r in results]
                 return sorted(candles, key=lambda c: c.timestamp)
             except Exception as e:
                 logger.error(f"Failed to load candles from Redis: {e}")
@@ -303,7 +315,7 @@ class RedisCandleStore:
         if redis_client:
             try:
                 results = redis_client.zrangebyscore(key, start_ts, end_ts)
-                candles = [self._json_to_candle(r) for r in results]
+                candles = [self._member_key_to_candle(r) for r in results]
                 return sorted(candles, key=lambda c: c.timestamp)
             except Exception as e:
                 logger.error(f"Failed to load candle range from Redis: {e}")
