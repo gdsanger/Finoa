@@ -1181,6 +1181,7 @@ class KrakenBrokerService(BrokerService):
         try:
             from core.services.market_data.candle_models import Candle
             
+            # Store candle without trade_count field since Charts API doesn't provide it
             redis_candle = Candle(
                 timestamp=int(candle.time.timestamp()),
                 open=float(candle.open),
@@ -1188,7 +1189,7 @@ class KrakenBrokerService(BrokerService):
                 low=float(candle.low),
                 close=float(candle.close),
                 volume=float(candle.volume),
-                trade_count=int(candle.trade_count),
+                trade_count=None,  # Charts API doesn't provide trade count
                 complete=True,
             )
             self._candle_store.append_candle(
@@ -1207,18 +1208,20 @@ class KrakenBrokerService(BrokerService):
         resolution: str = "1m",
         from_timestamp: Optional[int] = None,
         to_timestamp: Optional[int] = None,
+        tick_type: str = "mark",
     ) -> List[Candle1m]:
         """
         Fetch OHLC candle data from Kraken Charts API v1.
         
         This is a public endpoint that provides historical candle data without authentication.
-        Endpoint: https://futures.kraken.com/api/charts/v1/trade/:symbol/:resolution
+        Endpoint: https://futures.kraken.com/api/charts/v1/:tick_type/:symbol/:resolution
         
         Args:
             symbol: Trading symbol (e.g., 'PI_XBTUSD')
             resolution: Candle resolution ('1m' for 1 minute)
             from_timestamp: Optional start timestamp in milliseconds
             to_timestamp: Optional end timestamp in milliseconds
+            tick_type: Type of tick data ('mark' or 'trade'). Default is 'mark'.
             
         Returns:
             List of Candle1m objects sorted by time
@@ -1226,8 +1229,8 @@ class KrakenBrokerService(BrokerService):
         Raises:
             KrakenBrokerError: If the API request fails
         """
-        # Build the URL
-        url = f"{self._config.charts_base_url}/trade/{symbol}/{resolution}"
+        # Build the URL with tick_type
+        url = f"{self._config.charts_base_url}/{tick_type}/{symbol}/{resolution}"
         
         # Add query parameters if provided
         params = {}
