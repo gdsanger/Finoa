@@ -9,6 +9,8 @@ from datetime import datetime, timedelta, timezone
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
+from django.utils import timezone as dj_timezone
+
 from core.services.broker.kraken_broker_service import KrakenBrokerService, KrakenBrokerConfig
 from core.services.broker.models import Candle1m
 from core.services.market_data.candle_models import Candle
@@ -127,8 +129,6 @@ class TestKrakenCandleOpenCloseCorrectness(TestCase):
     
     def test_open_is_first_close_is_last_price(self):
         """Test that open=first price and close=last price in a minute."""
-        from django.utils import timezone as dj_timezone
-        
         base_time = dj_timezone.now().astimezone(timezone.utc).replace(second=0, microsecond=0)
         
         # Trade 1 at beginning of minute: price=100
@@ -152,8 +152,6 @@ class TestKrakenCandleOpenCloseCorrectness(TestCase):
     
     def test_single_trade_open_equals_close(self):
         """Test that with a single trade, open=close."""
-        from django.utils import timezone as dj_timezone
-        
         base_time = dj_timezone.now().astimezone(timezone.utc).replace(second=0, microsecond=0)
         
         # Only one trade
@@ -189,8 +187,6 @@ class TestKrakenCandleGapFilling(TestCase):
     
     def test_fill_candle_gaps_with_zero_volume(self):
         """Test that gaps are filled with zero-volume candles."""
-        from django.utils import timezone as dj_timezone
-        
         base_time = dj_timezone.now().astimezone(timezone.utc).replace(second=0, microsecond=0)
         
         # Create candles with gaps
@@ -241,8 +237,6 @@ class TestKrakenCandleGapFilling(TestCase):
     
     def test_no_gaps_no_filling(self):
         """Test that consecutive candles are not modified."""
-        from django.utils import timezone as dj_timezone
-        
         base_time = dj_timezone.now().astimezone(timezone.utc).replace(second=0, microsecond=0)
         
         # Create consecutive candles (no gaps)

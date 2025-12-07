@@ -20,6 +20,7 @@ from websocket import WebSocketApp  # websocket-client
 from django.utils import timezone
 
 from core.models import KrakenBrokerConfig as KrakenBrokerConfigModel
+from core.services.market_data.candle_models import Candle
 from .broker_service import BrokerService, BrokerError, AuthenticationError
 from .models import (
     AccountState,
@@ -881,7 +882,6 @@ class KrakenBrokerService(BrokerService):
         # Persist to Redis if enabled
         if self._candle_store_enabled and self._candle_store:
             try:
-                from core.services.market_data.candle_models import Candle
                 # Convert to Candle model for Redis storage
                 redis_candle = Candle(
                     timestamp=int(candle_obj.time.timestamp()),
@@ -979,7 +979,6 @@ class KrakenBrokerService(BrokerService):
                     # Persist to Redis if enabled
                     if self._candle_store_enabled and self._candle_store:
                         try:
-                            from core.services.market_data.candle_models import Candle
                             redis_candle = Candle(
                                 timestamp=int(gap_candle.time.timestamp()),
                                 open=float(gap_candle.open),
