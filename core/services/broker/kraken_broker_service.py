@@ -1255,7 +1255,8 @@ class KrakenBrokerService(BrokerService):
             
             for candle_data in candles_data:
                 # Charts API returns: [timestamp, open, high, low, close, volume]
-                if len(candle_data) >= CHARTS_API_EXPECTED_CANDLE_FIELDS:
+                # Ensure exact format to catch API changes early
+                if len(candle_data) == CHARTS_API_EXPECTED_CANDLE_FIELDS:
                     timestamp_ms = int(candle_data[0])
                     timestamp_dt = datetime.fromtimestamp(timestamp_ms / 1000.0, tz=dt_timezone.utc)
                     

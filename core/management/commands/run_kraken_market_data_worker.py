@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_FETCH_INTERVAL_SECONDS = 60  # Poll Charts API once per minute
 RANGE_PERSIST_INTERVAL_SECONDS = 60  # Persist range updates once per minute
 WORKER_SLEEP_INTERVAL_SECONDS = 5  # Sleep between iterations to avoid busy-waiting
+DEFAULT_TICK_SIZE = 0.01  # Default tick size when asset tick_size is 0 or invalid
 
 
 @dataclass
@@ -153,7 +154,7 @@ class KrakenMarketDataWorker:
         
         # Calculate range metrics
         height_points = Decimal(str(state.high)) - Decimal(str(state.low))
-        tick_size_decimal = Decimal(str(asset.tick_size)) if asset.tick_size > 0 else Decimal('0.01')
+        tick_size_decimal = Decimal(str(asset.tick_size)) if asset.tick_size > 0 else Decimal(str(DEFAULT_TICK_SIZE))
         height_ticks = int((height_points / tick_size_decimal).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
         
         try:
