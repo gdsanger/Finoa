@@ -18,6 +18,7 @@ import signal
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Dict, Iterable, List, Optional
 
 from django.core.management.base import BaseCommand
@@ -150,8 +151,6 @@ class KrakenMarketDataWorker:
 
         end_time = state.last_candle_end or state.start_time
         
-        from decimal import Decimal, ROUND_HALF_UP
-        
         # Calculate range metrics
         height_points = Decimal(str(state.high)) - Decimal(str(state.low))
         tick_size_decimal = Decimal(str(asset.tick_size)) if asset.tick_size > 0 else Decimal('0.01')
@@ -168,7 +167,7 @@ class KrakenMarketDataWorker:
                 ).first()
                 
                 if existing_range:
-                    # Update existing record
+                    # Update existing record with optimized query
                     existing_range.end_time = end_time
                     existing_range.high = Decimal(str(state.high))
                     existing_range.low = Decimal(str(state.low))
@@ -176,7 +175,10 @@ class KrakenMarketDataWorker:
                     existing_range.height_points = height_points
                     existing_range.candle_count = state.candle_count
                     existing_range.is_valid = True
-                    existing_range.save()
+                    existing_range.save(update_fields=[
+                        'end_time', 'high', 'low', 'height_ticks',
+                        'height_points', 'candle_count', 'is_valid'
+                    ])
                     logger.debug(
                         "Updated %s range for %s: high=%.5f low=%.5f candles=%s",
                         state.phase.value,

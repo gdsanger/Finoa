@@ -40,6 +40,10 @@ logger = logging.getLogger("core.services.kraken_broker_service")
 _kraken_service: "KrakenBrokerService" | None = None
 _kraken_service_lock = threading.Lock()
 
+# Charts API v1 response format constant
+# Charts API returns candles as: [timestamp, open, high, low, close, volume]
+CHARTS_API_EXPECTED_CANDLE_FIELDS = 6
+
 
 # =============================================================================
 # Domain-Modelle für Lumina v2 – brokerneutral, aber Kraken-optimiert
@@ -1249,11 +1253,9 @@ class KrakenBrokerService(BrokerService):
             candles = []
             candles_data = data.get('candles', [])
             
-            # Charts API returns: [timestamp, open, high, low, close, volume]
-            EXPECTED_CANDLE_FIELDS = 6
-            
             for candle_data in candles_data:
-                if len(candle_data) >= EXPECTED_CANDLE_FIELDS:
+                # Charts API returns: [timestamp, open, high, low, close, volume]
+                if len(candle_data) >= CHARTS_API_EXPECTED_CANDLE_FIELDS:
                     timestamp_ms = int(candle_data[0])
                     timestamp_dt = datetime.fromtimestamp(timestamp_ms / 1000.0, tz=dt_timezone.utc)
                     
