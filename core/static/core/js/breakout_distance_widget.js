@@ -30,6 +30,7 @@
             this.priceLines = {};
             this.chart = null;
             this.candlestickSeries = null;
+            this.volumeSeries = null;
             this.refreshInterval = null;
             this.initialized = false;
             this.activeRequestToken = 0;
@@ -71,6 +72,7 @@
             }
             this.chart = null;
             this.candlestickSeries = null;
+            this.volumeSeries = null;
             this.priceLines = {};
             this.currentCandles = [];
             this.initialized = false;
@@ -265,6 +267,18 @@
                 wickDownColor: '#22c55e',
             });
 
+            // Add volume histogram below the candlestick chart
+            this.volumeSeries = this.chart.addHistogramSeries({
+                priceFormat: {
+                    type: 'volume',
+                },
+                priceScaleId: '',
+                scaleMargins: {
+                    top: 0.8,
+                    bottom: 0,
+                },
+            });
+
             this.priceLines = {};
         }
 
@@ -322,6 +336,18 @@
             }
 
             this.candlestickSeries.setData(this.currentCandles);
+            
+            // Update volume histogram
+            if (this.volumeSeries) {
+                const volumeData = this.currentCandles
+                    .filter(c => c.volume !== undefined && c.volume !== null)
+                    .map(c => ({
+                        time: c.time,
+                        value: c.volume,
+                        color: c.close >= c.open ? '#4caf50' : '#eb4034'
+                    }));
+                this.volumeSeries.setData(volumeData);
+            }
         }
 
         updateDataStatus(statusData) {
