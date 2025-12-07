@@ -4,7 +4,7 @@ Fetches Kraken 1m candle data from Charts API v1, stores them in Redis,
 and builds session-phase ranges for breakout trading.
 
 Uses the public Kraken Charts API endpoint:
-https://futures.kraken.com/api/charts/v1/mark/:symbol/1m
+https://futures.kraken.com/api/charts/v1/trade/:symbol/1m
 
 Polls once per minute (configurable) to fetch the latest candle data.
 Only active Kraken assets are processed. Session times are taken from each
@@ -301,14 +301,14 @@ class KrakenMarketDataWorker:
                 # Subsequent runs: fetch recent data (last 5 minutes to ensure we get the latest)
                 from_time = now - timedelta(minutes=5)
             
-            # Fetch candles from Charts API with tick_type='mark'
+            # Fetch candles from Charts API with tick_type='trade'
             try:
                 candles = self.broker.fetch_candles_from_charts_api(
                     symbol=symbol,
                     resolution="1m",
                     from_timestamp=int(from_time.timestamp() * 1000),
                     to_timestamp=int(now.timestamp() * 1000),
-                    tick_type="mark",
+                    tick_type="trade",
                 )
             except Exception as exc:
                 logger.warning("Failed to fetch candles for %s from Charts API: %s", symbol, exc)
