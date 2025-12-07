@@ -2213,3 +2213,130 @@ class KrakenBrokerConfigTest(TestCase):
             for symbol in symbols:
                 self.assertIn(symbol, service._candle_cache)
                 self.assertEqual(len(service._candle_cache[symbol]), 1)
+
+    def test_kraken_fetch_candles_from_charts_api(self):
+        """Test fetching candles from Kraken Charts API v1."""
+        from core.services.broker.kraken_broker_service import KrakenBrokerService, KrakenBrokerConfig
+        from unittest.mock import MagicMock, patch
+        from datetime import datetime, timezone
+        
+        config = KrakenBrokerConfig(
+            api_key="test-key",
+            api_secret="test-secret",
+            default_symbol="PI_XBTUSD",
+            use_demo=False,
+        )
+        
+        service = KrakenBrokerService(config)
+        service._session = MagicMock()
+        
+        # Mock API response with sample candle data
+        # Charts API returns: [timestamp_ms, open, high, low, close, volume]
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            'candles': [
+                [1701964800000, 42000.0, 42100.0, 41900.0, 42050.0, 100.5],
+                [1701964860000, 42050.0, 42150.0, 42000.0, 42100.0, 95.3],
+                [1701964920000, 42100.0, 42200.0, 42050.0, 42150.0, 110.7],
+            ]
+        }
+        service._session.get.return_value = mock_response
+        
+        # Fetch candles
+        candles = service.fetch_candles_from_charts_api(
+            symbol="PI_XBTUSD",
+            resolution="1m",
+        )
+        
+        # Verify request was made correctly
+        service._session.get.assert_called_once()
+        call_args = service._session.get.call_args
+        self.assertIn("https://futures.kraken.com/api/charts/v1/trade/PI_XBTUSD/1m", call_args[0])
+        
+        # Verify candles were parsed correctly
+        self.assertEqual(len(candles), 3)
+        self.assertEqual(candles[0].symbol, "PI_XBTUSD")
+        self.assertEqual(float(candles[0].open), 42000.0)
+        self.assertEqual(float(candles[0].high), 42100.0)
+        self.assertEqual(float(candles[0].low), 41900.0)
+        self.assertEqual(float(candles[0].close), 42050.0)
+        self.assertEqual(float(candles[0].volume), 100.5)
+        
+        # Verify candles are sorted by time
+        self.assertLess(candles[0].time, candles[1].time)
+        self.assertLess(candles[1].time, candles[2].time)
+
+    def test_kraken_fetch_candles_from_charts_api_with_time_range(self):
+        """Test fetching candles with time range parameters."""
+        from core.services.broker.kraken_broker_service import KrakenBrokerService, KrakenBrokerConfig
+        from unittest.mock import MagicMock
+        
+        config = KrakenBrokerConfig(
+            api_key="test-key",
+            api_secret="test-secret",
+            default_symbol="PI_XBTUSD",
+            use_demo=False,
+        )
+        
+        service = KrakenBrokerService(config)
+        service._session = MagicMock()
+        
+        # Mock API response
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {'candles': []}
+        service._session.get.return_value = mock_response
+        
+        # Fetch with time range
+        from_ts = 1701964800000
+        to_ts = 1701968400000
+        service.fetch_candles_from_charts_api(
+            symbol="PI_XBTUSD",
+            resolution="1m",
+            from_timestamp=from_ts,
+            to_timestamp=to_ts,
+        )
+        
+        # Verify time parameters were included
+        call_args = service._session.get.call_args
+        self.assertEqual(call_args[1]['params']['from'], from_ts)
+        self.assertEqual(call_args[1]['params']['to'], to_ts)
+
+    def test_kraken_fetch_candles_charts_api_error_handling(self):
+        """Test error handling when Charts API fails."""
+        from core.services.broker.kraken_broker_service import (
+            KrakenBrokerService, 
+            KrakenBrokerConfig,
+            KrakenBrokerError
+        )
+        from unittest.mock import MagicMock
+        import requests
+        
+        config = KrakenBrokerConfig(
+            api_key="test-key",
+            api_secret="test-secret",
+            default_symbol="PI_XBTUSD",
+        )
+        
+        service = KrakenBrokerService(config)
+        service._session = MagicMock()
+        
+        # Test HTTP error
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.text = "Internal Server Error"
+        service._session.get.return_value = mock_response
+        
+        with self.assertRaises(KrakenBrokerError) as context:
+            service.fetch_candles_from_charts_api(symbol="PI_XBTUSD")
+        
+        self.assertIn("Charts API error", str(context.exception))
+        
+        # Test network error
+        service._session.get.side_effect = requests.exceptions.RequestException("Network error")
+        
+        with self.assertRaises(KrakenBrokerError) as context:
+            service.fetch_candles_from_charts_api(symbol="PI_XBTUSD")
+        
+        self.assertIn("Failed to fetch candles from Charts API", str(context.exception))
