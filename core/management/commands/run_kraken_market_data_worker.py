@@ -261,44 +261,51 @@ class KrakenMarketDataWorker:
         """
         Fetch candles from Charts API and process them.
         
-        Fetches the last 6 hours of candle data and stores them in Redis.
+        Fetches the last 12 hours of candle data and stores them in Redis.
         Only processes candles that are newer than the last seen candle.
         """
-        symbol = self._get_symbol(asset)
-        last_ts = self._last_candle_ts.get(asset.id)
-
-        # Calculate time window for fetching (last 6 hours)
-        now = datetime.now(timezone.utc)
-        from_time = now - timedelta(hours=6)
-        
-        # Fetch candles from Charts API
         try:
-            candles = self.broker.fetch_candles_from_charts_api(
-                symbol=symbol,
-                resolution="1m",
-                from_timestamp=int(from_time.timestamp() * 1000),
-                to_timestamp=int(now.timestamp() * 1000),
-            )
+            symbol = self._get_symbol(asset)
+            last_ts = self._last_candle_ts.get(asset.id)
+
+            # Calculate time window for fetching (last 12 hours)
+            now = datetime.now(timezone.utc)
+            from_time = now - timedelta(hours=12)
+            
+            # Fetch candles from Charts API
+            try:
+                candles = self.broker.fetch_candles_from_charts_api(
+                    symbol=symbol,
+                    resolution="1m",
+                    from_timestamp=int(from_time.timestamp() * 1000),
+                    to_timestamp=int(now.timestamp() * 1000),
+                )
+            except Exception as exc:
+                logger.warning("Failed to fetch candles for %s from Charts API: %s", symbol, exc)
+                return
+            
+            logger.debug("Fetched %d candles for %s", len(candles), symbol)
+            
+            # Store all candles in Redis via the broker's candle store
+            if self.broker.is_candle_store_enabled():
+                for candle in candles:
+                    self.broker.store_candle_to_redis(symbol, candle)
+
+            # Filter for new candles only
+            new_candles = [c for c in candles if last_ts is None or c.time > last_ts]
+
+            if not new_candles:
+                return
+
+            new_candles.sort(key=lambda c: c.time)
+            for candle in new_candles:
+                self._handle_candle(asset, candle)
+
+            self._last_candle_ts[asset.id] = new_candles[-1].time
+            logger.debug("Processed %d new candles for %s", len(new_candles), symbol)
         except Exception as exc:
-            logger.warning("Failed to fetch candles for %s from Charts API: %s", symbol, exc)
-            return
-        
-        # Store all candles in Redis via the broker's candle store
-        if self.broker.is_candle_store_enabled():
-            for candle in candles:
-                self.broker.store_candle_to_redis(symbol, candle)
-
-        # Filter for new candles only
-        new_candles = [c for c in candles if last_ts is None or c.time > last_ts]
-
-        if not new_candles:
-            return
-
-        new_candles.sort(key=lambda c: c.time)
-        for candle in new_candles:
-            self._handle_candle(asset, candle)
-
-        self._last_candle_ts[asset.id] = new_candles[-1].time
+            # Catch any exception to ensure one asset's error doesn't stop others
+            logger.exception("Error processing asset %s: %s", asset.symbol, exc)
 
     def _finalize_all(self) -> None:
         for asset_id, state in list(self._range_state.items()):
@@ -332,7 +339,9 @@ class KrakenMarketDataWorker:
             
             # Fetch new candles once per minute
             if now >= self._next_fetch_ts:
+                logger.debug("Fetching candles for %d assets", len(self.assets))
                 for asset in self.assets:
+                    logger.debug("Processing asset: %s (%s)", asset.symbol, asset.epic)
                     self._process_asset(asset)
                 self._next_fetch_ts = now + fetch_interval
             
