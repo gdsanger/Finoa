@@ -2098,3 +2098,118 @@ class KrakenBrokerConfigTest(TestCase):
         self.assertEqual(candles[0].low, 41990.0)
         self.assertEqual(candles[0].close, 41990.0)
         self.assertEqual(candles[0].volume, 4.5)
+
+    def test_kraken_start_price_stream_symbol_change_restart(self):
+        """Test that start_price_stream restarts when symbols change."""
+        from core.services.broker.kraken_broker_service import KrakenBrokerService, KrakenBrokerConfig
+        from unittest.mock import MagicMock, patch
+        import threading
+        
+        config = KrakenBrokerConfig(
+            api_key="test-key",
+            api_secret="test-secret",
+            default_symbol="PI_XBTUSD",
+            use_demo=True,
+        )
+        
+        service = KrakenBrokerService(config)
+        service._connected = True
+        service._session = MagicMock()
+        service._candle_store_enabled = False
+        
+        # Mock WebSocket and thread
+        mock_ws = MagicMock()
+        mock_thread = MagicMock()
+        mock_thread.is_alive.return_value = True
+        service._ws = mock_ws
+        service._ws_thread = mock_thread
+        service._config.symbols = ["PI_XBTUSD"]
+        
+        # Mock the _stop_price_stream method to verify it's called
+        with patch.object(service, '_stop_price_stream') as mock_stop:
+            # Simulate starting stream with same symbols - should not restart
+            service.start_price_stream(["PI_XBTUSD"])
+            mock_stop.assert_not_called()
+            
+            # Reset the mock
+            mock_stop.reset_mock()
+            
+            # Simulate starting stream with different symbols - should restart
+            with patch('core.services.broker.kraken_broker_service.WebSocketApp') as mock_ws_app, \
+                 patch('core.services.broker.kraken_broker_service.threading.Thread') as mock_thread_class:
+                
+                # Configure mocks
+                mock_ws_instance = MagicMock()
+                mock_ws_app.return_value = mock_ws_instance
+                mock_new_thread = MagicMock()
+                mock_thread_class.return_value = mock_new_thread
+                
+                # Call with new symbols
+                new_symbols = ["PI_XBTUSD", "PF_ETHUSD", "PF_LTCUSD"]
+                service.start_price_stream(new_symbols)
+                
+                # Verify stop was called
+                mock_stop.assert_called_once()
+                
+                # Verify config was updated with new symbols
+                self.assertEqual(set(service._config.symbols), set(new_symbols))
+                
+                # Verify new WebSocket was created
+                mock_ws_app.assert_called_once()
+                
+                # Verify new thread was started
+                mock_new_thread.start.assert_called_once()
+
+    def test_kraken_load_persisted_candles_for_new_symbols(self):
+        """Test that persisted candles are loaded for new symbols when stream starts."""
+        from core.services.broker.kraken_broker_service import KrakenBrokerService, KrakenBrokerConfig
+        from unittest.mock import MagicMock, patch
+        from datetime import datetime, timezone
+        
+        config = KrakenBrokerConfig(
+            api_key="test-key",
+            api_secret="test-secret",
+            default_symbol="PI_XBTUSD",
+            use_demo=True,
+        )
+        
+        service = KrakenBrokerService(config)
+        service._connected = True
+        service._session = MagicMock()
+        
+        # Mock candle store
+        mock_candle_store = MagicMock()
+        service._candle_store = mock_candle_store
+        service._candle_store_enabled = True
+        
+        # Mock get_range to return some test candles
+        mock_candle = MagicMock()
+        mock_candle.timestamp = datetime.now(timezone.utc).timestamp()
+        mock_candle.open = 42000.0
+        mock_candle.high = 42100.0
+        mock_candle.low = 41900.0
+        mock_candle.close = 42050.0
+        mock_candle.volume = 100.0
+        mock_candle.trade_count = 10
+        mock_candle_store.get_range.return_value = [mock_candle]
+        
+        # Mock WebSocket and thread creation
+        with patch('core.services.broker.kraken_broker_service.WebSocketApp') as mock_ws_app, \
+             patch('core.services.broker.kraken_broker_service.threading.Thread') as mock_thread_class:
+            
+            mock_ws_instance = MagicMock()
+            mock_ws_app.return_value = mock_ws_instance
+            mock_new_thread = MagicMock()
+            mock_thread_class.return_value = mock_new_thread
+            
+            # Start stream with multiple symbols
+            symbols = ["PF_LTCUSD", "PF_ETHUSD", "PF_ADAUSD"]
+            service.start_price_stream(symbols)
+            
+            # Verify get_range was called for each symbol
+            self.assertEqual(mock_candle_store.get_range.call_count, len(symbols))
+            
+            # Verify candles were loaded into cache for each symbol
+            for symbol in symbols:
+                self.assertIn(symbol, service._candle_cache)
+                self.assertEqual(len(service._candle_cache[symbol]), 1)
