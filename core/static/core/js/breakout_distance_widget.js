@@ -44,6 +44,13 @@
                 breakoutShort: '#ef4444',
                 rangeHigh: '#fbbf24',
                 rangeLow: '#fb923c',
+                volumeUp: '#4caf50',
+                volumeDown: '#eb4034',
+            };
+
+            this.volumeScaleMargins = {
+                top: 0.8,    // Price chart uses top 80%
+                bottom: 0,   // Volume histogram uses bottom 20%
             };
 
             this.resizeHandler = this._handleResize.bind(this);
@@ -276,10 +283,7 @@
             this.volumeSeries = this.chart.addHistogramSeries({
                 priceFormat: { type: 'volume' },
                 priceScaleId: '',
-                scaleMargins: {
-                    top: 0.8,
-                    bottom: 0,
-                },
+                scaleMargins: this.volumeScaleMargins,
             });
 
             this.priceLines = {};
@@ -347,7 +351,7 @@
                     .map(c => ({
                         time: c.time,
                         value: c.volume,
-                        color: c.close >= c.open ? '#4caf50' : '#eb4034'
+                        color: c.close >= c.open ? this.colors.volumeUp : this.colors.volumeDown
                     }));
                 
                 if (volumeData.length > 0) {
