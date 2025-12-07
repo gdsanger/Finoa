@@ -6,8 +6,8 @@ This guide explains how to set up and configure the Kraken Pro Future broker int
 
 Kraken Pro Future provides a robust futures trading platform with:
 - **REST API v3** for account management and order execution
+- **Charts API v1** for historical 1-minute OHLC candle data
 - **WebSocket v1** for real-time price feeds and trade data
-- **Candle Aggregation** - 1-minute candles built from WebSocket trade data (Kraken does not provide historical OHLC data)
 
 ## Prerequisites
 
@@ -66,6 +66,9 @@ Leave these empty for auto-detection, or override with custom URLs:
 - **REST Base URL**: Default is auto-detected based on account type
   - Demo: `https://demo-futures.kraken.com/derivatives`
   - Live: `https://futures.kraken.com/derivatives`
+- **Charts Base URL**: For historical candle data (auto-detected)
+  - Demo: `https://demo-futures.kraken.com/api/charts/v1`
+  - Live: `https://futures.kraken.com/api/charts/v1`
 - **WebSocket URL**: For real-time data
   - Demo: `wss://demo-futures.kraken.com/ws/v1`
   - Live: `wss://futures.kraken.com/ws/v1`
@@ -115,9 +118,9 @@ The Kraken integration automatically connects to WebSocket feeds for:
    - Mark price updates
    - Automatic cache management
 
-2. **Trade Data for Charting** (`trade` feed):
-   - Individual trade execution data
-   - Automatic 1-minute candle aggregation from real-time trades
+2. **Trade Data for Charting**:
+   - Historical 1-minute candles fetched from Charts API v1
+   - Real-time trade data via WebSocket (`trade` feed)
    - Candles cached for the last 6 hours
 
 ### Position Management
@@ -148,6 +151,18 @@ print(f"BTC/USD: Bid={price.bid}, Ask={price.ask}")
 # Get 1-minute candles (last 6 hours)
 candles = service.get_candles_1m("PI_XBTUSD", hours=6)
 print(f"Retrieved {len(candles)} candles")
+
+# Fetch candles from Charts API
+from datetime import datetime, timedelta, timezone
+now = datetime.now(timezone.utc)
+from_time = now - timedelta(hours=6)
+candles = service.fetch_candles_from_charts_api(
+    symbol="PI_XBTUSD",
+    resolution="1m",
+    from_timestamp=int(from_time.timestamp() * 1000),
+    to_timestamp=int(now.timestamp() * 1000),
+)
+print(f"Fetched {len(candles)} candles from Charts API")
 
 # Get live candles (includes current forming candle)
 live_candles = service.get_live_candles_1m("PI_XBTUSD")
@@ -212,9 +227,15 @@ By default, the service subscribes to the `default_symbol`. To subscribe to mult
 - `GET /api/v3/openpositions` - Open positions
 - `POST /api/v3/sendorder` - Place orders
 
+### Charts API v1 (Public, No Authentication Required)
+- `GET /api/charts/v1/trade/{symbol}/{resolution}` - Historical OHLC candle data
+  - Supported resolutions: `1m`, `5m`, `15m`, `30m`, `1h`, `4h`, `1d`
+  - Finoa uses `1m` resolution for breakout trading
+  - Optional query parameters: `from` (timestamp in ms), `to` (timestamp in ms)
+
 ### WebSocket v1
 - Subscribe to `ticker_lite` - Real-time prices
-- Subscribe to `trade` - Trade execution data (aggregated into 1-minute candles)
+- Subscribe to `trade` - Trade execution data for real-time monitoring
 
 ## Security Best Practices
 
@@ -228,30 +249,30 @@ By default, the service subscribes to the `default_symbol`. To subscribe to mult
 
 ## Running the Market Data Worker
 
-The Kraken Market Data Worker is a continuous service that aggregates real-time trade data into 1-minute candles with OHLCV + trade count.
+The Kraken Market Data Worker is a continuous service that fetches 1-minute candle data from the Charts API v1 and builds session ranges for breakout trading.
 
 ### Starting the Worker
 
 ```bash
-# Run with default settings (5 second polling interval)
+# Run with default settings (60 second polling interval)
 python manage.py run_kraken_market_data_worker
 
-# Run with custom polling interval
-python manage.py run_kraken_market_data_worker --interval 10
+# Run with custom polling interval (in seconds)
+python manage.py run_kraken_market_data_worker --interval 60
 ```
 
 ### What the Worker Does
 
-1. **Subscribes to Trade Feed**: Connects to Kraken WebSocket for active assets
-2. **Aggregates Trades**: Builds 1-minute candles from individual trades:
+1. **Fetches Candle Data**: Polls the Charts API v1 every minute (configurable) for active assets
+2. **Retrieves OHLC Data**: Gets complete 1-minute candles:
    - **Open**: First trade price in the minute
    - **High**: Maximum price in the minute
    - **Low**: Minimum price in the minute
    - **Close**: Last trade price in the minute
    - **Volume**: Cumulative volume traded
-   - **Trade Count**: Number of individual trades
-3. **Stores Data**: Persists candles in-memory and Redis
-4. **Builds Ranges**: Calculates session phase ranges for breakout trading
+3. **Stores Data**: Persists candles to Redis for chart display and analysis
+4. **Builds Ranges**: Calculates and updates session phase ranges for breakout trading
+   - Updates existing range record per session (not creating duplicates)
 
 ### Data Retention
 
@@ -325,21 +346,32 @@ docker-compose logs -f kraken-worker
 ## Important Notes
 
 ### Candle Data Availability
-Kraken does not provide historical OHLC/candle data via their API. The integration builds 1-minute candles in real-time from WebSocket trade data:
+Kraken provides historical OHLC/candle data via the Charts API v1:
 
-- **Initial Startup**: After connecting, the service needs to accumulate trade data to build candles
-- **Cache Duration**: Up to 6 hours of candles are kept in memory
-- **Persistence**: Candles are persisted to Redis for recovery across restarts
-- **Restart Impact**: Worker loads persisted candles from Redis on restart (last 6 hours)
+- **Public Endpoint**: No authentication required for Charts API
+- **Historical Data**: Access to historical 1-minute candles
+- **Worker Polling**: Market data worker fetches candles once per minute
+- **Redis Storage**: Candles persisted to Redis for chart display
+- **Session Ranges**: Worker updates (not duplicates) range records per session
 
 ### Best Practices
-1. Keep the worker running continuously to maintain candle history
-2. Allow 5-10 minutes after startup for initial candle accumulation
-3. Monitor the WebSocket connection to ensure continuous data flow
-4. Configure Redis properly for persistent candle storage
-5. Use the worker as a system service for production deployments
+1. Keep the worker running continuously to maintain up-to-date candle data
+2. Worker polls Charts API every 60 seconds (configurable) for new candles
+3. Configure Redis properly for persistent candle storage
+4. Use the worker as a system service for production deployments
+5. Monitor worker logs to ensure Charts API connectivity
 
 ## Changelog
+
+- **2025-12-07**: Charts API v1 integration for candle data
+  - Added support for Kraken Charts API v1 to fetch historical OHLC data
+  - Changed market data worker from WebSocket aggregation to Charts API polling
+  - Implemented `fetch_candles_from_charts_api()` method for direct candle retrieval
+  - Updated worker to poll Charts API once per minute (configurable)
+  - Enhanced range persistence to update existing records instead of creating duplicates
+  - Added charts_base_url configuration field with auto-detection
+  - Public endpoint - no authentication required for Charts API
+  - Added comprehensive tests for Charts API integration
 
 - **2025-12-06**: Trade count tracking added to 1m candles
   - Added `trade_count` field to track number of trades per minute
@@ -352,6 +384,5 @@ Kraken does not provide historical OHLC/candle data via their API. The integrati
   - Implemented WebSocket integration for real-time data
   - Created KrakenBrokerConfig model
   - Added comprehensive admin interface
-  - Implemented real-time candle aggregation from trade data (no historical API available)
-  - Created market data worker service for continuous candle aggregation
+  - Created market data worker service
   - Redis persistence for candle history across restarts

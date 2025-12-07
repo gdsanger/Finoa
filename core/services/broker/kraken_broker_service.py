@@ -40,6 +40,10 @@ logger = logging.getLogger("core.services.kraken_broker_service")
 _kraken_service: "KrakenBrokerService" | None = None
 _kraken_service_lock = threading.Lock()
 
+# Charts API v1 response format constant
+# Charts API returns candles as: [timestamp, open, high, low, close, volume]
+CHARTS_API_EXPECTED_CANDLE_FIELDS = 6
+
 
 # =============================================================================
 # Domain-Modelle für Lumina v2 – brokerneutral, aber Kraken-optimiert
@@ -76,6 +80,7 @@ class KrakenBrokerConfig:
     # Nur Host, ohne Pfad
     rest_base_url: str = "https://futures.kraken.com/derivatives"
     ws_public_url: str = "wss://futures.kraken.com/ws/v1"
+    charts_base_url: str = "https://futures.kraken.com/api/charts/v1"
 
     default_symbol: str = "PI_XBTUSD"
     symbols: Optional[List[str]] = None
@@ -85,6 +90,7 @@ class KrakenBrokerConfig:
         if self.use_demo:
             self.rest_base_url = "https://demo-futures.kraken.com/derivatives"
             self.ws_public_url = "wss://demo-futures.kraken.com/ws/v1"
+            self.charts_base_url = "https://demo-futures.kraken.com/api/charts/v1"
 
 
 def get_active_kraken_broker_config() -> KrakenBrokerConfig:
@@ -1153,6 +1159,127 @@ class KrakenBrokerService(BrokerService):
                 )
         candles.sort(key=lambda x: x.time)
         return candles
+
+    def is_candle_store_enabled(self) -> bool:
+        """Check if candle persistence to Redis is enabled."""
+        return self._candle_store_enabled
+
+    def store_candle_to_redis(self, symbol: str, candle: Candle1m) -> bool:
+        """
+        Store a single candle to Redis.
+        
+        Args:
+            symbol: Trading symbol
+            candle: Candle1m object to store
+            
+        Returns:
+            True if stored successfully, False otherwise
+        """
+        if not self._candle_store_enabled or not self._candle_store:
+            return False
+        
+        try:
+            from core.services.market_data.candle_models import Candle
+            
+            redis_candle = Candle(
+                timestamp=int(candle.time.timestamp()),
+                open=float(candle.open),
+                high=float(candle.high),
+                low=float(candle.low),
+                close=float(candle.close),
+                volume=float(candle.volume),
+                trade_count=int(candle.trade_count),
+                complete=True,
+            )
+            self._candle_store.append_candle(
+                asset_id=symbol,
+                timeframe='1m',
+                candle=redis_candle,
+            )
+            return True
+        except Exception as exc:
+            logger.debug(f"Failed to store candle in Redis: {exc}")
+            return False
+
+    def fetch_candles_from_charts_api(
+        self,
+        symbol: str,
+        resolution: str = "1m",
+        from_timestamp: Optional[int] = None,
+        to_timestamp: Optional[int] = None,
+    ) -> List[Candle1m]:
+        """
+        Fetch OHLC candle data from Kraken Charts API v1.
+        
+        This is a public endpoint that provides historical candle data without authentication.
+        Endpoint: https://futures.kraken.com/api/charts/v1/trade/:symbol/:resolution
+        
+        Args:
+            symbol: Trading symbol (e.g., 'PI_XBTUSD')
+            resolution: Candle resolution ('1m' for 1 minute)
+            from_timestamp: Optional start timestamp in milliseconds
+            to_timestamp: Optional end timestamp in milliseconds
+            
+        Returns:
+            List of Candle1m objects sorted by time
+            
+        Raises:
+            KrakenBrokerError: If the API request fails
+        """
+        # Build the URL
+        url = f"{self._config.charts_base_url}/trade/{symbol}/{resolution}"
+        
+        # Add query parameters if provided
+        params = {}
+        if from_timestamp is not None:
+            params['from'] = from_timestamp
+        if to_timestamp is not None:
+            params['to'] = to_timestamp
+        
+        try:
+            if self._session is None:
+                self._session = requests.Session()
+            
+            response = self._session.get(url, params=params, timeout=15)
+            
+            if response.status_code >= 400:
+                raise KrakenBrokerError(
+                    f"Charts API error HTTP {response.status_code} for {url}: {response.text}"
+                )
+            
+            data = response.json()
+            
+            # Parse the candles from the response
+            candles = []
+            candles_data = data.get('candles', [])
+            
+            for candle_data in candles_data:
+                # Charts API returns: [timestamp, open, high, low, close, volume]
+                # Ensure exact format to catch API changes early
+                if len(candle_data) == CHARTS_API_EXPECTED_CANDLE_FIELDS:
+                    timestamp_ms = int(candle_data[0])
+                    timestamp_dt = datetime.fromtimestamp(timestamp_ms / 1000.0, tz=dt_timezone.utc)
+                    
+                    candle = Candle1m(
+                        symbol=symbol,
+                        time=timestamp_dt,
+                        open=float(candle_data[1]),
+                        high=float(candle_data[2]),
+                        low=float(candle_data[3]),
+                        close=float(candle_data[4]),
+                        volume=float(candle_data[5]),
+                        trade_count=0,  # Charts API doesn't provide trade count
+                    )
+                    candles.append(candle)
+            
+            candles.sort(key=lambda c: c.time)
+            logger.debug(f"Fetched {len(candles)} candles from Charts API for {symbol}")
+            return candles
+            
+        except requests.exceptions.RequestException as exc:
+            raise KrakenBrokerError(f"Failed to fetch candles from Charts API: {exc}") from exc
+        except (KeyError, ValueError, IndexError) as exc:
+            raise KrakenBrokerError(f"Failed to parse Charts API response: {exc}") from exc
 
     # -------------------------------------------------------------------------
     # Positionen & Orders
