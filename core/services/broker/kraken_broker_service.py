@@ -1156,6 +1156,47 @@ class KrakenBrokerService(BrokerService):
         candles.sort(key=lambda x: x.time)
         return candles
 
+    def is_candle_store_enabled(self) -> bool:
+        """Check if candle persistence to Redis is enabled."""
+        return self._candle_store_enabled
+
+    def store_candle_to_redis(self, symbol: str, candle: Candle1m) -> bool:
+        """
+        Store a single candle to Redis.
+        
+        Args:
+            symbol: Trading symbol
+            candle: Candle1m object to store
+            
+        Returns:
+            True if stored successfully, False otherwise
+        """
+        if not self._candle_store_enabled or not self._candle_store:
+            return False
+        
+        try:
+            from core.services.market_data.candle_models import Candle
+            
+            redis_candle = Candle(
+                timestamp=int(candle.time.timestamp()),
+                open=float(candle.open),
+                high=float(candle.high),
+                low=float(candle.low),
+                close=float(candle.close),
+                volume=float(candle.volume),
+                trade_count=int(candle.trade_count),
+                complete=True,
+            )
+            self._candle_store.append_candle(
+                asset_id=symbol,
+                timeframe='1m',
+                candle=redis_candle,
+            )
+            return True
+        except Exception as exc:
+            logger.debug(f"Failed to store candle in Redis: {exc}")
+            return False
+
     def fetch_candles_from_charts_api(
         self,
         symbol: str,
@@ -1208,9 +1249,11 @@ class KrakenBrokerService(BrokerService):
             candles = []
             candles_data = data.get('candles', [])
             
+            # Charts API returns: [timestamp, open, high, low, close, volume]
+            EXPECTED_CANDLE_FIELDS = 6
+            
             for candle_data in candles_data:
-                # Charts API returns: [timestamp, open, high, low, close, volume]
-                if len(candle_data) >= 6:
+                if len(candle_data) >= EXPECTED_CANDLE_FIELDS:
                     timestamp_ms = int(candle_data[0])
                     timestamp_dt = datetime.fromtimestamp(timestamp_ms / 1000.0, tz=dt_timezone.utc)
                     

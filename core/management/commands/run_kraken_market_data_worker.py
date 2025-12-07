@@ -31,6 +31,11 @@ from trading.models import AssetSessionPhaseConfig, BreakoutRange, TradingAsset
 
 logger = logging.getLogger(__name__)
 
+# Configuration constants
+DEFAULT_FETCH_INTERVAL_SECONDS = 60  # Poll Charts API once per minute
+RANGE_PERSIST_INTERVAL_SECONDS = 60  # Persist range updates once per minute
+WORKER_SLEEP_INTERVAL_SECONDS = 5  # Sleep between iterations to avoid busy-waiting
+
 
 @dataclass
 class RangeState:
@@ -276,28 +281,9 @@ class KrakenMarketDataWorker:
             return
         
         # Store all candles in Redis via the broker's candle store
-        if self.broker._candle_store_enabled and self.broker._candle_store:
-            from core.services.market_data.candle_models import Candle
-            
+        if self.broker.is_candle_store_enabled():
             for candle in candles:
-                try:
-                    redis_candle = Candle(
-                        timestamp=int(candle.time.timestamp()),
-                        open=float(candle.open),
-                        high=float(candle.high),
-                        low=float(candle.low),
-                        close=float(candle.close),
-                        volume=float(candle.volume),
-                        trade_count=int(candle.trade_count),
-                        complete=True,
-                    )
-                    self.broker._candle_store.append_candle(
-                        asset_id=symbol,
-                        timeframe='1m',
-                        candle=redis_candle,
-                    )
-                except Exception as exc:
-                    logger.debug("Failed to store candle in Redis: %s", exc)
+                self.broker.store_candle_to_redis(symbol, candle)
 
         # Filter for new candles only
         new_candles = [c for c in candles if last_ts is None or c.time > last_ts]
@@ -319,7 +305,7 @@ class KrakenMarketDataWorker:
             self._finalize_range(asset, state)
         self._range_state.clear()
 
-    def run(self, interval_seconds: int = 60) -> None:
+    def run(self, interval_seconds: int = DEFAULT_FETCH_INTERVAL_SECONDS) -> None:
         """
         Main worker loop.
         
@@ -334,7 +320,7 @@ class KrakenMarketDataWorker:
         logger.info("Fetching candles from Charts API every %d seconds", interval_seconds)
 
         # Persist ranges every minute
-        persist_interval = 60
+        persist_interval = RANGE_PERSIST_INTERVAL_SECONDS
         # Fetch candles every minute (or as configured)
         fetch_interval = interval_seconds
 
@@ -353,7 +339,7 @@ class KrakenMarketDataWorker:
                 self._next_range_persist_ts = now + persist_interval
             
             # Sleep for a short interval to avoid busy-waiting
-            time.sleep(5)
+            time.sleep(WORKER_SLEEP_INTERVAL_SECONDS)
 
         self._finalize_all()
 
@@ -365,8 +351,8 @@ class Command(BaseCommand):
         parser.add_argument(
             "--interval",
             type=int,
-            default=60,
-            help="Polling interval for fetching candles from Charts API in seconds (default: 60)",
+            default=DEFAULT_FETCH_INTERVAL_SECONDS,
+            help=f"Polling interval for fetching candles from Charts API in seconds (default: {DEFAULT_FETCH_INTERVAL_SECONDS})",
         )
 
     def handle(self, *args, **options):
