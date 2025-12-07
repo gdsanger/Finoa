@@ -20,6 +20,7 @@ from websocket import WebSocketApp  # websocket-client
 from django.utils import timezone
 
 from core.models import KrakenBrokerConfig as KrakenBrokerConfigModel
+from core.services.market_data.candle_models import Candle
 from .broker_service import BrokerService, BrokerError, AuthenticationError
 from .models import (
     AccountState,
@@ -881,7 +882,6 @@ class KrakenBrokerService(BrokerService):
         # Persist to Redis if enabled
         if self._candle_store_enabled and self._candle_store:
             try:
-                from core.services.market_data.candle_models import Candle
                 # Convert to Candle model for Redis storage
                 redis_candle = Candle(
                     timestamp=int(candle_obj.time.timestamp()),
@@ -923,6 +923,84 @@ class KrakenBrokerService(BrokerService):
             for symbol in stale_symbols:
                 self._current_candle.pop(symbol, None)
 
+    def _fill_candle_gaps(self, candles: List[Candle1m], symbol: str) -> List[Candle1m]:
+        """
+        Fill gaps in candle data with zero-volume candles.
+        
+        For minutes without trades, creates candles with:
+        - open = close = high = low = last known close price
+        - volume = 0
+        - trade_count = 0
+        
+        This prevents gaps in charts.
+        
+        Args:
+            candles: List of existing candles (sorted by time).
+            symbol: Market symbol.
+        
+        Returns:
+            List of candles with gaps filled.
+        """
+        if not candles:
+            return candles
+        
+        filled = []
+        
+        for i, candle in enumerate(candles):
+            filled.append(candle)
+            
+            # Check if there's a next candle
+            if i + 1 < len(candles):
+                next_candle = candles[i + 1]
+                current_time = candle.time
+                next_time = next_candle.time
+                
+                # Calculate expected time difference (should be 1 minute)
+                expected_next = current_time + timedelta(minutes=1)
+                
+                # Fill gaps between current and next candle
+                fill_time = expected_next
+                last_close = candle.close
+                
+                while fill_time < next_time:
+                    # Create a zero-volume candle with last known close price
+                    gap_candle = Candle1m(
+                        symbol=symbol,
+                        time=fill_time,
+                        open=last_close,
+                        high=last_close,
+                        low=last_close,
+                        close=last_close,
+                        volume=0.0,
+                        trade_count=0,
+                    )
+                    filled.append(gap_candle)
+                    
+                    # Persist to Redis if enabled
+                    if self._candle_store_enabled and self._candle_store:
+                        try:
+                            redis_candle = Candle(
+                                timestamp=int(gap_candle.time.timestamp()),
+                                open=float(gap_candle.open),
+                                high=float(gap_candle.high),
+                                low=float(gap_candle.low),
+                                close=float(gap_candle.close),
+                                volume=0.0,
+                                trade_count=0,
+                                complete=True,
+                            )
+                            self._candle_store.append_candle(
+                                asset_id=symbol,
+                                timeframe='1m',
+                                candle=redis_candle,
+                            )
+                        except Exception as e:
+                            logger.debug(f"Failed to persist gap candle to Redis: {e}")
+                    
+                    fill_time += timedelta(minutes=1)
+        
+        return filled
+
     def get_candles_1m(self, symbol: Optional[str] = None, hours: int = 6) -> List[Candle1m]:
         """
         Get 1-minute candles aggregated from WebSocket trade data.
@@ -930,12 +1008,14 @@ class KrakenBrokerService(BrokerService):
         Kraken does not provide historical OHLC data via API. This method returns
         candles that have been built from real-time trade data received via WebSocket.
         
+        Fills gaps with zero-volume candles to prevent chart gaps.
+        
         Args:
             symbol: Market symbol (e.g., 'PI_XBTUSD'). Defaults to default_symbol.
             hours: Time window in hours (up to 6 hours are cached).
         
         Returns:
-            List of Candle1m objects sorted by time.
+            List of Candle1m objects sorted by time, with gaps filled.
         
         Note:
             The service must be running and receiving WebSocket trade data for candles
@@ -953,6 +1033,10 @@ class KrakenBrokerService(BrokerService):
             candles = [c for c in self._candle_cache.get(symbol, []) if c.time >= cutoff]
         
         candles.sort(key=lambda x: x.time)
+        
+        # Fill gaps with zero-volume candles
+        candles = self._fill_candle_gaps(candles, symbol)
+        
         return candles
 
     def get_historical_prices(
