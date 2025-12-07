@@ -99,6 +99,9 @@ class RedisCandleStore:
         """
         Append a candle to the store.
         
+        Ensures only ONE candle per timestamp by removing any existing candles
+        with the same timestamp before adding the new one.
+        
         Args:
             asset_id: Asset identifier
             timeframe: Candle timeframe (e.g., '1m', '5m')
@@ -112,7 +115,11 @@ class RedisCandleStore:
         redis_client = self._get_redis_client()
         if redis_client:
             try:
-                # Use ZADD with score = timestamp
+                # Remove any existing candles with the same timestamp to prevent duplicates
+                # This ensures only ONE candle per minute
+                redis_client.zremrangebyscore(key, candle.timestamp, candle.timestamp)
+                
+                # Add the new candle with timestamp as score
                 redis_client.zadd(key, {self._candle_to_json(candle): candle.timestamp})
                 
                 # Set TTL if not already set
@@ -139,6 +146,9 @@ class RedisCandleStore:
         """
         Append multiple candles to the store.
         
+        Ensures only ONE candle per timestamp by removing any existing candles
+        with the same timestamps before adding the new ones.
+        
         Args:
             asset_id: Asset identifier
             timeframe: Candle timeframe
@@ -155,6 +165,10 @@ class RedisCandleStore:
         redis_client = self._get_redis_client()
         if redis_client:
             try:
+                # Remove any existing candles with the same timestamps to prevent duplicates
+                for candle in candles:
+                    redis_client.zremrangebyscore(key, candle.timestamp, candle.timestamp)
+                
                 # Batch ZADD
                 mapping = {self._candle_to_json(c): c.timestamp for c in candles}
                 added = redis_client.zadd(key, mapping)
@@ -190,9 +204,19 @@ class RedisCandleStore:
             logger.warning(f"Failed to trim old candles: {e}")
     
     def _append_to_fallback(self, key: str, candle: Candle) -> bool:
-        """Append candle to in-memory fallback store."""
+        """Append candle to in-memory fallback store.
+        
+        Removes any existing candle with the same timestamp to prevent duplicates.
+        """
         if key not in self._fallback_store:
             self._fallback_store[key] = deque(maxlen=self._config.max_candles_per_stream)
+        
+        # Remove any existing candle with the same timestamp
+        store = self._fallback_store[key]
+        self._fallback_store[key] = deque(
+            (c for c in store if c.timestamp != candle.timestamp),
+            maxlen=self._config.max_candles_per_stream
+        )
         
         self._fallback_store[key].append(candle)
         return True
