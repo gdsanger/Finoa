@@ -4,17 +4,15 @@ Tests for the Kraken Market Data Worker management command.
 Tests cover asset processing, exception handling, and data fetching logic.
 """
 from datetime import datetime, timezone, timedelta
-from decimal import Decimal
 from unittest.mock import patch, MagicMock, Mock
 from io import StringIO
 
 from django.test import TestCase
 from django.core.management import call_command
 
-from core.models import KrakenBrokerConfig
 from core.services.broker.kraken_broker_service import KrakenBrokerService
 from core.services.broker.models import Candle1m
-from trading.models import TradingAsset, AssetSessionPhaseConfig
+from trading.models import TradingAsset
 from core.management.commands.run_kraken_market_data_worker import (
     KrakenMarketDataWorker,
 )
