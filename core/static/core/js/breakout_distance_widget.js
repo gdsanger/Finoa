@@ -44,6 +44,8 @@
                 breakoutShort: '#ef4444',
                 rangeHigh: '#fbbf24',
                 rangeLow: '#fb923c',
+                volumeUp: '#4caf50',
+                volumeDown: '#eb4034',
             };
 
             this.resizeHandler = this._handleResize.bind(this);
@@ -272,10 +274,10 @@
                 priceFormat: {
                     type: 'volume',
                 },
-                priceScaleId: '',
+                priceScaleId: '', // Empty string creates overlay with no visible price scale
                 scaleMargins: {
-                    top: 0.8,
-                    bottom: 0,
+                    top: 0.8,  // 80% reserved for price chart
+                    bottom: 0, // Volume uses bottom 20%
                 },
             });
 
@@ -344,7 +346,7 @@
                     .map(c => ({
                         time: c.time,
                         value: c.volume,
-                        color: c.close >= c.open ? '#4caf50' : '#eb4034'
+                        color: c.close >= c.open ? this.colors.volumeUp : this.colors.volumeDown
                     }));
                 this.volumeSeries.setData(volumeData);
             }
