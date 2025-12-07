@@ -1,9 +1,12 @@
 """Kraken Market Data Worker.
 
-Streams Kraken trade data via WebSocket, aggregates 1m candles, persists them
-to Redis/in-memory caches via :class:`KrakenBrokerService`, and builds
-session-phase ranges for breakout trading.
+Fetches Kraken 1m candle data from Charts API v1, stores them in Redis,
+and builds session-phase ranges for breakout trading.
 
+Uses the public Kraken Charts API endpoint:
+https://futures.kraken.com/api/charts/v1/trade/:symbol/1m
+
+Polls once per minute (configurable) to fetch the latest candle data.
 Only active Kraken assets are processed. Session times are taken from each
 asset's :class:`~trading.models.AssetSessionPhaseConfig` so that range
 boundaries match the asset configuration (e.g., Asia 00:00-08:00 UTC).
@@ -106,7 +109,7 @@ class AssetPhaseResolver:
 
 
 class KrakenMarketDataWorker:
-    """Aggregates Kraken trades into 1m candles and session ranges."""
+    """Fetches Kraken candles from Charts API and builds session ranges."""
 
     def __init__(self, broker: KrakenBrokerService, assets: List[TradingAsset]):
         self.broker = broker
@@ -116,6 +119,7 @@ class KrakenMarketDataWorker:
         self._range_state: Dict[int, RangeState] = {}
         self._last_candle_ts: Dict[int, datetime] = {}
         self._next_range_persist_ts: float = time.monotonic()
+        self._next_fetch_ts: float = time.monotonic()
 
         for asset in assets:
             configs = AssetSessionPhaseConfig.get_enabled_phases_for_asset(asset)
@@ -129,32 +133,77 @@ class KrakenMarketDataWorker:
         self._range_state.pop(asset.id, None)
 
     def _persist_range_snapshot(self, asset: TradingAsset, state: RangeState) -> None:
+        """
+        Persist or update the range snapshot in the database.
+        
+        Updates the existing range record for the current phase if it exists
+        (same phase, same start_time), otherwise creates a new one.
+        This ensures we have only one record per phase per session, updated each minute.
+        """
         if state.candle_count == 0:
             return
 
         end_time = state.last_candle_end or state.start_time
+        
+        from decimal import Decimal, ROUND_HALF_UP
+        
+        # Calculate range metrics
+        height_points = Decimal(str(state.high)) - Decimal(str(state.low))
+        tick_size_decimal = Decimal(str(asset.tick_size)) if asset.tick_size > 0 else Decimal('0.01')
+        height_ticks = int((height_points / tick_size_decimal).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+        
         try:
             with transaction.atomic():
-                BreakoutRange.save_range_snapshot(
+                # Try to find an existing range for this phase that started at the same time
+                # This ensures we update the same record during the session
+                existing_range = BreakoutRange.objects.filter(
                     asset=asset,
                     phase=state.phase.value,
                     start_time=state.start_time,
-                    end_time=end_time,
-                    high=state.high,
-                    low=state.low,
-                    tick_size=float(asset.tick_size),
-                    candle_count=state.candle_count,
-                    atr=None,
-                    is_valid=True,
-                )
-            logger.info(
-                "Persisted %s range for %s: high=%.5f low=%.5f candles=%s",
-                state.phase.value,
-                asset.symbol,
-                state.high,
-                state.low,
-                state.candle_count,
-            )
+                ).first()
+                
+                if existing_range:
+                    # Update existing record
+                    existing_range.end_time = end_time
+                    existing_range.high = Decimal(str(state.high))
+                    existing_range.low = Decimal(str(state.low))
+                    existing_range.height_ticks = height_ticks
+                    existing_range.height_points = height_points
+                    existing_range.candle_count = state.candle_count
+                    existing_range.is_valid = True
+                    existing_range.save()
+                    logger.debug(
+                        "Updated %s range for %s: high=%.5f low=%.5f candles=%s",
+                        state.phase.value,
+                        asset.symbol,
+                        state.high,
+                        state.low,
+                        state.candle_count,
+                    )
+                else:
+                    # Create new record for new phase/session
+                    BreakoutRange.objects.create(
+                        asset=asset,
+                        phase=state.phase.value,
+                        start_time=state.start_time,
+                        end_time=end_time,
+                        high=Decimal(str(state.high)),
+                        low=Decimal(str(state.low)),
+                        height_ticks=height_ticks,
+                        height_points=height_points,
+                        candle_count=state.candle_count,
+                        atr=None,
+                        valid_flags={},
+                        is_valid=True,
+                    )
+                    logger.info(
+                        "Created new %s range for %s: high=%.5f low=%.5f candles=%s",
+                        state.phase.value,
+                        asset.symbol,
+                        state.high,
+                        state.low,
+                        state.candle_count,
+                    )
         except Exception as exc:
             logger.warning(
                 "Failed to persist range for %s (%s): %s",
@@ -201,10 +250,56 @@ class KrakenMarketDataWorker:
             self._persist_range_snapshot(asset, state)
 
     def _process_asset(self, asset: TradingAsset) -> None:
+        """
+        Fetch candles from Charts API and process them.
+        
+        Fetches the last 6 hours of candle data and stores them in Redis.
+        Only processes candles that are newer than the last seen candle.
+        """
         symbol = self._get_symbol(asset)
         last_ts = self._last_candle_ts.get(asset.id)
 
-        candles = self.broker.get_candles_1m(symbol=symbol, hours=6)
+        # Calculate time window for fetching (last 6 hours)
+        now = datetime.now(timezone.utc)
+        from_time = now - timedelta(hours=6)
+        
+        # Fetch candles from Charts API
+        try:
+            candles = self.broker.fetch_candles_from_charts_api(
+                symbol=symbol,
+                resolution="1m",
+                from_timestamp=int(from_time.timestamp() * 1000),
+                to_timestamp=int(now.timestamp() * 1000),
+            )
+        except Exception as exc:
+            logger.warning("Failed to fetch candles for %s from Charts API: %s", symbol, exc)
+            return
+        
+        # Store all candles in Redis via the broker's candle store
+        if self.broker._candle_store_enabled and self.broker._candle_store:
+            from core.services.market_data.candle_models import Candle
+            
+            for candle in candles:
+                try:
+                    redis_candle = Candle(
+                        timestamp=int(candle.time.timestamp()),
+                        open=float(candle.open),
+                        high=float(candle.high),
+                        low=float(candle.low),
+                        close=float(candle.close),
+                        volume=float(candle.volume),
+                        trade_count=int(candle.trade_count),
+                        complete=True,
+                    )
+                    self.broker._candle_store.append_candle(
+                        asset_id=symbol,
+                        timeframe='1m',
+                        candle=redis_candle,
+                    )
+                except Exception as exc:
+                    logger.debug("Failed to store candle in Redis: %s", exc)
+
+        # Filter for new candles only
         new_candles = [c for c in candles if last_ts is None or c.time > last_ts]
 
         if not new_candles:
@@ -224,34 +319,54 @@ class KrakenMarketDataWorker:
             self._finalize_range(asset, state)
         self._range_state.clear()
 
-    def run(self, interval_seconds: int = 5) -> None:
+    def run(self, interval_seconds: int = 60) -> None:
+        """
+        Main worker loop.
+        
+        Fetches candles from Charts API once per minute, stores them in Redis,
+        and updates session ranges.
+        
+        Args:
+            interval_seconds: Polling interval in seconds (default: 60 for once per minute)
+        """
         symbols = [self._get_symbol(asset) for asset in self.assets]
-        logger.info("Starting Kraken price stream for assets: %s", ", ".join(symbols))
-        self.broker.start_price_stream(symbols)
+        logger.info("Starting Kraken Charts API worker for assets: %s", ", ".join(symbols))
+        logger.info("Fetching candles from Charts API every %d seconds", interval_seconds)
 
+        # Persist ranges every minute
         persist_interval = 60
+        # Fetch candles every minute (or as configured)
+        fetch_interval = interval_seconds
 
         while not self.shutdown.should_stop:
-            for asset in self.assets:
-                self._process_asset(asset)
             now = time.monotonic()
+            
+            # Fetch new candles once per minute
+            if now >= self._next_fetch_ts:
+                for asset in self.assets:
+                    self._process_asset(asset)
+                self._next_fetch_ts = now + fetch_interval
+            
+            # Persist range snapshots once per minute
             if now >= self._next_range_persist_ts:
                 self._persist_active_ranges()
                 self._next_range_persist_ts = now + persist_interval
-            time.sleep(interval_seconds)
+            
+            # Sleep for a short interval to avoid busy-waiting
+            time.sleep(5)
 
         self._finalize_all()
 
 
 class Command(BaseCommand):
-    help = "Run Kraken market data worker (WebSocket trade feed → 1m candles + ranges)."
+    help = "Run Kraken market data worker (Charts API v1 → 1m candles + ranges)."
 
     def add_arguments(self, parser) -> None:
         parser.add_argument(
             "--interval",
             type=int,
-            default=5,
-            help="Polling interval for new candles in seconds (default: 5)",
+            default=60,
+            help="Polling interval for fetching candles from Charts API in seconds (default: 60)",
         )
 
     def handle(self, *args, **options):
