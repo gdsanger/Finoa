@@ -30,6 +30,7 @@
             this.priceLines = {};
             this.chart = null;
             this.candlestickSeries = null;
+            this.volumeSeries = null;
             this.refreshInterval = null;
             this.initialized = false;
             this.activeRequestToken = 0;
@@ -43,6 +44,8 @@
                 breakoutShort: '#ef4444',
                 rangeHigh: '#fbbf24',
                 rangeLow: '#fb923c',
+                volumeUp: '#4caf50',
+                volumeDown: '#eb4034',
             };
 
             this.resizeHandler = this._handleResize.bind(this);
@@ -71,6 +74,7 @@
             }
             this.chart = null;
             this.candlestickSeries = null;
+            this.volumeSeries = null;
             this.priceLines = {};
             this.currentCandles = [];
             this.initialized = false;
@@ -265,6 +269,18 @@
                 wickDownColor: '#22c55e',
             });
 
+            // Add volume histogram below the candlestick chart
+            this.volumeSeries = this.chart.addHistogramSeries({
+                priceFormat: {
+                    type: 'volume',
+                },
+                priceScaleId: '', // Empty string creates overlay with no visible price scale
+                scaleMargins: {
+                    top: 0.8,  // 80% reserved for price chart
+                    bottom: 0, // Volume uses bottom 20%
+                },
+            });
+
             this.priceLines = {};
         }
 
@@ -322,6 +338,18 @@
             }
 
             this.candlestickSeries.setData(this.currentCandles);
+            
+            // Update volume histogram
+            if (this.volumeSeries) {
+                const volumeData = this.currentCandles
+                    .filter(c => c.volume !== undefined && c.volume !== null)
+                    .map(c => ({
+                        time: c.time,
+                        value: c.volume,
+                        color: c.close >= c.open ? this.colors.volumeUp : this.colors.volumeDown
+                    }));
+                this.volumeSeries.setData(volumeData);
+            }
         }
 
         updateDataStatus(statusData) {
