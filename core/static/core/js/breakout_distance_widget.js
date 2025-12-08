@@ -47,7 +47,7 @@
                 volumeUp: '#4caf50',
                 volumeDown: '#eb4034',
             };
-
+ // #ef4444 = red, #22c55e = green
             this.resizeHandler = this._handleResize.bind(this);
         }
 

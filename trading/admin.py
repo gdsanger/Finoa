@@ -214,7 +214,7 @@ class TradingAssetAdmin(admin.ModelAdmin):
     list_display = ['name', 'symbol', 'epic', 'broker', 'category', 'strategy_type', 'is_crypto', 'is_active', 'auto_trade']
     list_filter = ['is_active', 'broker', 'category', 'strategy_type', 'is_crypto','auto_trade']
     search_fields = ['name', 'symbol', 'epic', 'broker_symbol']
-    readonly_fields = ['created_at', 'updated_at', 'breakout_state' ]
+    readonly_fields = ['created_at', 'updated_at' ]
     inlines = [AssetBreakoutConfigInline, AssetEventConfigInline]
     
     fieldsets = (

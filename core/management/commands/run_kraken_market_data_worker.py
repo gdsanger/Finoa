@@ -34,9 +34,9 @@ from trading.models import AssetSessionPhaseConfig, BreakoutRange, TradingAsset
 logger = logging.getLogger(__name__)
 
 # Configuration constants
-DEFAULT_FETCH_INTERVAL_SECONDS = 60  # Poll Charts API once per minute
-RANGE_PERSIST_INTERVAL_SECONDS = 60  # Persist range updates once per minute
-WORKER_SLEEP_INTERVAL_SECONDS = 5  # Sleep between iterations to avoid busy-waiting
+DEFAULT_FETCH_INTERVAL_SECONDS = 30  # Poll Charts API once per minute
+RANGE_PERSIST_INTERVAL_SECONDS = 30  # Persist range updates once per minute
+WORKER_SLEEP_INTERVAL_SECONDS = 3  # Sleep between iterations to avoid busy-waiting
 DEFAULT_TICK_SIZE = 0.01  # Default tick size when asset tick_size is 0 or invalid
 
 @dataclass
