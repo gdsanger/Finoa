@@ -691,6 +691,10 @@ class Command(BaseCommand):
                     asset, epic, phase, phase_configs_by_phase, current_price, now
                 )
             
+            # 5. Check and update breakout state if price returned to range
+            # This runs on every cycle to ensure timely state updates
+            self._check_and_update_breakout_state(asset, current_price, phase)
+            
             # 6. Skip if not in tradeable phase - check using is_trading_phase flag
             # Use pre-fetched phase configs to avoid additional DB query
             is_tradeable = False
@@ -1375,6 +1379,93 @@ class Command(BaseCommand):
             logger.error(f"Unexpected error during auto-trade for signal {signal.id}: {e}", exc_info=True)
             self.stdout.write(self.style.ERROR(f"        ✗ Unexpected error: {str(e)}"))
             # Signal stays ACTIVE so user can manually retry if desired
+
+    def _check_and_update_breakout_state(
+        self,
+        asset,
+        current_price: Optional[SymbolPrice],
+        phase: SessionPhase,
+    ) -> None:
+        """
+        Check if asset breakout state needs to be updated based on current price and range.
+        
+        This method checks if price has returned to range after a breakout and resets
+        the breakout_state to IN_RANGE if needed. It runs on every worker cycle to ensure
+        timely state updates, independent of whether breakouts are being actively detected.
+        
+        Args:
+            asset: TradingAsset instance
+            current_price: Current market price (or None if unavailable)
+            phase: Current session phase
+        """
+        # Only check if asset has a breakout state that's not IN_RANGE
+        if not asset or asset.breakout_state == 'IN_RANGE':
+            return
+        
+        # Need current price to check
+        if not current_price or current_price.bid is None:
+            return
+        
+        # Get the appropriate range for the current phase
+        try:
+            from trading.models import BreakoutRange
+            
+            # Determine which range to use based on current phase
+            # For trading phases, use the reference range
+            reference_phase_mapping = {
+                SessionPhase.LONDON_CORE: 'ASIA_RANGE',
+                SessionPhase.US_CORE_TRADING: 'PRE_US_RANGE',
+                SessionPhase.PRE_US_RANGE: 'LONDON_CORE',
+                SessionPhase.EIA_PRE: 'PRE_US_RANGE',
+                SessionPhase.EIA_POST: 'PRE_US_RANGE',
+            }
+            
+            reference_phase = reference_phase_mapping.get(phase)
+            
+            # If no specific reference phase, get the most recent range
+            if reference_phase:
+                range_data = BreakoutRange.objects.filter(
+                    asset=asset,
+                    phase=reference_phase
+                ).order_by('-end_time').first()
+            else:
+                range_data = BreakoutRange.objects.filter(
+                    asset=asset
+                ).order_by('-end_time').first()
+            
+            if not range_data:
+                # No range data available, can't check
+                return
+            
+            range_high = float(range_data.effective_high)
+            range_low = float(range_data.effective_low)
+            
+            # Use mid price for comparison
+            price_to_check = float((current_price.bid + current_price.ask) / 2) if current_price.ask else float(current_price.bid)
+            
+            # Check if price is back inside range
+            if range_low <= price_to_check <= range_high:
+                logger.info(
+                    "Price returned to range - resetting breakout state from %s to IN_RANGE",
+                    asset.breakout_state,
+                    extra={
+                        "strategy_data": {
+                            "asset": asset.symbol,
+                            "previous_state": asset.breakout_state,
+                            "current_price": price_to_check,
+                            "range_high": range_high,
+                            "range_low": range_low,
+                            "phase": phase.value,
+                        }
+                    },
+                )
+                asset.breakout_state = 'IN_RANGE'
+                asset.save()
+                self.stdout.write(self.style.SUCCESS(f"     ✓ Breakout state reset to IN_RANGE (price back in range)"))
+        
+        except Exception as e:
+            # Don't fail the worker cycle if breakout state check fails
+            logger.debug(f"Failed to check breakout state for {asset.symbol}: {e}")
 
     def _try_reconnect(self) -> None:
         """Try to reconnect to all brokers after an error."""
