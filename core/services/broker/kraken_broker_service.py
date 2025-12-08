@@ -418,7 +418,7 @@ class KrakenBrokerService(BrokerService):
             "APIKey": self._config.api_key,
             "Authent": authent,
             "Nonce": nonce,
-            "Content-Type": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
         }
 
         return headers
@@ -455,11 +455,14 @@ class KrakenBrokerService(BrokerService):
                 params=params,
                 nonce=nonce,
             )
+            # For authenticated requests, send body as URL-encoded form data
+            if body:
+                data = urlencode(body, doseq=True)
         else:
             headers["Content-Type"] = "application/json"
-
-        if body:
-            data = json.dumps(body)
+            # For non-authenticated requests, send body as JSON
+            if body:
+                data = json.dumps(body)
 
         resp = self._session.request(
             method=method.upper(),
