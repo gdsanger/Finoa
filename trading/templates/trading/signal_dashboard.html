@@ -3218,6 +3218,30 @@
             phaseIcon = 'bi-dash-circle';
         }
 
+        // Breakout state badge
+        let breakoutStateBadge = '';
+        if (asset.breakout_state) {
+            let stateClass = 'bg-secondary';
+            let stateIcon = 'bi-dash-circle';
+            let stateText = asset.breakout_state;
+            
+            if (asset.breakout_state === 'BROKEN_LONG') {
+                stateClass = 'bg-success';
+                stateIcon = 'bi-arrow-up-circle-fill';
+                stateText = 'LONG';
+            } else if (asset.breakout_state === 'BROKEN_SHORT') {
+                stateClass = 'bg-danger';
+                stateIcon = 'bi-arrow-down-circle-fill';
+                stateText = 'SHORT';
+            } else if (asset.breakout_state === 'IN_RANGE') {
+                stateClass = 'bg-info';
+                stateIcon = 'bi-circle-fill';
+                stateText = 'IN RANGE';
+            }
+            
+            breakoutStateBadge = `<span class="badge ${stateClass} text-white"><i class="${stateIcon}"></i> ${stateText}</span>`;
+        }
+        
         return `
             <li class="list-group-item asset-list-item border-secondary-subtle"  data-asset-id="${asset.id}" data-symbol="${escapeHtml(asset.symbol || '')}" onclick="openAssetChartModalFromButton(this)" title="${escapeHtml(asset.status_message)}">
                 <div class="d-flex justify-content-between align-items-center">
@@ -3232,7 +3256,10 @@
                 <div class="d-flex align-items-center gap-2 mt-2 flex-wrap justify-content-between">
                     <div class="d-flex align-items-center gap-2 flex-wrap">                      
                         ${rangeHtml}
-                    </div>                 
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        ${breakoutStateBadge}
+                    </div>
                 </div>
                 <hr>              
             </li>
