@@ -73,7 +73,7 @@ class StrategyEngine:
 
 #### 2. MarketStateProvider
 
-Interface für Markdatenzugriff (implementiert z.B. durch `IGMarketStateProvider`).
+Interface für Marktdatenzugriff (implementiert z.B. durch `IGMarketStateProvider`).
 
 **Verantwortlichkeiten:**
 - Bereitstellung von Candle-Daten
@@ -174,7 +174,7 @@ def _is_valid_range(range_height, config):
 - `min_range_ticks`: 10 Ticks
 - `max_range_ticks`: 200 Ticks
 
-**Rationale:** Zu kleine Ranges sind Noise, zu große Ranges sind nicht handelbar.
+**Rationale:** Zu kleine Ranges sind Rauschen, zu große Ranges sind nicht handelbar.
 
 ### 3. Candle-Verfügbarkeit
 
@@ -223,7 +223,7 @@ candle.body_size >= min_body
 ```
 
 - Standard: 50% der Range-Höhe
-- Verhindert Doji- und kleine Fake-Breakouts
+- Verhindert Doji- und kleine Schein-Ausbrüche
 
 c) **Breakout-Distanz**
 
@@ -481,12 +481,12 @@ Die Breakout-Strategie basiert auf dem Prinzip, dass Preise nach einer Konsolidi
 
 #### FAILED_LONG_BREAKOUT
 - **Bedingung:** Candle High > Range High ABER Candle Close <= Range High
-- **Interpretation:** Fakeout nach oben, Preis kehrt in Range zurück
+- **Interpretation:** Scheinausbruch nach oben, Preis kehrt in Range zurück
 - **Trade-Richtung:** SHORT (Reversion-Trade)
 
 #### FAILED_SHORT_BREAKOUT
 - **Bedingung:** Candle Low < Range Low ABER Candle Close >= Range Low
-- **Interpretation:** Fakeout nach unten, Preis kehrt in Range zurück
+- **Interpretation:** Scheinausbruch nach unten, Preis kehrt in Range zurück
 - **Trade-Richtung:** LONG (Reversion-Trade)
 
 ### Breakout-State-Management
