@@ -247,6 +247,12 @@ class TradingAsset(models.Model):
         help_text='Whether this asset is actively traded by the worker'
     )
     
+    # Auto Trade Flag
+    auto_trade = models.BooleanField(
+        default=False,
+        help_text='If true, automatically execute live trades when signals are generated with allowed risk status'
+    )
+    
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
