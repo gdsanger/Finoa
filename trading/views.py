@@ -1,6 +1,7 @@
 import logging
 import json
 from datetime import timedelta
+from decimal import Decimal
 
 from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse, Http404
@@ -19,7 +20,14 @@ from .services.chart_service import (
     SUPPORTED_TIME_WINDOWS,
 )
 
-from core.services.broker import BrokerRegistry, BrokerError, AuthenticationError
+from core.services.broker import (
+    BrokerRegistry,
+    BrokerError,
+    AuthenticationError,
+    OrderRequest,
+    OrderType,
+    OrderDirection,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -123,17 +131,20 @@ def execute_live_trade(request, signal_id):
         
         # Get the broker service for the asset
         try:
-            from core.services.broker import BrokerRegistry, OrderRequest, OrderType, OrderDirection
-            from decimal import Decimal
-            
             registry = BrokerRegistry.get_instance()
             broker = registry.get_broker_for_asset(signal.trading_asset)
             
-        except Exception as e:
+        except (ImproperlyConfigured, ValueError) as e:
             logger.error(f"Failed to get broker service for signal {signal_id}: {e}")
             return JsonResponse({
                 'success': False,
                 'error': f'Broker Service konnte nicht geladen werden: {str(e)}'
+            }, status=500)
+        except BrokerError as e:
+            logger.error(f"Broker connection error for signal {signal_id}: {e}")
+            return JsonResponse({
+                'success': False,
+                'error': f'Broker Verbindungsfehler: {str(e)}'
             }, status=500)
         
         # Prepare order parameters
@@ -167,6 +178,11 @@ def execute_live_trade(request, signal_id):
                 }, status=400)
             
             # Order successful - create trade record
+            # Safely get broker status value
+            broker_status = None
+            if order_result.status:
+                broker_status = order_result.status.value if hasattr(order_result.status, 'value') else str(order_result.status)
+            
             trade = Trade.objects.create(
                 signal=signal,
                 trade_type='LIVE',
@@ -175,7 +191,7 @@ def execute_live_trade(request, signal_id):
                 take_profit=take_profit,
                 position_size=size,
                 broker_order_id=order_result.deal_id,
-                broker_status=order_result.status.value if order_result.status else None,
+                broker_status=broker_status,
             )
             
             # Update signal status
