@@ -73,6 +73,17 @@ class GracefulShutdown:
 
 class Command(BaseCommand):
     help = 'Run the Fiona trading system background worker'
+    
+    # Phase reference mapping for breakout state checking
+    # Maps SessionPhase enum values to BreakoutRange.PHASE_CHOICES string values
+    # For trading phases, indicates which range to use as reference
+    BREAKOUT_REFERENCE_PHASE_MAP = {
+        SessionPhase.LONDON_CORE: 'ASIA_RANGE',
+        SessionPhase.US_CORE_TRADING: 'PRE_US_RANGE',
+        SessionPhase.PRE_US_RANGE: 'LONDON_CORE',
+        SessionPhase.EIA_PRE: 'PRE_US_RANGE',
+        SessionPhase.EIA_POST: 'PRE_US_RANGE',
+    }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1409,17 +1420,8 @@ class Command(BaseCommand):
         # Get the appropriate range for the current phase
         try:
             # Determine which range to use based on current phase
-            # For trading phases, use the reference range
-            # Maps SessionPhase enum values to BreakoutRange.PHASE_CHOICES string values
-            reference_phase_mapping = {
-                SessionPhase.LONDON_CORE: 'ASIA_RANGE',
-                SessionPhase.US_CORE_TRADING: 'PRE_US_RANGE',
-                SessionPhase.PRE_US_RANGE: 'LONDON_CORE',
-                SessionPhase.EIA_PRE: 'PRE_US_RANGE',
-                SessionPhase.EIA_POST: 'PRE_US_RANGE',
-            }
-            
-            reference_phase = reference_phase_mapping.get(phase)
+            # For trading phases, use the reference range from class constant
+            reference_phase = self.BREAKOUT_REFERENCE_PHASE_MAP.get(phase)
             
             # If no specific reference phase, get the most recent range
             if reference_phase:
@@ -1440,14 +1442,11 @@ class Command(BaseCommand):
             range_low = float(range_data.effective_low)
             
             # Calculate mid price for comparison
-            # We already verified current_price.bid is not None in the early check
+            # current_price.bid is guaranteed to be not None by the early check
             if current_price.ask is not None:
                 price_to_check = float((current_price.bid + current_price.ask) / 2)
-            elif current_price.bid is not None:
-                price_to_check = float(current_price.bid)
             else:
-                # Should not reach here due to early check, but be safe
-                return
+                price_to_check = float(current_price.bid)
             
             # Check if price is back inside range
             if range_low <= price_to_check <= range_high:
