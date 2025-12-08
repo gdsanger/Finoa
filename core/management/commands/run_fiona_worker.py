@@ -1301,11 +1301,80 @@ class Command(BaseCommand):
             self.stdout.write(f"      SL: {signal.stop_loss}")
             self.stdout.write(f"      TP: {signal.take_profit}")
             self.stdout.write(f"      Size: {signal.position_size}")
-            self.stdout.write("      → Signal ready for user confirmation in UI")
+            
+            # Check if auto-trade is enabled for this asset
+            if trading_asset and trading_asset.auto_trade and risk_result.allowed:
+                self.stdout.write("      → Auto-Trade enabled and risk allowed, executing trade automatically...")
+                self._execute_auto_trade(signal, order, asset_broker, broker_symbol)
+            else:
+                self.stdout.write("      → Signal ready for user confirmation in UI")
             
         except Exception as e:
             self.stdout.write(self.style.ERROR(f"    Failed to create signal: {e}"))
             logger.exception("Signal creation failed")
+
+    def _execute_auto_trade(self, signal, order, broker, broker_symbol):
+        """
+        Execute an auto-trade for a signal with auto_trade enabled.
+        
+        Args:
+            signal: Signal model instance
+            order: OrderRequest prepared for this signal
+            broker: BrokerService instance for this asset
+            broker_symbol: Broker-specific symbol
+        """
+        from trading.models import Trade
+        from core.services.broker.models import OrderType
+        
+        try:
+            # Place the order at the broker
+            self.stdout.write("        → Placing order at broker...")
+            order_result = broker.place_order(order)
+            
+            if not order_result.success:
+                # Order was rejected by broker
+                logger.warning(f"Auto-trade order rejected by broker for signal {signal.id}: {order_result.reason}")
+                self.stdout.write(self.style.ERROR(f"        ✗ Order rejected: {order_result.reason or 'Unknown error'}"))
+                # Signal stays ACTIVE so user can manually retry if desired
+                return
+            
+            # Order successful - create trade record
+            self.stdout.write(self.style.SUCCESS(f"        ✓ Order placed successfully! Order ID: {order_result.deal_id}"))
+            
+            # Safely get broker status value
+            broker_status = None
+            if order_result.status:
+                broker_status = order_result.status.value if hasattr(order_result.status, 'value') else str(order_result.status)
+            
+            trade = Trade.objects.create(
+                signal=signal,
+                trade_type='LIVE',
+                entry_price=signal.trigger_price,
+                stop_loss=signal.stop_loss,
+                take_profit=signal.take_profit,
+                position_size=signal.position_size,
+                broker_order_id=order_result.deal_id,
+                broker_status=broker_status,
+            )
+            
+            # Update signal status to EXECUTED
+            signal.status = 'EXECUTED'
+            signal.executed_at = timezone.now()
+            signal.save()
+            
+            self.stdout.write(self.style.SUCCESS(f"        ✓ Trade created: {trade.id}"))
+            self.stdout.write(f"        → Signal status updated to: EXECUTED")
+            
+            logger.info(f"Auto-trade executed successfully for signal {signal.id}. Broker order ID: {order_result.deal_id}")
+            
+        except BrokerError as e:
+            logger.error(f"Broker error during auto-trade for signal {signal.id}: {e}")
+            self.stdout.write(self.style.ERROR(f"        ✗ Broker error: {str(e)}"))
+            # Signal stays ACTIVE so user can manually retry if desired
+        except Exception as e:
+            logger.error(f"Unexpected error during auto-trade for signal {signal.id}: {e}", exc_info=True)
+            self.stdout.write(self.style.ERROR(f"        ✗ Unexpected error: {str(e)}"))
+            # Signal stays ACTIVE so user can manually retry if desired
 
     def _try_reconnect(self) -> None:
         """Try to reconnect to all brokers after an error."""
