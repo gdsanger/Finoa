@@ -2335,14 +2335,11 @@
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                // Remove the signal card from DOM instead of reload for better UX
-                const checkbox = document.querySelector(`.signal-checkbox[data-signal-id="${signalId}"]`);
-                if (checkbox) {
-                    const signalCard = checkbox.closest('.col-lg-6');
-                    if (signalCard) {
-                        signalCard.remove();
-                        updateSelectedCount();
-                    }
+                // Remove the signal row from DOM instead of reload for better UX
+                const row = document.querySelector(`tr[data-signal-id="${signalId}"]`);
+                if (row) {
+                    row.remove();
+                    updateSelectedCount();
                 }
             } else {
                 alert('Fehler: ' + data.error);
@@ -2356,7 +2353,7 @@
     
     // Filter signals by risk status
     function filterSignals(status, buttonElement) {
-        const allCards = document.querySelectorAll('.signal-card');
+        const allRows = document.querySelectorAll('#signals-table-body tr[data-risk-status]');
         const buttons = document.querySelectorAll('.signal-controls .btn-group button');
         
         // Status to button text mapping
@@ -2381,12 +2378,12 @@
             });
         }
         
-        allCards.forEach(card => {
-            const cardStatus = card.getAttribute('data-risk-status');
-            if (status === 'ALL' || cardStatus === status) {
-                card.closest('.col-lg-6').style.display = '';
+        allRows.forEach(row => {
+            const rowStatus = row.getAttribute('data-risk-status');
+            if (status === 'ALL' || rowStatus === status) {
+                row.style.display = '';
             } else {
-                card.closest('.col-lg-6').style.display = 'none';
+                row.style.display = 'none';
             }
         });
     }
