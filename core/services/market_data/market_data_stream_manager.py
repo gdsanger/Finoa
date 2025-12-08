@@ -28,6 +28,13 @@ from .market_data_config import (
 
 logger = logging.getLogger(__name__)
 
+# Constants for broker-specific handling
+BROKER_KRAKEN = 'KRAKEN'
+
+# Thresholds for data freshness and fetch timing
+KRAKEN_FRESH_DATA_THRESHOLD_SECONDS = 180  # 3 minutes
+CACHED_DATA_REFETCH_INTERVAL_SECONDS = 30  # Refetch cached data every 30 seconds
+
 
 class MarketDataStreamManager:
     """
@@ -256,11 +263,11 @@ class MarketDataStreamManager:
         if stream.status == 'CACHED':
             fetch_key = self._get_stream_key(stream.asset_id, timeframe)
             last_fetch = self._last_fetch_time.get(fetch_key)
-            # Only fetch if we haven't fetched in the last 30 seconds
+            # Only fetch if we haven't fetched recently
             # This prevents excessive API calls while ensuring status updates
             if last_fetch is None:
                 return True
-            if (datetime.now(timezone.utc) - last_fetch).total_seconds() > 30:
+            if (datetime.now(timezone.utc) - last_fetch).total_seconds() > CACHED_DATA_REFETCH_INTERVAL_SECONDS:
                 return True
             return False
         
@@ -318,7 +325,7 @@ class MarketDataStreamManager:
             broker_name = getattr(asset, 'broker', '').upper()
             
             # For Kraken assets, check data freshness and reload from Redis if needed
-            if broker_name == 'KRAKEN':
+            if broker_name == BROKER_KRAKEN:
                 try:
                     logger.debug(f"Refreshing Kraken asset {asset.symbol} from Redis")
                     
@@ -345,8 +352,8 @@ class MarketDataStreamManager:
                             last_candle = recent_candles[-1]
                             candle_age = (datetime.now(timezone.utc).timestamp() - last_candle.timestamp)
                             
-                            # If last candle is less than 3 minutes old, consider data LIVE
-                            if candle_age < 180:  # 3 minutes
+                            # If last candle is fresh enough, consider data LIVE
+                            if candle_age < KRAKEN_FRESH_DATA_THRESHOLD_SECONDS:
                                 stream.status = 'LIVE'
                                 stream.error = None
                                 logger.debug(f"Kraken asset {asset.symbol} has fresh data (candle age: {candle_age:.0f}s)")
@@ -438,7 +445,7 @@ class MarketDataStreamManager:
         except Exception as e:
             # Don't override the status if it was already set by Kraken handling
             broker_name = getattr(asset, 'broker', '').upper()
-            if broker_name != 'KRAKEN' or stream.status == 'OFFLINE':
+            if broker_name != BROKER_KRAKEN or stream.status == 'OFFLINE':
                 error_msg = self._format_broker_error(e)
                 stream.error = error_msg
                 stream.status = 'OFFLINE'
