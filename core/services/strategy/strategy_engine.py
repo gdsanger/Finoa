@@ -1631,13 +1631,15 @@ class StrategyEngine:
                 max_pullback_ticks = self.trading_asset.max_pullback_ticks
                 
                 # Calculate distance from candle.low to range_high in ticks
-                distance_ticks = abs(candle.low - range_high) / tick_size
+                # For LONG: we measure how far below range_high the candle.low is
+                distance = range_high - candle.low
+                distance_ticks = distance / tick_size
                 
-                # Check min_break_ticks: candle.low must be at least min_break_ticks away from range_high
+                # Check min_break_ticks: candle.low must be at least min_break_ticks below range_high
                 if distance_ticks < min_break_ticks:
                     rejection_reason = (
                         f"Breakout rejected: LONG - candle low {candle.low:.4f} is only {distance_ticks:.1f} ticks "
-                        f"from range high {range_high:.4f}, needs at least {min_break_ticks} ticks{context_suffix}"
+                        f"below range high {range_high:.4f}, needs at least {min_break_ticks} ticks{context_suffix}"
                     )
                     self._set_status(rejection_reason)
                     logger.debug(
@@ -1656,11 +1658,11 @@ class StrategyEngine:
                     )
                     return None
                 
-                # Check max_pullback_ticks: candle.low must not be more than max_pullback_ticks away from range_high
+                # Check max_pullback_ticks: candle.low must not be more than max_pullback_ticks below range_high
                 if distance_ticks > max_pullback_ticks:
                     rejection_reason = (
                         f"Breakout rejected: LONG - candle low {candle.low:.4f} is {distance_ticks:.1f} ticks "
-                        f"from range high {range_high:.4f}, exceeds max {max_pullback_ticks} ticks{context_suffix}"
+                        f"below range high {range_high:.4f}, exceeds max {max_pullback_ticks} ticks{context_suffix}"
                     )
                     self._set_status(rejection_reason)
                     logger.debug(
@@ -1735,13 +1737,15 @@ class StrategyEngine:
                 max_pullback_ticks = self.trading_asset.max_pullback_ticks
                 
                 # Calculate distance from candle.high to range_low in ticks
-                distance_ticks = abs(candle.high - range_low) / tick_size
+                # For SHORT: we measure how far above range_low the candle.high is
+                distance = candle.high - range_low
+                distance_ticks = distance / tick_size
                 
-                # Check min_break_ticks: candle.high must be at least min_break_ticks away from range_low
+                # Check min_break_ticks: candle.high must be at least min_break_ticks above range_low
                 if distance_ticks < min_break_ticks:
                     rejection_reason = (
                         f"Breakout rejected: SHORT - candle high {candle.high:.4f} is only {distance_ticks:.1f} ticks "
-                        f"from range low {range_low:.4f}, needs at least {min_break_ticks} ticks{context_suffix}"
+                        f"above range low {range_low:.4f}, needs at least {min_break_ticks} ticks{context_suffix}"
                     )
                     self._set_status(rejection_reason)
                     logger.debug(
@@ -1760,11 +1764,11 @@ class StrategyEngine:
                     )
                     return None
                 
-                # Check max_pullback_ticks: candle.high must not be more than max_pullback_ticks away from range_low
+                # Check max_pullback_ticks: candle.high must not be more than max_pullback_ticks above range_low
                 if distance_ticks > max_pullback_ticks:
                     rejection_reason = (
                         f"Breakout rejected: SHORT - candle high {candle.high:.4f} is {distance_ticks:.1f} ticks "
-                        f"from range low {range_low:.4f}, exceeds max {max_pullback_ticks} ticks{context_suffix}"
+                        f"above range low {range_low:.4f}, exceeds max {max_pullback_ticks} ticks{context_suffix}"
                     )
                     self._set_status(rejection_reason)
                     logger.debug(
