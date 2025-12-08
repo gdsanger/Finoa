@@ -1410,6 +1410,7 @@ class Command(BaseCommand):
         try:
             # Determine which range to use based on current phase
             # For trading phases, use the reference range
+            # Maps SessionPhase enum values to BreakoutRange.PHASE_CHOICES string values
             reference_phase_mapping = {
                 SessionPhase.LONDON_CORE: 'ASIA_RANGE',
                 SessionPhase.US_CORE_TRADING: 'PRE_US_RANGE',
@@ -1439,10 +1440,14 @@ class Command(BaseCommand):
             range_low = float(range_data.effective_low)
             
             # Calculate mid price for comparison
-            if current_price.ask:
+            # We already verified current_price.bid is not None in the early check
+            if current_price.ask is not None:
                 price_to_check = float((current_price.bid + current_price.ask) / 2)
-            else:
+            elif current_price.bid is not None:
                 price_to_check = float(current_price.bid)
+            else:
+                # Should not reach here due to early check, but be safe
+                return
             
             # Check if price is back inside range
             if range_low <= price_to_check <= range_high:
