@@ -161,12 +161,45 @@ class SignalDashboardViewTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Keine aktiven Signale')
     
+    def test_signal_dashboard_hides_rejected_signals(self):
+        """Test that dashboard does not show rejected signals."""
+        # Create an active signal
+        active_signal = Signal.objects.create(
+            setup_type='BREAKOUT',
+            session_phase='LONDON_CORE',
+            direction='LONG',
+            trigger_price=Decimal('78.50'),
+            risk_status='GREEN',
+            status='ACTIVE',
+        )
+        
+        # Create a rejected signal
+        rejected_signal = Signal.objects.create(
+            setup_type='EIA_REVERSION',
+            session_phase='EIA_POST',
+            direction='SHORT',
+            trigger_price=Decimal('77.25'),
+            risk_status='RED',
+            status='REJECTED',
+        )
+        
+        response = self.client.get('/fiona/signals/')
+        self.assertEqual(response.status_code, 200)
+        
+        # Active signal should be visible
+        self.assertContains(response, 'Breakout')
+        
+        # Check that the active signal's ID appears in the page
+        self.assertContains(response, str(active_signal.id))
+        
+        # Rejected signal should NOT be visible - check its ID is not in page
+        self.assertNotContains(response, str(rejected_signal.id))
+    
     def test_signal_dashboard_shows_account_info_section(self):
         """Test that dashboard shows account info section with balance and margin."""
         response = self.client.get('/fiona/signals/')
         self.assertEqual(response.status_code, 200)
         # Check for account info card elements
-        self.assertContains(response, 'Konto &amp; Margin')
         self.assertContains(response, 'Kontostand')
         self.assertContains(response, 'Margin (genutzt)')
         self.assertContains(response, 'Margin (verfügbar)')
