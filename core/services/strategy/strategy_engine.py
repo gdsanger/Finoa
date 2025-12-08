@@ -71,7 +71,8 @@ class StrategyEngine:
     def __init__(
         self,
         market_state: MarketStateProvider,
-        config: Optional[StrategyConfig] = None
+        config: Optional[StrategyConfig] = None,
+        trading_asset=None
     ) -> None:
         """
         Initialize the Strategy Engine.
@@ -79,9 +80,11 @@ class StrategyEngine:
         Args:
             market_state: Market state provider for data access.
             config: Strategy configuration (uses defaults if not provided).
+            trading_asset: Optional TradingAsset model instance for breakout state management.
         """
         self.market_state = market_state
         self.config = config or StrategyConfig()
+        self.trading_asset = trading_asset
         self.last_status_message: Optional[str] = None
         # Collects all status messages for the current evaluation run.
         self._status_history: list[str] = []
@@ -886,9 +889,9 @@ class StrategyEngine:
                         f"({trade_direction} signal)"
                     )
                 else:
-                    self._set_status(
-                        f"Asia breakout evaluation: {trade_direction} setup detected"
-                    )
+                    # Use "Long Trade Range" or "Short Trade Range" as per requirements
+                    signal_message = "Long Trade Range" if trade_direction == "LONG" else "Short Trade Range"
+                    self._set_status(signal_message)
 
                 logger.debug(
                     "Asia breakout evaluation: breakout signal detected",
@@ -1101,9 +1104,9 @@ class StrategyEngine:
                         f"({trade_direction} signal)"
                     )
                 else:
-                    self._set_status(
-                        f"US breakout evaluation: {trade_direction} setup detected"
-                    )
+                    # Use "Long Trade Range" or "Short Trade Range" as per requirements
+                    signal_message = "Long Trade Range" if trade_direction == "LONG" else "Short Trade Range"
+                    self._set_status(signal_message)
 
                 logger.debug(
                     "US breakout evaluation: breakout signal detected",
@@ -1596,8 +1599,86 @@ class StrategyEngine:
         """Detect breakout or fakeout signal for a candle relative to a range."""
 
         context_suffix = f" [{context}]" if context else ""
+        
+        # Check if asset is in IN_RANGE state (required for new signals)
+        if self.trading_asset and self.trading_asset.breakout_state != 'IN_RANGE':
+            rejection_reason = (
+                f"Breakout rejected: Asset breakout state is {self.trading_asset.breakout_state}, "
+                f"must be IN_RANGE to generate new signals{context_suffix}"
+            )
+            self._set_status(rejection_reason)
+            logger.debug(
+                "Breakout signal rejected%s: Asset not in IN_RANGE state",
+                context_suffix,
+                extra={
+                    "strategy_data": {
+                        "candle_high": candle.high,
+                        "candle_low": candle.low,
+                        "candle_close": candle.close,
+                        "range_high": range_high,
+                        "range_low": range_low,
+                        "breakout_state": self.trading_asset.breakout_state,
+                    }
+                },
+            )
+            return None
 
         if candle.high > range_high:
+            # Validate tick requirements for LONG signal
+            if self.trading_asset:
+                tick_size = float(self.trading_asset.tick_size)
+                min_break_ticks = self.trading_asset.min_break_ticks
+                max_pullback_ticks = self.trading_asset.max_pullback_ticks
+                
+                # Calculate distance from candle.low to range_high in ticks
+                distance_ticks = abs(candle.low - range_high) / tick_size
+                
+                # Check min_break_ticks: candle.low must be at least min_break_ticks away from range_high
+                if distance_ticks < min_break_ticks:
+                    rejection_reason = (
+                        f"Breakout rejected: LONG - candle low {candle.low:.4f} is only {distance_ticks:.1f} ticks "
+                        f"from range high {range_high:.4f}, needs at least {min_break_ticks} ticks{context_suffix}"
+                    )
+                    self._set_status(rejection_reason)
+                    logger.debug(
+                        "Breakout signal rejected%s: LONG min_break_ticks not met",
+                        context_suffix,
+                        extra={
+                            "strategy_data": {
+                                "candle_high": candle.high,
+                                "candle_low": candle.low,
+                                "range_high": range_high,
+                                "distance_ticks": distance_ticks,
+                                "min_break_ticks": min_break_ticks,
+                                "direction": "LONG",
+                            }
+                        },
+                    )
+                    return None
+                
+                # Check max_pullback_ticks: candle.low must not be more than max_pullback_ticks away from range_high
+                if distance_ticks > max_pullback_ticks:
+                    rejection_reason = (
+                        f"Breakout rejected: LONG - candle low {candle.low:.4f} is {distance_ticks:.1f} ticks "
+                        f"from range high {range_high:.4f}, exceeds max {max_pullback_ticks} ticks{context_suffix}"
+                    )
+                    self._set_status(rejection_reason)
+                    logger.debug(
+                        "Breakout signal rejected%s: LONG max_pullback_ticks exceeded",
+                        context_suffix,
+                        extra={
+                            "strategy_data": {
+                                "candle_high": candle.high,
+                                "candle_low": candle.low,
+                                "range_high": range_high,
+                                "distance_ticks": distance_ticks,
+                                "max_pullback_ticks": max_pullback_ticks,
+                                "direction": "LONG",
+                            }
+                        },
+                    )
+                    return None
+            
             passed, reason = self._passes_breakout_filters(
                 candle,
                 range_height,
@@ -1629,10 +1710,79 @@ class StrategyEngine:
                 )
                 return None
             if candle.close > range_high:
+                # Update breakout state to BROKEN_LONG
+                if self.trading_asset:
+                    self.trading_asset.breakout_state = 'BROKEN_LONG'
+                    self.trading_asset.save()
+                    logger.info(
+                        "Long Trade Range: Breakout state updated to BROKEN_LONG",
+                        extra={
+                            "strategy_data": {
+                                "asset": self.trading_asset.symbol,
+                                "candle_close": candle.close,
+                                "range_high": range_high,
+                            }
+                        },
+                    )
                 return BreakoutSignal.LONG_BREAKOUT
             return BreakoutSignal.FAILED_LONG_BREAKOUT
 
         if candle.low < range_low:
+            # Validate tick requirements for SHORT signal
+            if self.trading_asset:
+                tick_size = float(self.trading_asset.tick_size)
+                min_break_ticks = self.trading_asset.min_break_ticks
+                max_pullback_ticks = self.trading_asset.max_pullback_ticks
+                
+                # Calculate distance from candle.high to range_low in ticks
+                distance_ticks = abs(candle.high - range_low) / tick_size
+                
+                # Check min_break_ticks: candle.high must be at least min_break_ticks away from range_low
+                if distance_ticks < min_break_ticks:
+                    rejection_reason = (
+                        f"Breakout rejected: SHORT - candle high {candle.high:.4f} is only {distance_ticks:.1f} ticks "
+                        f"from range low {range_low:.4f}, needs at least {min_break_ticks} ticks{context_suffix}"
+                    )
+                    self._set_status(rejection_reason)
+                    logger.debug(
+                        "Breakout signal rejected%s: SHORT min_break_ticks not met",
+                        context_suffix,
+                        extra={
+                            "strategy_data": {
+                                "candle_high": candle.high,
+                                "candle_low": candle.low,
+                                "range_low": range_low,
+                                "distance_ticks": distance_ticks,
+                                "min_break_ticks": min_break_ticks,
+                                "direction": "SHORT",
+                            }
+                        },
+                    )
+                    return None
+                
+                # Check max_pullback_ticks: candle.high must not be more than max_pullback_ticks away from range_low
+                if distance_ticks > max_pullback_ticks:
+                    rejection_reason = (
+                        f"Breakout rejected: SHORT - candle high {candle.high:.4f} is {distance_ticks:.1f} ticks "
+                        f"from range low {range_low:.4f}, exceeds max {max_pullback_ticks} ticks{context_suffix}"
+                    )
+                    self._set_status(rejection_reason)
+                    logger.debug(
+                        "Breakout signal rejected%s: SHORT max_pullback_ticks exceeded",
+                        context_suffix,
+                        extra={
+                            "strategy_data": {
+                                "candle_high": candle.high,
+                                "candle_low": candle.low,
+                                "range_low": range_low,
+                                "distance_ticks": distance_ticks,
+                                "max_pullback_ticks": max_pullback_ticks,
+                                "direction": "SHORT",
+                            }
+                        },
+                    )
+                    return None
+            
             passed, reason = self._passes_breakout_filters(
                 candle,
                 range_height,
@@ -1664,9 +1814,43 @@ class StrategyEngine:
                 )
                 return None
             if candle.close < range_low:
+                # Update breakout state to BROKEN_SHORT
+                if self.trading_asset:
+                    self.trading_asset.breakout_state = 'BROKEN_SHORT'
+                    self.trading_asset.save()
+                    logger.info(
+                        "Short Trade Range: Breakout state updated to BROKEN_SHORT",
+                        extra={
+                            "strategy_data": {
+                                "asset": self.trading_asset.symbol,
+                                "candle_close": candle.close,
+                                "range_low": range_low,
+                            }
+                        },
+                    )
                 return BreakoutSignal.SHORT_BREAKOUT
             return BreakoutSignal.FAILED_SHORT_BREAKOUT
 
+        # Check if price has returned to range and reset breakout state if needed
+        if self.trading_asset and self.trading_asset.breakout_state != 'IN_RANGE':
+            # Price is inside range, reset breakout state
+            if range_low <= candle.close <= range_high:
+                logger.info(
+                    "Price returned to range - resetting breakout state from %s to IN_RANGE",
+                    self.trading_asset.breakout_state,
+                    extra={
+                        "strategy_data": {
+                            "asset": self.trading_asset.symbol,
+                            "previous_state": self.trading_asset.breakout_state,
+                            "candle_close": candle.close,
+                            "range_high": range_high,
+                            "range_low": range_low,
+                        }
+                    },
+                )
+                self.trading_asset.breakout_state = 'IN_RANGE'
+                self.trading_asset.save()
+        
         logger.debug(
             "Breakout signal not generated%s: candle remained inside range",
             context_suffix,

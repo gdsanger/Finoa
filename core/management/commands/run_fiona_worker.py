@@ -481,6 +481,7 @@ class Command(BaseCommand):
                 asset_strategy_engine = StrategyEngine(
                     market_state=self.market_state_provider,
                     config=strategy_config,
+                    trading_asset=asset,
                 )
                 
                 # Run cycle for this asset
