@@ -1,6 +1,7 @@
 import logging
 import json
 from datetime import timedelta
+from decimal import Decimal
 
 from django.shortcuts import render, get_object_or_404, redirect
 from django.http import JsonResponse, Http404
@@ -19,7 +20,14 @@ from .services.chart_service import (
     SUPPORTED_TIME_WINDOWS,
 )
 
-from core.services.broker import BrokerRegistry, BrokerError, AuthenticationError
+from core.services.broker import (
+    BrokerRegistry,
+    BrokerError,
+    AuthenticationError,
+    OrderRequest,
+    OrderType,
+    OrderDirection,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +109,9 @@ def signal_detail(request, signal_id):
 def execute_live_trade(request, signal_id):
     """
     Execute a live trade for a signal.
+    
+    Places a real order at the broker (Kraken, IG, or MEXC) via the Broker Service
+    with the order data defined in the signal.
     """
     try:
         signal = Signal.objects.get(id=signal_id)
@@ -111,32 +122,110 @@ def execute_live_trade(request, signal_id):
                 'error': 'Live Trade nicht erlaubt basierend auf Risk Engine Status.'
             }, status=400)
         
-        # Create the trade
-        trade = Trade.objects.create(
-            signal=signal,
-            trade_type='LIVE',
-            entry_price=signal.trigger_price,
-            stop_loss=signal.gpt_corrected_sl or signal.stop_loss,
-            take_profit=signal.gpt_corrected_tp or signal.take_profit,
-            position_size=signal.gpt_corrected_size or signal.position_size,
+        # Check if signal has a trading asset
+        if not signal.trading_asset:
+            return JsonResponse({
+                'success': False,
+                'error': 'Signal hat kein zugeordnetes Trading Asset.'
+            }, status=400)
+        
+        # Get the broker service for the asset
+        try:
+            registry = BrokerRegistry.get_instance()
+            broker = registry.get_broker_for_asset(signal.trading_asset)
+            
+        except (ImproperlyConfigured, ValueError) as e:
+            logger.error(f"Failed to get broker service for signal {signal_id}: {e}")
+            return JsonResponse({
+                'success': False,
+                'error': f'Broker Service konnte nicht geladen werden: {str(e)}'
+            }, status=500)
+        except BrokerError as e:
+            logger.error(f"Broker connection error for signal {signal_id}: {e}")
+            return JsonResponse({
+                'success': False,
+                'error': f'Broker Verbindungsfehler: {str(e)}'
+            }, status=500)
+        
+        # Prepare order parameters
+        epic = signal.trading_asset.effective_broker_symbol
+        direction = OrderDirection.BUY if signal.direction == 'LONG' else OrderDirection.SELL
+        size = Decimal(str(signal.gpt_corrected_size or signal.position_size))
+        stop_loss = Decimal(str(signal.gpt_corrected_sl or signal.stop_loss)) if (signal.gpt_corrected_sl or signal.stop_loss) else None
+        take_profit = Decimal(str(signal.gpt_corrected_tp or signal.take_profit)) if (signal.gpt_corrected_tp or signal.take_profit) else None
+        
+        # Create order request
+        order_request = OrderRequest(
+            epic=epic,
+            direction=direction,
+            size=size,
+            order_type=OrderType.MARKET,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+            currency=signal.trading_asset.quote_currency,
         )
         
-        # Update signal status
-        signal.status = 'EXECUTED'
-        signal.executed_at = timezone.now()
-        signal.save()
-        
-        return JsonResponse({
-            'success': True,
-            'message': 'Live Trade erfolgreich ausgeführt!',
-            'trade_id': str(trade.id)
-        })
+        # Place the order at the broker
+        try:
+            order_result = broker.place_order(order_request)
+            
+            if not order_result.success:
+                # Order was rejected by broker
+                logger.warning(f"Order rejected by broker for signal {signal_id}: {order_result.reason}")
+                return JsonResponse({
+                    'success': False,
+                    'error': f'Order wurde vom Broker abgelehnt: {order_result.reason or "Unbekannter Fehler"}'
+                }, status=400)
+            
+            # Order successful - create trade record
+            # Safely get broker status value
+            broker_status = None
+            if order_result.status:
+                broker_status = order_result.status.value if hasattr(order_result.status, 'value') else str(order_result.status)
+            
+            trade = Trade.objects.create(
+                signal=signal,
+                trade_type='LIVE',
+                entry_price=signal.trigger_price,
+                stop_loss=stop_loss,
+                take_profit=take_profit,
+                position_size=size,
+                broker_order_id=order_result.deal_id,
+                broker_status=broker_status,
+            )
+            
+            # Update signal status
+            signal.status = 'EXECUTED'
+            signal.executed_at = timezone.now()
+            signal.save()
+            
+            logger.info(f"Live trade executed successfully for signal {signal_id}. Broker order ID: {order_result.deal_id}")
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Live Trade erfolgreich ausgeführt! Order ID: {order_result.deal_id}',
+                'trade_id': str(trade.id),
+                'broker_order_id': order_result.deal_id,
+            })
+            
+        except BrokerError as e:
+            logger.error(f"Broker error placing order for signal {signal_id}: {e}")
+            return JsonResponse({
+                'success': False,
+                'error': f'Fehler beim Platzieren der Order: {str(e)}'
+            }, status=500)
         
     except Signal.DoesNotExist:
         return JsonResponse({
             'success': False,
             'error': 'Signal nicht gefunden.'
         }, status=404)
+    except Exception as e:
+        logger.error(f"Unexpected error executing live trade for signal {signal_id}: {e}", exc_info=True)
+        return JsonResponse({
+            'success': False,
+            'error': f'Unerwarteter Fehler: {str(e)}'
+        }, status=500)
 
 
 @login_required
