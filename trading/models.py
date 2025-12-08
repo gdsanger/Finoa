@@ -927,6 +927,25 @@ class Trade(models.Model):
     trade_type = models.CharField(max_length=10, choices=TRADE_TYPES)
     status = models.CharField(max_length=20, choices=TRADE_STATUS, default='OPEN')
     
+    # Broker order details
+    broker_order_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text='Broker-specific order/deal ID from place_order() response'
+    )
+    broker_status = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        help_text='Order status from broker (e.g., OPEN, PENDING, REJECTED)'
+    )
+    broker_error_message = models.TextField(
+        null=True,
+        blank=True,
+        help_text='Error message from broker if order failed'
+    )
+    
     # Execution details
     entry_price = models.DecimalField(max_digits=10, decimal_places=4, null=True, blank=True)
     exit_price = models.DecimalField(max_digits=10, decimal_places=4, null=True, blank=True)

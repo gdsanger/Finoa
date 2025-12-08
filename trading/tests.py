@@ -218,6 +218,15 @@ class TradeExecutionViewTest(TestCase):
         self.user = User.objects.create_user(username='testuser', password='testpass')
         self.client.login(username='testuser', password='testpass')
         
+        # Create a trading asset for the signal
+        self.asset = TradingAsset.objects.create(
+            name='Test Asset',
+            symbol='TEST',
+            epic='TEST_SYMBOL',
+            broker=TradingAsset.BrokerKind.KRAKEN,
+            is_active=True,
+        )
+        
         self.signal = Signal.objects.create(
             setup_type='BREAKOUT',
             session_phase='LONDON_CORE',
@@ -227,10 +236,25 @@ class TradeExecutionViewTest(TestCase):
             take_profit=Decimal('79.50'),
             position_size=Decimal('2.00'),
             risk_status='GREEN',
+            trading_asset=self.asset,
         )
     
-    def test_execute_live_trade_success(self):
+    @patch('trading.views.BrokerRegistry.get_instance')
+    def test_execute_live_trade_success(self, mock_registry):
         """Test executing a live trade."""
+        # Mock the broker service
+        mock_broker = MagicMock()
+        mock_order_result = MagicMock()
+        mock_order_result.success = True
+        mock_order_result.deal_id = 'TEST_ORDER_123'
+        mock_order_result.status = MagicMock()
+        mock_order_result.status.value = 'OPEN'
+        mock_broker.place_order.return_value = mock_order_result
+        
+        mock_registry_instance = MagicMock()
+        mock_registry_instance.get_broker_for_asset.return_value = mock_broker
+        mock_registry.return_value = mock_registry_instance
+        
         response = self.client.post(f'/fiona/signals/{self.signal.id}/live/')
         self.assertEqual(response.status_code, 200)
         
@@ -245,6 +269,7 @@ class TradeExecutionViewTest(TestCase):
         trade = Trade.objects.filter(signal=self.signal).first()
         self.assertIsNotNone(trade)
         self.assertEqual(trade.trade_type, 'LIVE')
+        self.assertEqual(trade.broker_order_id, 'TEST_ORDER_123')
     
     def test_execute_shadow_trade_success(self):
         """Test executing a shadow trade."""
@@ -4791,3 +4816,145 @@ class TimeSinceShortFilterTest(TestCase):
         
         result = timesince_short(None)
         self.assertEqual(result, '')
+
+
+class ExecuteLiveTradeViewTest(TestCase):
+    """Tests for execute_live_trade view."""
+    
+    def setUp(self):
+        """Set up test user, trading asset, and signal."""
+        self.user = User.objects.create_user(username='testuser', password='testpass')
+        self.client.login(username='testuser', password='testpass')
+        
+        # Create a trading asset
+        self.asset = TradingAsset.objects.create(
+            name='Crude Oil',
+            symbol='CL',
+            epic='PF_XBTUSD',
+            broker=TradingAsset.BrokerKind.KRAKEN,
+            broker_symbol='PF_XBTUSD',
+            quote_currency='USD',
+            is_active=True,
+        )
+        
+        # Create a signal
+        self.signal = Signal.objects.create(
+            setup_type='BREAKOUT',
+            session_phase='LONDON_CORE',
+            direction='LONG',
+            instrument='CL',
+            trading_asset=self.asset,
+            trigger_price=Decimal('78.50'),
+            range_high=Decimal('78.60'),
+            range_low=Decimal('77.50'),
+            stop_loss=Decimal('77.80'),
+            take_profit=Decimal('79.50'),
+            position_size=Decimal('2.00'),
+            risk_status='GREEN',
+            status='ACTIVE',
+        )
+    
+    def test_execute_live_trade_requires_login(self):
+        """Test that execute_live_trade requires login."""
+        self.client.logout()
+        response = self.client.post(f'/fiona/signals/{self.signal.id}/live/')
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.url.startswith('/login/'))
+    
+    def test_execute_live_trade_requires_post(self):
+        """Test that execute_live_trade only accepts POST requests."""
+        response = self.client.get(f'/fiona/signals/{self.signal.id}/live/')
+        self.assertEqual(response.status_code, 405)
+    
+    def test_execute_live_trade_rejects_red_risk_status(self):
+        """Test that execute_live_trade rejects signals with RED risk status."""
+        self.signal.risk_status = 'RED'
+        self.signal.save()
+        
+        response = self.client.post(f'/fiona/signals/{self.signal.id}/live/')
+        self.assertEqual(response.status_code, 400)
+        data = json.loads(response.content)
+        self.assertFalse(data['success'])
+        self.assertIn('nicht erlaubt', data['error'])
+    
+    def test_execute_live_trade_rejects_signal_without_asset(self):
+        """Test that execute_live_trade rejects signals without trading asset."""
+        self.signal.trading_asset = None
+        self.signal.save()
+        
+        response = self.client.post(f'/fiona/signals/{self.signal.id}/live/')
+        self.assertEqual(response.status_code, 400)
+        data = json.loads(response.content)
+        self.assertFalse(data['success'])
+        self.assertIn('kein zugeordnetes Trading Asset', data['error'])
+    
+    @patch('trading.views.BrokerRegistry.get_instance')
+    def test_execute_live_trade_success(self, mock_registry):
+        """Test successful live trade execution."""
+        # Mock the broker service
+        mock_broker = MagicMock()
+        mock_order_result = MagicMock()
+        mock_order_result.success = True
+        mock_order_result.deal_id = 'TEST_ORDER_12345'
+        mock_order_result.status = MagicMock()
+        mock_order_result.status.value = 'OPEN'
+        mock_broker.place_order.return_value = mock_order_result
+        
+        mock_registry_instance = MagicMock()
+        mock_registry_instance.get_broker_for_asset.return_value = mock_broker
+        mock_registry.return_value = mock_registry_instance
+        
+        response = self.client.post(f'/fiona/signals/{self.signal.id}/live/')
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertTrue(data['success'])
+        self.assertIn('TEST_ORDER_12345', data['message'])
+        self.assertEqual(data['broker_order_id'], 'TEST_ORDER_12345')
+        
+        # Verify trade was created
+        trade = Trade.objects.get(signal=self.signal)
+        self.assertEqual(trade.trade_type, 'LIVE')
+        self.assertEqual(trade.broker_order_id, 'TEST_ORDER_12345')
+        self.assertEqual(trade.broker_status, 'OPEN')
+        
+        # Verify signal status was updated
+        self.signal.refresh_from_db()
+        self.assertEqual(self.signal.status, 'EXECUTED')
+        self.assertIsNotNone(self.signal.executed_at)
+    
+    @patch('trading.views.BrokerRegistry.get_instance')
+    def test_execute_live_trade_broker_rejection(self, mock_registry):
+        """Test live trade execution when broker rejects order."""
+        # Mock the broker service to reject the order
+        mock_broker = MagicMock()
+        mock_order_result = MagicMock()
+        mock_order_result.success = False
+        mock_order_result.reason = 'Insufficient margin'
+        mock_broker.place_order.return_value = mock_order_result
+        
+        mock_registry_instance = MagicMock()
+        mock_registry_instance.get_broker_for_asset.return_value = mock_broker
+        mock_registry.return_value = mock_registry_instance
+        
+        response = self.client.post(f'/fiona/signals/{self.signal.id}/live/')
+        self.assertEqual(response.status_code, 400)
+        data = json.loads(response.content)
+        self.assertFalse(data['success'])
+        self.assertIn('abgelehnt', data['error'])
+        self.assertIn('Insufficient margin', data['error'])
+        
+        # Verify no trade was created
+        self.assertEqual(Trade.objects.count(), 0)
+        
+        # Verify signal status was not changed
+        self.signal.refresh_from_db()
+        self.assertEqual(self.signal.status, 'ACTIVE')
+    
+    def test_execute_live_trade_signal_not_found(self):
+        """Test execute_live_trade with non-existent signal."""
+        fake_id = uuid.uuid4()
+        response = self.client.post(f'/fiona/signals/{fake_id}/live/')
+        self.assertEqual(response.status_code, 404)
+        data = json.loads(response.content)
+        self.assertFalse(data['success'])
+        self.assertIn('nicht gefunden', data['error'])
