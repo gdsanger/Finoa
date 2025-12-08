@@ -2710,6 +2710,7 @@ def _get_fresh_asset_price(asset):
     return (None, None, '')
 
 
+@login_required
 def api_sidebar_assets(request):
     """
     GET /fiona/api/sidebar/assets/ - Return active assets with price and phase info for the sidebar.
