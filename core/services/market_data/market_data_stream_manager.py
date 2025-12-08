@@ -317,42 +317,60 @@ class MarketDataStreamManager:
         try:
             broker_name = getattr(asset, 'broker', '').upper()
             
-            # For Kraken assets, reload from Redis and check data freshness
+            # For Kraken assets, check data freshness and reload from Redis if needed
             if broker_name == 'KRAKEN':
-                logger.debug(f"Refreshing Kraken asset {asset.symbol} from Redis")
-                
-                # Reload from Redis to get latest candles from the worker
-                stream.reload()
-                
-                # Check if data is fresh (updated within last 2 minutes)
-                if stream.last_update and stream.get_count() > 0:
-                    age_seconds = (datetime.now(timezone.utc) - stream.last_update).total_seconds()
+                try:
+                    logger.debug(f"Refreshing Kraken asset {asset.symbol} from Redis")
                     
-                    # Get the timestamp of the most recent candle
-                    recent_candles = stream.get_recent(hours=0.1)  # Last 6 minutes
-                    if recent_candles:
-                        last_candle = recent_candles[-1]
-                        candle_age = (datetime.now(timezone.utc).timestamp() - last_candle.timestamp)
+                    # Try to load fresh candles from Redis
+                    try:
+                        redis_candles = self._store.load_candles(
+                            asset_id=stream.asset_id,
+                            timeframe=timeframe,
+                            count=int(window_hours * 60 / TimeframeConfig.to_minutes(timeframe)),
+                        )
                         
-                        # If last candle is less than 3 minutes old, consider data LIVE
-                        if candle_age < 180:  # 3 minutes
-                            stream.status = 'LIVE'
-                            stream.error = None
-                            logger.debug(f"Kraken asset {asset.symbol} has fresh data (candle age: {candle_age:.0f}s)")
+                        # If we got candles from Redis, update the stream
+                        if redis_candles:
+                            stream.append_many(redis_candles, persist=False)
+                            logger.debug(f"Loaded {len(redis_candles)} candles from Redis for {asset.symbol}")
+                    except Exception as e:
+                        logger.debug(f"Could not load from Redis: {e}")
+                    
+                    # Now check the freshness of data in the stream
+                    if stream.get_count() > 0:
+                        # Get the timestamp of the most recent candle
+                        recent_candles = stream.get_recent(hours=0.1)  # Last 6 minutes
+                        if recent_candles:
+                            last_candle = recent_candles[-1]
+                            candle_age = (datetime.now(timezone.utc).timestamp() - last_candle.timestamp)
+                            
+                            # If last candle is less than 3 minutes old, consider data LIVE
+                            if candle_age < 180:  # 3 minutes
+                                stream.status = 'LIVE'
+                                stream.error = None
+                                logger.debug(f"Kraken asset {asset.symbol} has fresh data (candle age: {candle_age:.0f}s)")
+                            else:
+                                # Set error first, then status (error setter auto-sets status to OFFLINE)
+                                stream.error = f"Data is {candle_age/60:.1f} minutes old"
+                                stream.status = 'CACHED'  # Override the auto-set OFFLINE
+                                logger.debug(f"Kraken asset {asset.symbol} data is stale (candle age: {candle_age:.0f}s)")
                         else:
                             stream.status = 'CACHED'
-                            stream.error = f"Data is {candle_age/60:.1f} minutes old"
-                            logger.warning(f"Kraken asset {asset.symbol} data is stale (candle age: {candle_age:.0f}s)")
+                            logger.warning(f"No recent candles found for {asset.symbol}")
                     else:
-                        stream.status = 'CACHED'
-                        logger.warning(f"No recent candles found for {asset.symbol}")
-                else:
-                    stream.status = 'OFFLINE'
-                    stream.error = "No data available in Redis"
-                    logger.warning(f"No candles found in Redis for {asset.symbol}")
-                
-                self._last_fetch_time[fetch_key] = datetime.now(timezone.utc)
-                self._fetch_errors.pop(fetch_key, None)
+                        stream.status = 'OFFLINE'
+                        stream.error = "No data available"
+                        logger.warning(f"No candles found for {asset.symbol}")
+                    
+                    self._last_fetch_time[fetch_key] = datetime.now(timezone.utc)
+                    self._fetch_errors.pop(fetch_key, None)
+                except Exception as e:
+                    logger.error(f"Unexpected error processing Kraken asset {asset.symbol}: {e}")
+                    # Don't override status if it was already set, otherwise set to OFFLINE
+                    if stream.status == 'OFFLINE' or not stream.get_count():
+                        stream.error = f"Error: {e}"
+                        stream.status = 'OFFLINE'  # Set after error to override auto-OFFLINE
                 return
             
             # For non-Kraken assets, use broker API
@@ -418,12 +436,18 @@ class MarketDataStreamManager:
             self._last_fetch_time[fetch_key] = datetime.now(timezone.utc)
             logger.warning(f"Failed to fetch candles from broker for {asset.symbol}: {e}")
         except Exception as e:
-            error_msg = self._format_broker_error(e)
-            stream.error = error_msg
-            stream.status = 'OFFLINE'
-            self._fetch_errors[fetch_key] = error_msg
-            self._last_fetch_time[fetch_key] = datetime.now(timezone.utc)
-            logger.warning(f"Failed to fetch candles from broker for {asset.symbol}: {e}")
+            # Don't override the status if it was already set by Kraken handling
+            broker_name = getattr(asset, 'broker', '').upper()
+            if broker_name != 'KRAKEN' or stream.status == 'OFFLINE':
+                error_msg = self._format_broker_error(e)
+                stream.error = error_msg
+                stream.status = 'OFFLINE'
+                self._fetch_errors[fetch_key] = error_msg
+                self._last_fetch_time[fetch_key] = datetime.now(timezone.utc)
+                logger.warning(f"Failed to fetch candles from broker for {asset.symbol}: {e}")
+            else:
+                # For Kraken, preserve the status and error that was already set
+                logger.debug(f"Exception caught for Kraken asset but preserving status {stream.status}: {e}")
     
     def _timeframe_to_ig_resolution(self, timeframe: str) -> str:
         """Convert timeframe to IG API resolution format."""
