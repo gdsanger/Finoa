@@ -28,6 +28,7 @@ from core.services.broker import (
     OrderType,
     OrderDirection,
 )
+from core.services.market_data.redis_candle_store import get_candle_store
 
 logger = logging.getLogger(__name__)
 
@@ -2655,8 +2656,6 @@ def _get_fresh_asset_price(asset):
     Returns:
         Tuple of (bid_price, ask_price, status_message) or (None, None, '')
     """
-    from datetime import timedelta
-    
     # Try AssetPriceStatus first if it's fresh
     try:
         price_status = AssetPriceStatus.objects.filter(asset=asset).first()
@@ -2675,8 +2674,6 @@ def _get_fresh_asset_price(asset):
     
     # Try Redis candle store as fallback
     try:
-        from core.services.market_data.redis_candle_store import get_candle_store
-        
         store = get_candle_store()
         if store.is_connected:
             # Get latest 1m candle for this asset
