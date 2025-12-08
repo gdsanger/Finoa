@@ -1324,7 +1324,6 @@ class Command(BaseCommand):
             broker_symbol: Broker-specific symbol
         """
         from trading.models import Trade
-        from core.services.broker.models import OrderType
         
         try:
             # Place the order at the broker
