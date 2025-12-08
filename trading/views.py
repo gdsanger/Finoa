@@ -28,6 +28,7 @@ from core.services.broker import (
     OrderType,
     OrderDirection,
 )
+from core.services.market_data.redis_candle_store import get_candle_store
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,11 @@ logger = logging.getLogger(__name__)
 DIAGNOSTICS_MIN_WINDOW_MINUTES = 1
 DIAGNOSTICS_MAX_WINDOW_MINUTES = 1440  # 24 hours
 DIAGNOSTICS_DEFAULT_WINDOW_MINUTES = 60
+
+# Price freshness thresholds for sidebar assets
+PRICE_STATUS_FRESHNESS_SECONDS = 30  # AssetPriceStatus age threshold
+CANDLE_MAX_AGE_SECONDS = 120  # Redis candle age threshold (2 minutes)
+CANDLE_TIMEFRAME = '1m'  # Timeframe for Redis candle lookup
 
 
 def _parse_window_minutes(window_str: str) -> int:
@@ -2640,6 +2646,76 @@ def _is_time_in_range(current_minutes, start_minutes, end_minutes):
         return current_minutes >= start_minutes or current_minutes < end_minutes
 
 
+def _get_fresh_asset_price(asset):
+    """
+    Get a fresh price for an asset from multiple sources with fallback logic.
+    
+    Priority order:
+    1. AssetPriceStatus if updated within last 30 seconds
+    2. Latest candle from Redis if available
+    3. Direct broker REST API call
+    
+    Args:
+        asset: TradingAsset instance
+        
+    Returns:
+        Tuple of (bid_price, ask_price, status_message) or (None, None, '')
+    """
+    # Try AssetPriceStatus first if it's fresh
+    try:
+        price_status = AssetPriceStatus.objects.filter(asset=asset).first()
+        if price_status:
+            # Check if price is fresh (updated within last N seconds)
+            time_diff = timezone.now() - price_status.updated_at
+            if time_diff <= timedelta(seconds=PRICE_STATUS_FRESHNESS_SECONDS):
+                return (
+                    float(price_status.bid_price) if price_status.bid_price else None,
+                    float(price_status.ask_price) if price_status.ask_price else None,
+                    price_status.last_strategy_status or ''
+                )
+            logger.debug(f"AssetPriceStatus for {asset.symbol} is stale ({time_diff.total_seconds():.1f}s old), trying fallback")
+    except Exception as e:
+        logger.debug(f"Failed to get AssetPriceStatus for {asset.symbol}: {e}")
+    
+    # Try Redis candle store as fallback
+    try:
+        store = get_candle_store()
+        if store.is_connected:
+            # Get latest candle for this asset
+            latest_candle = store.get_latest_candle(asset_id=str(asset.id), timeframe=CANDLE_TIMEFRAME)
+            if latest_candle:
+                # Check if candle is recent
+                candle_age = timezone.now().timestamp() - latest_candle.timestamp
+                if candle_age <= CANDLE_MAX_AGE_SECONDS:
+                    # Use close price as approximation for both bid and ask
+                    # This is acceptable for UI display purposes where exact spread isn't critical
+                    close_price = float(latest_candle.close)
+                    logger.debug(f"Using Redis candle price for {asset.symbol}: {close_price}")
+                    return (close_price, close_price, 'Price from last candle')
+    except Exception as e:
+        logger.debug(f"Failed to get price from Redis for {asset.symbol}: {e}")
+    
+    # Try broker REST API as last resort
+    try:
+        registry = BrokerRegistry.get_instance()
+        broker_service = registry.get_broker_for_asset(asset)
+        if broker_service:
+            symbol_price = broker_service.get_symbol_price(asset.epic)
+            if symbol_price:
+                logger.debug(f"Using broker REST API price for {asset.symbol}")
+                return (
+                    float(symbol_price.bid_price) if symbol_price.bid_price else None,
+                    float(symbol_price.ask_price) if symbol_price.ask_price else None,
+                    'Price from broker API'
+                )
+    except Exception as e:
+        logger.debug(f"Failed to get price from broker API for {asset.symbol}: {e}")
+    
+    # No fresh price available
+    logger.warning(f"No fresh price available for {asset.symbol}")
+    return (None, None, '')
+
+
 @login_required
 def api_sidebar_assets(request):
     """
@@ -2687,17 +2763,21 @@ def api_sidebar_assets(request):
                 },
             }
             
-            # Get current price
+            # Get current price with fallback logic
             try:
-                price_status = AssetPriceStatus.objects.filter(asset=asset).first()
-                if price_status and price_status.bid_price and price_status.ask_price:
-                    mid_price = (float(price_status.bid_price) + float(price_status.ask_price)) / 2
-                    asset_data['current_price'] = mid_price
-                elif price_status and price_status.bid_price:
-                    asset_data['current_price'] = float(price_status.bid_price)
-                if price_status:
-                    asset_data['status_message'] = price_status.last_strategy_status or ''
-            except Exception:
+                bid_price, ask_price, status_message = _get_fresh_asset_price(asset)
+                
+                # Calculate mid price if both bid and ask available
+                if bid_price is not None and ask_price is not None:
+                    asset_data['current_price'] = (bid_price + ask_price) / 2
+                elif bid_price is not None:
+                    asset_data['current_price'] = bid_price
+                elif ask_price is not None:
+                    asset_data['current_price'] = ask_price
+                
+                asset_data['status_message'] = status_message
+            except Exception as e:
+                logger.error(f"Error getting price for {asset.symbol}: {e}")
                 pass
             
             # Determine current phase based on time and asset's phase configs
