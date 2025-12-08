@@ -261,14 +261,14 @@
             });
 
             this.candlestickSeries = this.chart.addCandlestickSeries({
-                upColor: '#ef4444',
-                downColor: '#22c55e',
-                borderUpColor: '#ef4444',
-                borderDownColor: '#22c55e',
-                wickUpColor: '#ef4444',
-                wickDownColor: '#22c55e',
+                upColor: '#22c55e',
+                downColor: '#ef4444',
+                borderUpColor: '#22c55e',
+                borderDownColor: '#ef4444',
+                wickUpColor: '#22c55e',
+                wickDownColor: '#ef4444',
             });
-
+            // #ef4444 = red, #22c55e = green
             // Add volume histogram below the candlestick chart
             this.volumeSeries = this.chart.addHistogramSeries({
                 priceFormat: {

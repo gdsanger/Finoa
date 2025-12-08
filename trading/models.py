@@ -123,7 +123,12 @@ class TradingAsset(models.Model):
     Allows dynamic configuration of assets through the UI without code changes.
     Each asset has its own broker EPIC, strategy parameters, and active status.
     """
-    
+    BREAKOUT_STATE = [
+       ('IN_RANGE','IN_RANGE'),
+        ('BROKEN_LONG','BROKEN_LONG'),
+        ('BROKEN_SHORT','BROKEN_SHORT')
+    ]
+
     STRATEGY_TYPES = [
         ('breakout_event', 'Breakout + Event'),
     ]
@@ -197,6 +202,12 @@ class TradingAsset(models.Model):
         default='breakout_event',
         help_text='Strategy to use for this asset'
     )
+    breakout_state = models.CharField(
+        max_length=20,
+        choices=BREAKOUT_STATE,
+        default='IN_RANGE',
+        help_text='Current breakout state of the asset'
+    )
     
     # Trading Mode
     trading_mode = models.CharField(
@@ -240,7 +251,14 @@ class TradingAsset(models.Model):
         default=False,
         help_text='Whether this is a cryptocurrency asset'
     )
-    
+    min_break_ticks = models.PositiveIntegerField(
+        default=1,
+        help_text='Minimum number of ticks for a valid breakout'
+    )
+    max_pullback_ticks = models.PositiveIntegerField(
+        default=3,
+        help_text='Maximum number of ticks for a valid pullback'
+    )
     # Status
     is_active = models.BooleanField(
         default=True,

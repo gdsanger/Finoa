@@ -211,15 +211,15 @@ class AssetEventConfigInline(admin.TabularInline):
 @admin.register(TradingAsset)
 class TradingAssetAdmin(admin.ModelAdmin):
     """Admin for managing trading assets."""
-    list_display = ['name', 'symbol', 'epic', 'broker', 'category', 'strategy_type', 'is_crypto', 'is_active']
-    list_filter = ['is_active', 'broker', 'category', 'strategy_type', 'is_crypto']
+    list_display = ['name', 'symbol', 'epic', 'broker', 'category', 'strategy_type', 'is_crypto', 'is_active', 'auto_trade']
+    list_filter = ['is_active', 'broker', 'category', 'strategy_type', 'is_crypto','auto_trade']
     search_fields = ['name', 'symbol', 'epic', 'broker_symbol']
-    readonly_fields = ['created_at', 'updated_at']
+    readonly_fields = ['created_at', 'updated_at', 'breakout_state' ]
     inlines = [AssetBreakoutConfigInline, AssetEventConfigInline]
     
     fieldsets = (
         ('Basic Information', {
-            'fields': ('name', 'symbol', 'epic', 'category', 'is_crypto')
+            'fields': ('name', 'symbol', 'epic', 'category', 'is_crypto', 'auto_trade')
         }),
         ('Broker Configuration', {
             'fields': ('broker', 'broker_symbol', 'quote_currency'),
@@ -229,7 +229,7 @@ class TradingAssetAdmin(admin.ModelAdmin):
             'fields': ('strategy_type', 'tick_size', 'is_active')
         }),
         ('Size Constraints', {
-            'fields': ('min_size', 'max_size', 'lot_size'),
+            'fields': ('min_size', 'max_size', 'lot_size', 'max_pullback_ticks', 'min_break_ticks', 'breakout_state'),
             'classes': ('collapse',)
         }),
         ('Timestamps', {
