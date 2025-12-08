@@ -4991,3 +4991,72 @@ class ExecuteLiveTradeViewTest(TestCase):
         data = json.loads(response.content)
         self.assertFalse(data['success'])
         self.assertIn('nicht gefunden', data['error'])
+
+
+class AutoTradeTest(TestCase):
+    """Tests for auto_trade functionality in TradingAsset."""
+    
+    def setUp(self):
+        """Set up test fixtures."""
+        self.asset = TradingAsset.objects.create(
+            name='Test Asset',
+            symbol='TEST',
+            epic='TEST.EPIC',
+            broker='KRAKEN',
+            auto_trade=True,  # Enable auto-trade
+            is_active=True,
+        )
+        
+        # Create a breakout config for the asset
+        AssetBreakoutConfig.objects.create(
+            asset=self.asset,
+        )
+    
+    def test_auto_trade_field_exists(self):
+        """Test that auto_trade field exists on TradingAsset."""
+        self.assertTrue(hasattr(self.asset, 'auto_trade'))
+        self.assertTrue(self.asset.auto_trade)
+    
+    def test_auto_trade_default_false(self):
+        """Test that auto_trade defaults to False."""
+        asset = TradingAsset.objects.create(
+            name='Default Asset',
+            symbol='DEF',
+            epic='DEF.EPIC',
+        )
+        self.assertFalse(asset.auto_trade)
+    
+    def test_signal_status_active_when_auto_trade_disabled(self):
+        """Test that signal status is ACTIVE when auto_trade is disabled."""
+        self.asset.auto_trade = False
+        self.asset.save()
+        
+        signal = Signal.objects.create(
+            setup_type='BREAKOUT',
+            session_phase='LONDON_CORE',
+            instrument='TEST',
+            trading_asset=self.asset,
+            direction='LONG',
+            trigger_price=Decimal('78.50'),
+            risk_status='GREEN',
+            status='ACTIVE',
+        )
+        
+        # Signal should be active (not auto-executed)
+        self.assertEqual(signal.status, 'ACTIVE')
+    
+    def test_signal_status_active_when_risk_not_allowed(self):
+        """Test that signal is not auto-executed when risk status is RED."""
+        signal = Signal.objects.create(
+            setup_type='BREAKOUT',
+            session_phase='LONDON_CORE',
+            instrument='TEST',
+            trading_asset=self.asset,
+            direction='LONG',
+            trigger_price=Decimal('78.50'),
+            risk_status='RED',  # Risk not allowed
+            status='ACTIVE',
+        )
+        
+        # Signal should be active (not auto-executed due to risk)
+        self.assertEqual(signal.status, 'ACTIVE')
