@@ -31,7 +31,7 @@ from core.services.broker import (
     SessionTimesConfig,
 )
 from core.services.broker.models import SymbolPrice
-from trading.models import WorkerStatus, AssetDiagnostics, AssetPriceStatus, PriceSnapshot
+from trading.models import WorkerStatus, AssetDiagnostics, AssetPriceStatus, PriceSnapshot, BreakoutRange
 from core.services.strategy import (
     StrategyEngine,
     StrategyConfig,
@@ -1408,8 +1408,6 @@ class Command(BaseCommand):
         
         # Get the appropriate range for the current phase
         try:
-            from trading.models import BreakoutRange
-            
             # Determine which range to use based on current phase
             # For trading phases, use the reference range
             reference_phase_mapping = {
@@ -1440,8 +1438,11 @@ class Command(BaseCommand):
             range_high = float(range_data.effective_high)
             range_low = float(range_data.effective_low)
             
-            # Use mid price for comparison
-            price_to_check = float((current_price.bid + current_price.ask) / 2) if current_price.ask else float(current_price.bid)
+            # Calculate mid price for comparison
+            if current_price.ask:
+                price_to_check = float((current_price.bid + current_price.ask) / 2)
+            else:
+                price_to_check = float(current_price.bid)
             
             # Check if price is back inside range
             if range_low <= price_to_check <= range_high:
@@ -1465,7 +1466,13 @@ class Command(BaseCommand):
         
         except Exception as e:
             # Don't fail the worker cycle if breakout state check fails
-            logger.debug(f"Failed to check breakout state for {asset.symbol}: {e}")
+            # Log with more context for debugging
+            logger.debug(
+                "Failed to check breakout state for %s: %s",
+                asset.symbol if asset else "unknown",
+                e,
+                exc_info=True
+            )
 
     def _try_reconnect(self) -> None:
         """Try to reconnect to all brokers after an error."""
