@@ -2640,7 +2640,6 @@ def _is_time_in_range(current_minutes, start_minutes, end_minutes):
         return current_minutes >= start_minutes or current_minutes < end_minutes
 
 
-@login_required
 def _get_fresh_asset_price(asset):
     """
     Get a fresh price for an asset from multiple sources with fallback logic.
@@ -2695,7 +2694,8 @@ def _get_fresh_asset_price(asset):
     
     # Try broker REST API as last resort
     try:
-        broker_service = BrokerRegistry.get_instance(asset.broker_name)
+        registry = BrokerRegistry.get_instance()
+        broker_service = registry.get_broker_for_asset(asset)
         if broker_service:
             symbol_price = broker_service.get_symbol_price(asset.epic)
             if symbol_price:
