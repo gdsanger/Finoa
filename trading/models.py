@@ -163,7 +163,7 @@ class TradingAsset(models.Model):
         unique=True,
         help_text='Broker EPIC/Symbol for API calls (e.g., "CC.D.CL.UNC.IP")'
     )
-    
+   
     # Broker configuration
     broker = models.CharField(
         max_length=16,

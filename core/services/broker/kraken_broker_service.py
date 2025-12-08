@@ -1231,52 +1231,50 @@ class KrakenBrokerService(BrokerService):
         """
         # Build the URL with tick_type
         url = f"{self._config.charts_base_url}/{tick_type}/{symbol}/{resolution}"
-        
-        # Add query parameters if provided
-        params = {}
-        if from_timestamp is not None:
-            params['from'] = from_timestamp
-        if to_timestamp is not None:
-            params['to'] = to_timestamp
+        logger.info("Fetching candles from Charts API: %s", url)
+       
         
         try:
             if self._session is None:
                 self._session = requests.Session()
             
-            response = self._session.get(url, params=params, timeout=15)
-            
+            response = self._session.get(url, timeout=15)
+            logger.info("Charts API response status: %d", response.status_code)
             if response.status_code >= 400:
                 raise KrakenBrokerError(
                     f"Charts API error HTTP {response.status_code} for {url}: {response.text}"
                 )
             
             data = response.json()
-            
+           
             # Parse the candles from the response
             candles = []
             candles_data = data.get('candles', [])
-            
+
             for candle_data in candles_data:
-                # Charts API returns: [timestamp, open, high, low, close, volume]
-                # Ensure exact format to catch API changes early
-                if len(candle_data) == CHARTS_API_EXPECTED_CANDLE_FIELDS:
-                    timestamp_ms = int(candle_data[0])
+                # Charts API liefert Objekte mit Keys:
+                # { "time": 1764999120000, "open": "...", "high": "...", "low": "...", "close": "...", "volume": "..." }
+                try:
+                    timestamp_ms = int(candle_data["time"])
                     timestamp_dt = datetime.fromtimestamp(timestamp_ms / 1000.0, tz=dt_timezone.utc)
-                    
+
                     candle = Candle1m(
                         symbol=symbol,
                         time=timestamp_dt,
-                        open=float(candle_data[1]),
-                        high=float(candle_data[2]),
-                        low=float(candle_data[3]),
-                        close=float(candle_data[4]),
-                        volume=float(candle_data[5]),
-                        trade_count=0,  # Charts API doesn't provide trade count, use 0 as default
+                        open=float(candle_data["open"]),
+                        high=float(candle_data["high"]),
+                        low=float(candle_data["low"]),
+                        close=float(candle_data["close"]),
+                        volume=float(candle_data["volume"]),
+                        trade_count=0,  # Charts API liefert keinen Trade-Count
                     )
                     candles.append(candle)
-            
+                except (KeyError, ValueError, TypeError) as exc:
+                    logger.warning("Skipping invalid candle for %s: %s (error=%s)", symbol, candle_data, exc)
+                    continue
+
             candles.sort(key=lambda c: c.time)
-            logger.debug(f"Fetched {len(candles)} candles from Charts API for {symbol}")
+            logger.info("Fetched %d candles from Charts API for %s", len(candles), symbol)
             return candles
             
         except requests.exceptions.RequestException as exc:

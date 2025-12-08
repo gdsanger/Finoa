@@ -211,7 +211,7 @@ class AssetEventConfigInline(admin.TabularInline):
 @admin.register(TradingAsset)
 class TradingAssetAdmin(admin.ModelAdmin):
     """Admin for managing trading assets."""
-    list_display = ['name', 'symbol', 'epic', 'broker', 'category', 'strategy_type', 'is_crypto', 'is_active', 'updated_at']
+    list_display = ['name', 'symbol', 'epic', 'broker', 'category', 'strategy_type', 'is_crypto', 'is_active']
     list_filter = ['is_active', 'broker', 'category', 'strategy_type', 'is_crypto']
     search_fields = ['name', 'symbol', 'epic', 'broker_symbol']
     readonly_fields = ['created_at', 'updated_at']
