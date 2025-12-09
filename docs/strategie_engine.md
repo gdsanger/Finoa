@@ -194,7 +194,6 @@ def _is_valid_range(range_height, config):
 1. **Preisposition**: Candle High > Range High (LONG) oder Candle Low < Range Low (SHORT)
 2. **Breakout-State**: Asset muss im Zustand `IN_RANGE` sein (keine aktive Breakout-Position)
 3. **Tick-Validierung** (wenn TradingAsset gesetzt):
-   - **min_break_ticks**: Minimale Distanz zwischen Candle-Extrem und Range-Boundary
    - **max_pullback_ticks**: Maximale Pullback-Distanz
 4. **Candle-Qualität**: Siehe nächster Abschnitt
 
@@ -503,11 +502,6 @@ BROKEN_SHORT = 'BROKEN_SHORT'   # SHORT Breakout erfolgt, keine neuen SHORT-Sign
 **Wichtig:** Neue Breakout-Signale werden nur im `IN_RANGE`-State generiert!
 
 ### Tick-Validierung
-
-#### min_break_ticks
-- **LONG:** Candle.low muss mindestens X Ticks UNTER Range.high liegen
-- **SHORT:** Candle.high muss mindestens X Ticks ÜBER Range.low liegen
-- **Zweck:** Stellt sicher, dass genug "Durchdringung" der Range erfolgt ist
 
 #### max_pullback_ticks
 - **LONG:** Candle.low darf maximal X Ticks UNTER Range.high liegen

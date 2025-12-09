@@ -1627,36 +1627,12 @@ class StrategyEngine:
             # Validate tick requirements for LONG signal
             if self.trading_asset:
                 tick_size = float(self.trading_asset.tick_size)
-                min_break_ticks = self.trading_asset.min_break_ticks
                 max_pullback_ticks = self.trading_asset.max_pullback_ticks
                 
                 # Calculate distance from candle.low to range_high in ticks
                 # For LONG: we measure how far below range_high the candle.low is
                 distance = range_high - candle.low
                 distance_ticks = distance / tick_size
-                
-                # Check min_break_ticks: candle.low must be at least min_break_ticks below range_high
-                if distance_ticks < min_break_ticks:
-                    rejection_reason = (
-                        f"Breakout rejected: LONG - candle low {candle.low:.4f} is only {distance_ticks:.1f} ticks "
-                        f"below range high {range_high:.4f}, needs at least {min_break_ticks} ticks{context_suffix}"
-                    )
-                    self._set_status(rejection_reason)
-                    logger.debug(
-                        "Breakout signal rejected%s: LONG min_break_ticks not met",
-                        context_suffix,
-                        extra={
-                            "strategy_data": {
-                                "candle_high": candle.high,
-                                "candle_low": candle.low,
-                                "range_high": range_high,
-                                "distance_ticks": distance_ticks,
-                                "min_break_ticks": min_break_ticks,
-                                "direction": "LONG",
-                            }
-                        },
-                    )
-                    return None
                 
                 # Check max_pullback_ticks: candle.low must not be more than max_pullback_ticks below range_high
                 if distance_ticks > max_pullback_ticks:
@@ -1733,36 +1709,12 @@ class StrategyEngine:
             # Validate tick requirements for SHORT signal
             if self.trading_asset:
                 tick_size = float(self.trading_asset.tick_size)
-                min_break_ticks = self.trading_asset.min_break_ticks
                 max_pullback_ticks = self.trading_asset.max_pullback_ticks
                 
                 # Calculate distance from candle.high to range_low in ticks
                 # For SHORT: we measure how far above range_low the candle.high is
                 distance = candle.high - range_low
                 distance_ticks = distance / tick_size
-                
-                # Check min_break_ticks: candle.high must be at least min_break_ticks above range_low
-                if distance_ticks < min_break_ticks:
-                    rejection_reason = (
-                        f"Breakout rejected: SHORT - candle high {candle.high:.4f} is only {distance_ticks:.1f} ticks "
-                        f"above range low {range_low:.4f}, needs at least {min_break_ticks} ticks{context_suffix}"
-                    )
-                    self._set_status(rejection_reason)
-                    logger.debug(
-                        "Breakout signal rejected%s: SHORT min_break_ticks not met",
-                        context_suffix,
-                        extra={
-                            "strategy_data": {
-                                "candle_high": candle.high,
-                                "candle_low": candle.low,
-                                "range_low": range_low,
-                                "distance_ticks": distance_ticks,
-                                "min_break_ticks": min_break_ticks,
-                                "direction": "SHORT",
-                            }
-                        },
-                    )
-                    return None
                 
                 # Check max_pullback_ticks: candle.high must not be more than max_pullback_ticks above range_low
                 if distance_ticks > max_pullback_ticks:
