@@ -3357,3 +3357,185 @@ class BookVirtualBookingViewTest(TestCase):
         })
         
         self.assertEqual(response.status_code, 404)
+
+
+class BookingCRUDViewTest(TestCase):
+    """Tests for booking CRUD operations in account detail view"""
+    
+    def setUp(self):
+        """Set up test data"""
+        from django.contrib.auth.models import User
+        self.user = User.objects.create_user(username='testuser', password='testpass')
+        self.client.login(username='testuser', password='testpass')
+        
+        self.account = Account.objects.create(
+            name='Test Account',
+            type='checking',
+            initial_balance=Decimal('1000.00')
+        )
+        self.category = Category.objects.create(name='Test Category')
+        self.payee = Payee.objects.create(name='Test Payee')
+    
+    def test_booking_create_success(self):
+        """Test successful creation of a new booking"""
+        response = self.client.post(f'/accounts/{self.account.id}/bookings/create/', {
+            'booking_date': '2025-01-15',
+            'amount': '100.50',
+            'description': 'Test booking',
+            'category': self.category.id,
+            'payee': self.payee.id,
+            'status': 'POSTED'
+        })
+        
+        # Should redirect to account detail
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(f'/accounts/{self.account.id}/', response.url)
+        
+        # Verify booking was created
+        booking = Booking.objects.get(account=self.account)
+        self.assertEqual(booking.amount, Decimal('100.50'))
+        self.assertEqual(booking.description, 'Test booking')
+        self.assertEqual(booking.category, self.category)
+        self.assertEqual(booking.payee, self.payee)
+        self.assertEqual(booking.status, 'POSTED')
+    
+    def test_booking_create_minimal_fields(self):
+        """Test booking creation with only required fields"""
+        response = self.client.post(f'/accounts/{self.account.id}/bookings/create/', {
+            'booking_date': '2025-01-15',
+            'amount': '-50.00',
+            'status': 'PLANNED'
+        })
+        
+        self.assertEqual(response.status_code, 302)
+        
+        booking = Booking.objects.get(account=self.account)
+        self.assertEqual(booking.amount, Decimal('-50.00'))
+        self.assertIsNone(booking.category)
+        self.assertIsNone(booking.payee)
+        self.assertEqual(booking.status, 'PLANNED')
+    
+    def test_booking_create_missing_required_field(self):
+        """Test that missing required fields return error"""
+        # Missing amount
+        response = self.client.post(f'/accounts/{self.account.id}/bookings/create/', {
+            'booking_date': '2025-01-15',
+            'status': 'POSTED'
+        })
+        
+        # Should redirect with error message
+        self.assertEqual(response.status_code, 302)
+        
+        # No booking should be created
+        self.assertEqual(Booking.objects.count(), 0)
+    
+    def test_booking_update_success(self):
+        """Test successful update of an existing booking"""
+        booking = Booking.objects.create(
+            account=self.account,
+            booking_date=date(2025, 1, 15),
+            amount=Decimal('100.00'),
+            description='Original',
+            status='POSTED'
+        )
+        
+        response = self.client.post(f'/bookings/{booking.id}/update/', {
+            'booking_date': '2025-01-20',
+            'amount': '200.00',
+            'description': 'Updated',
+            'category': self.category.id,
+            'payee': self.payee.id,
+            'status': 'PLANNED'
+        })
+        
+        self.assertEqual(response.status_code, 302)
+        
+        # Verify booking was updated
+        booking.refresh_from_db()
+        self.assertEqual(booking.booking_date, date(2025, 1, 20))
+        self.assertEqual(booking.amount, Decimal('200.00'))
+        self.assertEqual(booking.description, 'Updated')
+        self.assertEqual(booking.category, self.category)
+        self.assertEqual(booking.payee, self.payee)
+        self.assertEqual(booking.status, 'PLANNED')
+    
+    def test_booking_update_nonexistent(self):
+        """Test that updating nonexistent booking returns 404"""
+        response = self.client.post('/bookings/99999/update/', {
+            'booking_date': '2025-01-15',
+            'amount': '100.00',
+            'status': 'POSTED'
+        })
+        
+        self.assertEqual(response.status_code, 404)
+    
+    def test_booking_delete_success(self):
+        """Test successful deletion of a booking"""
+        booking = Booking.objects.create(
+            account=self.account,
+            booking_date=date(2025, 1, 15),
+            amount=Decimal('100.00'),
+            status='POSTED'
+        )
+        
+        response = self.client.post(f'/bookings/{booking.id}/delete/')
+        
+        self.assertEqual(response.status_code, 302)
+        
+        # Verify booking was deleted
+        self.assertEqual(Booking.objects.count(), 0)
+    
+    def test_booking_delete_transfer_blocked(self):
+        """Test that transfer bookings cannot be deleted"""
+        booking = Booking.objects.create(
+            account=self.account,
+            booking_date=date(2025, 1, 15),
+            amount=Decimal('-100.00'),
+            status='POSTED',
+            is_transfer=True
+        )
+        
+        response = self.client.post(f'/bookings/{booking.id}/delete/')
+        
+        # Should redirect but booking should still exist
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(Booking.objects.count(), 1)
+    
+    def test_booking_delete_nonexistent(self):
+        """Test that deleting nonexistent booking returns 404"""
+        response = self.client.post('/bookings/99999/delete/')
+        
+        self.assertEqual(response.status_code, 404)
+    
+    def test_booking_crud_requires_login(self):
+        """Test that CRUD operations require authentication"""
+        self.client.logout()
+        
+        # Create
+        response = self.client.post(f'/accounts/{self.account.id}/bookings/create/', {
+            'booking_date': '2025-01-15',
+            'amount': '100.00',
+            'status': 'POSTED'
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login/', response.url)
+        
+        # Update
+        booking = Booking.objects.create(
+            account=self.account,
+            booking_date=date(2025, 1, 15),
+            amount=Decimal('100.00'),
+            status='POSTED'
+        )
+        response = self.client.post(f'/bookings/{booking.id}/update/', {
+            'booking_date': '2025-01-15',
+            'amount': '100.00',
+            'status': 'POSTED'
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login/', response.url)
+        
+        # Delete
+        response = self.client.post(f'/bookings/{booking.id}/delete/')
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login/', response.url)

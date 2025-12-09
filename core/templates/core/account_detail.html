@@ -149,9 +149,16 @@
                                 <strong>{{ booking.amount|floatformat:2 }} €</strong>
                             </td>
                             <td class="text-center">
-                                <a href="/admin/core/booking/{{ booking.id }}/change/" class="btn btn-sm btn-outline-secondary">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" 
+                                        onclick="openEditModal({{ booking.id }}, '{{ booking.booking_date|date:'Y-m-d' }}', '{{ booking.amount }}', '{{ booking.description|escapejs }}', '{{ booking.category.id|default:'' }}', '{{ booking.payee.id|default:'' }}', '{{ booking.status }}')"
+                                        title="Bearbeiten">
                                     <i class="bi bi-pencil"></i>
-                                </a>
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-danger" 
+                                        onclick="openDeleteModal({{ booking.id }}, '{{ booking.booking_date|date:'d.m.Y' }}', '{{ booking.description|escapejs }}', '{{ booking.amount|floatformat:2 }}')"
+                                        title="Löschen">
+                                    <i class="bi bi-trash"></i>
+                                </button>
                             </td>
                         </tr>
                         {% endfor %}
@@ -206,9 +213,16 @@
                                 <strong>{{ booking.amount|floatformat:2 }} €</strong>
                             </td>
                             <td class="text-center">
-                                <a href="/admin/core/booking/{{ booking.id }}/change/" class="btn btn-sm btn-outline-secondary">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" 
+                                        onclick="openEditModal({{ booking.id }}, '{{ booking.booking_date|date:'Y-m-d' }}', '{{ booking.amount }}', '{{ booking.description|escapejs }}', '{{ booking.category.id|default:'' }}', '{{ booking.payee.id|default:'' }}', '{{ booking.status }}')"
+                                        title="Bearbeiten">
                                     <i class="bi bi-pencil"></i>
-                                </a>
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-danger" 
+                                        onclick="openDeleteModal({{ booking.id }}, '{{ booking.booking_date|date:'d.m.Y' }}', '{{ booking.description|escapejs }}', '{{ booking.amount|floatformat:2 }}')"
+                                        title="Löschen">
+                                    <i class="bi bi-trash"></i>
+                                </button>
                             </td>
                         </tr>
                         {% endfor %}
@@ -383,7 +397,7 @@
     </div>
 </div>
 
-<!-- Add Booking Modal (Placeholder for future HTMX implementation) -->
+<!-- Add Booking Modal -->
 <div class="modal fade" id="addBookingModal" tabindex="-1" aria-labelledby="addBookingModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -391,15 +405,153 @@
                 <h5 class="modal-title" id="addBookingModalLabel">Neue Buchung</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="modal-body">
-                <p class="text-muted">
-                    CRUD-Funktionalität für Buchungen wird in einer zukünftigen Version direkt hier integriert.
-                    Verwenden Sie vorerst den Admin-Bereich zur Bearbeitung.
-                </p>
-                <a href="/admin/core/booking/add/?account={{ account.id }}" class="btn btn-finoa-primary">
-                    <i class="bi bi-plus-circle"></i> Im Admin-Bereich anlegen
-                </a>
+            <form method="post" action="{% url 'booking_create' account.id %}">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="add_booking_date" class="form-label">Datum <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" id="add_booking_date" name="booking_date" value="{{ today|date:'Y-m-d' }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="add_amount" class="form-label">Betrag <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" id="add_amount" name="amount" step="0.01" required placeholder="z.B. 50.00 oder -50.00">
+                            <span class="input-group-text">€</span>
+                        </div>
+                        <small class="text-muted">Positive Werte = Einnahme, Negative Werte = Ausgabe</small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="add_description" class="form-label">Beschreibung</label>
+                        <input type="text" class="form-control" id="add_description" name="description" maxlength="500">
+                    </div>
+                    <div class="mb-3">
+                        <label for="add_category" class="form-label">Kategorie</label>
+                        <select class="form-select" id="add_category" name="category">
+                            <option value="">– Keine Kategorie –</option>
+                            {% for category in categories %}
+                            <option value="{{ category.id }}">{{ category.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="add_payee" class="form-label">Zahlungsempfänger</label>
+                        <select class="form-select" id="add_payee" name="payee">
+                            <option value="">– Kein Empfänger –</option>
+                            {% for payee in payees %}
+                            <option value="{{ payee.id }}">{{ payee.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="add_status" class="form-label">Status</label>
+                        <select class="form-select" id="add_status" name="status">
+                            <option value="POSTED" selected>Gebucht</option>
+                            <option value="PLANNED">Geplant</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-finoa-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle"></i> Abbrechen
+                    </button>
+                    <button type="submit" class="btn btn-finoa-primary">
+                        <i class="bi bi-check-circle"></i> Buchung erstellen
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Booking Modal -->
+<div class="modal fade" id="editBookingModal" tabindex="-1" aria-labelledby="editBookingModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editBookingModalLabel">Buchung bearbeiten</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
+            <form method="post" id="editBookingForm">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="edit_booking_date" class="form-label">Datum <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" id="edit_booking_date" name="booking_date" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_amount" class="form-label">Betrag <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" id="edit_amount" name="amount" step="0.01" required>
+                            <span class="input-group-text">€</span>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_description" class="form-label">Beschreibung</label>
+                        <input type="text" class="form-control" id="edit_description" name="description" maxlength="500">
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_category" class="form-label">Kategorie</label>
+                        <select class="form-select" id="edit_category" name="category">
+                            <option value="">– Keine Kategorie –</option>
+                            {% for category in categories %}
+                            <option value="{{ category.id }}">{{ category.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_payee" class="form-label">Zahlungsempfänger</label>
+                        <select class="form-select" id="edit_payee" name="payee">
+                            <option value="">– Kein Empfänger –</option>
+                            {% for payee in payees %}
+                            <option value="{{ payee.id }}">{{ payee.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_status" class="form-label">Status</label>
+                        <select class="form-select" id="edit_status" name="status">
+                            <option value="POSTED">Gebucht</option>
+                            <option value="PLANNED">Geplant</option>
+                            <option value="CANCELLED">Storniert</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-finoa-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle"></i> Abbrechen
+                    </button>
+                    <button type="submit" class="btn btn-finoa-primary">
+                        <i class="bi bi-check-circle"></i> Änderungen speichern
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Booking Confirmation Modal -->
+<div class="modal fade" id="deleteBookingModal" tabindex="-1" aria-labelledby="deleteBookingModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteBookingModalLabel">Buchung löschen</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="post" id="deleteBookingForm">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <p>Möchten Sie diese Buchung wirklich löschen?</p>
+                    <div id="deleteBookingDetails"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-finoa-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle"></i> Abbrechen
+                    </button>
+                    <button type="submit" class="btn btn-danger">
+                        <i class="bi bi-trash"></i> Löschen
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -602,6 +754,37 @@
 
 {% block extra_js %}
 <script>
+    // Functions for edit and delete modals
+    function openEditModal(bookingId, date, amount, description, categoryId, payeeId, status) {
+        const form = document.getElementById('editBookingForm');
+        form.action = '/bookings/' + bookingId + '/update/';
+        
+        document.getElementById('edit_booking_date').value = date;
+        document.getElementById('edit_amount').value = amount;
+        document.getElementById('edit_description').value = description;
+        document.getElementById('edit_category').value = categoryId;
+        document.getElementById('edit_payee').value = payeeId;
+        document.getElementById('edit_status').value = status;
+        
+        const modal = new bootstrap.Modal(document.getElementById('editBookingModal'));
+        modal.show();
+    }
+    
+    function openDeleteModal(bookingId, date, description, amount) {
+        const form = document.getElementById('deleteBookingForm');
+        form.action = '/bookings/' + bookingId + '/delete/';
+        
+        const details = document.getElementById('deleteBookingDetails');
+        details.innerHTML = '<dl class="row mb-0">' +
+            '<dt class="col-sm-4">Datum:</dt><dd class="col-sm-8">' + date + '</dd>' +
+            '<dt class="col-sm-4">Beschreibung:</dt><dd class="col-sm-8">' + (description || '—') + '</dd>' +
+            '<dt class="col-sm-4">Betrag:</dt><dd class="col-sm-8">' + amount + ' €</dd>' +
+            '</dl>';
+        
+        const modal = new bootstrap.Modal(document.getElementById('deleteBookingModal'));
+        modal.show();
+    }
+
     const ctx = document.getElementById('accountForecastChart').getContext('2d');
     const forecastChart = new Chart(ctx, {
         type: 'line',

@@ -1282,3 +1282,145 @@ def ai_analysis(request):
             context['error'] = f'Fehler bei der Analyse: {str(e)}'
     
     return render(request, 'core/ai_analysis.html', context)
+
+
+@login_required
+@require_http_methods(['POST'])
+def booking_create(request, account_id):
+    """
+    Create a new booking via HTMX.
+    Returns the updated bookings table section.
+    """
+    account = get_object_or_404(Account, id=account_id, is_active=True)
+    
+    try:
+        # Parse form data
+        booking_date_str = request.POST.get('booking_date')
+        amount = request.POST.get('amount')
+        description = request.POST.get('description', '')
+        category_id = request.POST.get('category')
+        payee_id = request.POST.get('payee')
+        status = request.POST.get('status', 'POSTED')
+        
+        # Validate required fields
+        if not booking_date_str or not amount:
+            messages.error(request, 'Datum und Betrag sind erforderlich.')
+            return redirect('account_detail', account_id=account_id)
+        
+        # Parse date and amount
+        booking_date = date.fromisoformat(booking_date_str)
+        amount_decimal = Decimal(amount)
+        
+        # Get optional category and payee
+        category = None
+        if category_id:
+            category = get_object_or_404(Category, id=category_id)
+        
+        payee = None
+        if payee_id:
+            payee = get_object_or_404(Payee, id=payee_id, is_active=True)
+        
+        # Create booking
+        Booking.objects.create(
+            account=account,
+            booking_date=booking_date,
+            amount=amount_decimal,
+            description=description,
+            category=category,
+            payee=payee,
+            status=status
+        )
+        
+        messages.success(request, 'Buchung erfolgreich erstellt.')
+        
+        # Redirect back to account detail with correct month
+        year = booking_date.year
+        month = booking_date.month
+        url = reverse('account_detail', args=[account_id])
+        return redirect(f'{url}?year={year}&month={month}')
+        
+    except (ValueError, ValidationError) as e:
+        messages.error(request, f'Fehler beim Erstellen der Buchung: {str(e)}')
+        return redirect('account_detail', account_id=account_id)
+
+
+@login_required
+@require_http_methods(['POST'])
+def booking_update(request, booking_id):
+    """
+    Update an existing booking via HTMX.
+    """
+    booking = get_object_or_404(Booking, id=booking_id)
+    account = booking.account
+    
+    try:
+        # Parse form data
+        booking_date_str = request.POST.get('booking_date')
+        amount = request.POST.get('amount')
+        description = request.POST.get('description', '')
+        category_id = request.POST.get('category')
+        payee_id = request.POST.get('payee')
+        status = request.POST.get('status', booking.status)
+        
+        # Validate required fields
+        if not booking_date_str or not amount:
+            messages.error(request, 'Datum und Betrag sind erforderlich.')
+            return redirect('account_detail', account_id=account.id)
+        
+        # Parse date and amount
+        booking_date = date.fromisoformat(booking_date_str)
+        amount_decimal = Decimal(amount)
+        
+        # Get optional category and payee
+        category = None
+        if category_id:
+            category = get_object_or_404(Category, id=category_id)
+        
+        payee = None
+        if payee_id:
+            payee = get_object_or_404(Payee, id=payee_id, is_active=True)
+        
+        # Update booking
+        booking.booking_date = booking_date
+        booking.amount = amount_decimal
+        booking.description = description
+        booking.category = category
+        booking.payee = payee
+        booking.status = status
+        booking.save()
+        
+        messages.success(request, 'Buchung erfolgreich aktualisiert.')
+        
+        # Redirect back to account detail with correct month
+        year = booking_date.year
+        month = booking_date.month
+        url = reverse('account_detail', args=[account.id])
+        return redirect(f'{url}?year={year}&month={month}')
+        
+    except (ValueError, ValidationError) as e:
+        messages.error(request, f'Fehler beim Aktualisieren der Buchung: {str(e)}')
+        return redirect('account_detail', account_id=account.id)
+
+
+@login_required
+@require_http_methods(['POST'])
+def booking_delete(request, booking_id):
+    """
+    Delete a booking via HTMX.
+    """
+    booking = get_object_or_404(Booking, id=booking_id)
+    account = booking.account
+    booking_month = booking.booking_date.month
+    booking_year = booking.booking_date.year
+    
+    # Don't allow deleting transfer bookings directly
+    if booking.is_transfer:
+        messages.error(request, 'Umbuchungen können nicht einzeln gelöscht werden.')
+        return redirect('account_detail', account_id=account.id)
+    
+    booking.delete()
+    messages.success(request, 'Buchung erfolgreich gelöscht.')
+    
+    # Redirect back to account detail with the same month
+    url = reverse('account_detail', args=[account.id])
+    return redirect(f'{url}?year={booking_year}&month={booking_month}')
