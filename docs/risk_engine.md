@@ -19,7 +19,7 @@
 
 ### Was macht die Risk Engine?
 
-Die **Risk Engine** (`RiskEngine`) ist die zentrale Risikomanagement-Komponente des Fiona Trading-Systems. Sie bewertet vorgeschlagene Trades gegen konfigurierbare Risikolimits und entscheidet, ob ein Trade ausgeführt werden darf.
+Die **Risk Engine** (`RiskEngine`) ist die zentrale Risikomanagementkomponente des Fiona Trading-Systems. Sie bewertet vorgeschlagene Trades gegen konfigurierbare Risikolimits und entscheidet, ob ein Trade ausgeführt werden darf.
 
 **Wichtig**: Die Risk Engine trifft KEINE Trading-Entscheidungen darüber, WELCHE Trades eingegangen werden sollen. Sie prüft nur, ob ein vorgeschlagener Trade die definierten Risikoparameter einhält.
 
@@ -28,7 +28,7 @@ Die **Risk Engine** (`RiskEngine`) ist die zentrale Risikomanagement-Komponente 
 1. **Risikobewertung**: Prüft jeden vorgeschlagenen Trade gegen Risikolimits
 2. **Position Sizing**: Berechnet optimale Positionsgrößen basierend auf Risiko
 3. **Loss Protection**: Überwacht tägliche und wöchentliche Verlustlimits
-4. **Time-Based Restrictions**: Verhindert Trades zu bestimmten Zeiten (EIA, Wochenende, Freitag abend)
+4. **Time-Based Restrictions**: Verhindert Trades zu bestimmten Zeiten (EIA, Wochenende, Freitag Abend)
 5. **Leverage Management**: Berücksichtigt Hebel bei Margin-Berechnungen
 6. **Order Adjustment**: Passt Ordergrößen an, um innerhalb der Limits zu bleiben
 
@@ -871,34 +871,19 @@ setup.reference_price = 75.00
 ```
 Max Risk: 10,000€ * 1% = 100€
 SL Distance: 75.00 - 74.00 = 1.00 = 100 Ticks
-Potential Loss: 100 * 0.1€ * 5.0 = 50€
-Check: 50€ < 100€ ✓
 
-BUT: Let's say original was larger...
-Original Size: 5.0 Lots
-Potential Loss: 100 * 0.1€ * 5.0 = 50€ ... OK
-
-Actually, if size was 3.0:
-Potential Loss: 100 * 0.1€ * 3.0 = 30€ ... OK
-
-Let's use realistic numbers:
-Size: 5.0, SL: 74.00
-Potential Loss: 100 * 0.1 * 5.0 = 50€ < 100€ ✓
-```
-
-**Better Example for Adjustment:**
-```
-Initial Size: 10.0 Lots
-SL Distance: 100 Ticks
-Potential Loss: 100 * 0.1€ * 10.0 = 100€
-Check: 100€ = 100€ (borderline)
-
-If size was 15.0:
+Ursprüngliche Order:
+Size: 15.0 Lots
 Potential Loss: 100 * 0.1€ * 15.0 = 150€
-Check: 150€ > 100€ ✗
+Check: 150€ > 100€ ✗ (Überschreitet Max-Risiko!)
 
-Max Allowed Size: 100€ / (100 * 0.1€) = 10.0 Lots
-Adjusted: 15.0 → 10.0 Lots
+Anpassung erforderlich:
+Max Allowed Size: 100€ / (100 Ticks * 0.1€) = 10.0 Lots
+Adjusted Size: 15.0 → 10.0 Lots
+
+Nach Anpassung:
+Potential Loss: 100 * 0.1€ * 10.0 = 100€
+Check: 100€ ≤ 100€ ✓
 ```
 
 **Result:**
@@ -1104,21 +1089,23 @@ size = risk_engine.calculate_position_size_from_margin(
 ```
 Scenario: 10,000€ capital, 75€ entry
 
-1:1 Leverage (No Leverage):
-- Can buy: 10,000€ / 75€ = 133 Lots
+1:1 Leverage (Kein Hebel):
+- Notional Value pro Lot: 75€
 - Margin per Lot: 75€
+- Max Lots mit 10,000€: 10,000€ / 75€ = 133 Lots
 
 1:20 Leverage:
-- Can buy: 10,000€ * 20 / 75€ = 2,666 Lots (!!!)
-- Margin per Lot: 3.75€
-- Risk: EXTREMELY HIGH if not properly sized!
+- Notional Value pro Lot: 75€
+- Margin per Lot: 75€ / 20 = 3.75€
+- Theoretisch mögliche Lots: 10,000€ / 3.75€ = 2,667 Lots (!!!)
+- Risk: EXTREM HOCH wenn nicht korrekt gesized!
 
-Proper Approach with Risk-Based Sizing:
+Korrekter Ansatz mit Risk-Based Sizing:
 - Max Risk: 1% = 100€
 - SL: 50 Ticks
 - Max Size: 100€ / (50 * 0.1€) = 20 Lots
 - Margin Needed (1:20): 20 * 3.75€ = 75€
-- Safe and controlled!
+- Sicher und kontrolliert!
 ```
 
 ### 4. Stop Loss Management
