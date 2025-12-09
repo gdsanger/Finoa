@@ -749,7 +749,11 @@
 
     newBalanceInput.addEventListener('input', updateDifference);
     newBalanceInput.addEventListener('change', updateDifference);
+</script>
+{% endblock %}
 
+{% block extra_js %}
+<script>
     // Functions for edit and delete modals
     function openEditModal(bookingId, date, amount, description, categoryId, payeeId, status) {
         const form = document.getElementById('editBookingForm');
@@ -780,11 +784,7 @@
         const modal = new bootstrap.Modal(document.getElementById('deleteBookingModal'));
         modal.show();
     }
-</script>
-{% endblock %}
 
-{% block extra_js %}
-<script>
     const ctx = document.getElementById('accountForecastChart').getContext('2d');
     const forecastChart = new Chart(ctx, {
         type: 'line',
