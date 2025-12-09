@@ -861,7 +861,7 @@ RiskEvaluationResult(
 ```python
 account = AccountState(equity=Decimal('10000.00'))
 order = OrderRequest(
-    size=Decimal('5.0'),        # Initial: 5 Lots
+    size=Decimal('15.0'),        # Initial: 15 Lots
     stop_loss=Decimal('74.00'),  # Wide SL!
 )
 setup.reference_price = 75.00
