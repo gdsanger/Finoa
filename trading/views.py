@@ -38,7 +38,7 @@ DIAGNOSTICS_MAX_WINDOW_MINUTES = 1440  # 24 hours
 DIAGNOSTICS_DEFAULT_WINDOW_MINUTES = 60
 
 # Price freshness thresholds for sidebar assets
-PRICE_STATUS_FRESHNESS_SECONDS = 30  # AssetPriceStatus age threshold
+PRICE_STATUS_FRESHNESS_SECONDS = 60  # AssetPriceStatus age threshold (increased from 30s to 60s for better reliability)
 CANDLE_MAX_AGE_SECONDS = 120  # Redis candle age threshold (2 minutes)
 CANDLE_TIMEFRAME = '1m'  # Timeframe for Redis candle lookup
 
@@ -2651,8 +2651,8 @@ def _get_fresh_asset_price(asset):
     Get a fresh price for an asset from multiple sources with fallback logic.
     
     Priority order:
-    1. AssetPriceStatus if updated within last 30 seconds
-    2. Latest candle from Redis if available
+    1. AssetPriceStatus if updated within last 60 seconds
+    2. Latest candle from Redis if available (within 2 minutes)
     3. Direct broker REST API call
     
     Args:
@@ -2669,8 +2669,8 @@ def _get_fresh_asset_price(asset):
             time_diff = timezone.now() - price_status.updated_at
             if time_diff <= timedelta(seconds=PRICE_STATUS_FRESHNESS_SECONDS):
                 return (
-                    float(price_status.bid_price) if price_status.bid_price else None,
-                    float(price_status.ask_price) if price_status.ask_price else None,
+                    float(price_status.bid_price) if price_status.bid_price is not None else None,
+                    float(price_status.ask_price) if price_status.ask_price is not None else None,
                     price_status.last_strategy_status or ''
                 )
             logger.debug(f"AssetPriceStatus for {asset.symbol} is stale ({time_diff.total_seconds():.1f}s old), trying fallback")
@@ -2704,8 +2704,8 @@ def _get_fresh_asset_price(asset):
             if symbol_price:
                 logger.debug(f"Using broker REST API price for {asset.symbol}")
                 return (
-                    float(symbol_price.bid_price) if symbol_price.bid_price else None,
-                    float(symbol_price.ask_price) if symbol_price.ask_price else None,
+                    float(symbol_price.bid_price) if symbol_price.bid_price is not None else None,
+                    float(symbol_price.ask_price) if symbol_price.ask_price is not None else None,
                     'Price from broker API'
                 )
     except Exception as e:
