@@ -2651,8 +2651,8 @@ def _get_fresh_asset_price(asset):
     Get a fresh price for an asset from multiple sources with fallback logic.
     
     Priority order:
-    1. AssetPriceStatus if updated within last 30 seconds
-    2. Latest candle from Redis if available
+    1. AssetPriceStatus if updated within last 60 seconds
+    2. Latest candle from Redis if available (within 2 minutes)
     3. Direct broker REST API call
     
     Args:
