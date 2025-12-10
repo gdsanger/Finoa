@@ -87,15 +87,6 @@ class BreakoutRangeAdmin(admin.ModelAdmin):
         'last_adjusted_at',
     ]
     readonly_fields = [
-        'asset',
-        'phase',
-        'start_time',
-        'end_time',
-        'high',
-        'low',
-        'height_ticks',
-        'height_points',
-        'candle_count',
         'created_at',
         'updated_at',
         'last_adjusted_by',
