@@ -1400,21 +1400,22 @@ class Command(BaseCommand):
         """
         Check if asset breakout state needs to be updated based on current price and range.
         
-        This method checks if price has returned to range after a breakout and resets
-        the breakout_state to IN_RANGE if needed. It runs on every worker cycle to ensure
-        timely state updates, independent of whether breakouts are being actively detected.
+        This method ensures the breakout_state is always correct by checking the current price
+        position relative to the range. It sets:
+        - IN_RANGE: price is between range_low and range_high
+        - BROKEN_LONG: price is above range_high
+        - BROKEN_SHORT: price is below range_low
+        
+        This runs on every worker cycle BEFORE strategy engine evaluation to ensure
+        the breakout state is always accurate, independent of signal detection.
         
         Args:
             asset: TradingAsset instance
             current_price: Current market price (or None if unavailable)
             phase: Current session phase
         """
-        # Only check if asset has a breakout state that's not IN_RANGE
-        if not asset or asset.breakout_state == 'IN_RANGE':
-            return
-        
-        # Need current price to check
-        if not current_price or current_price.bid is None:
+        # Need asset and current price to check
+        if not asset or not current_price or current_price.bid is None:
             return
         
         # Get the appropriate range for the current phase
@@ -1448,15 +1449,31 @@ class Command(BaseCommand):
             else:
                 price_to_check = float(current_price.bid)
             
-            # Check if price is back inside range
-            if range_low <= price_to_check <= range_high:
+            # Determine correct breakout state based on current price position
+            new_state = None
+            if price_to_check > range_high:
+                new_state = 'BROKEN_LONG'
+            elif price_to_check < range_low:
+                new_state = 'BROKEN_SHORT'
+            else:
+                # Price is within range
+                new_state = 'IN_RANGE'
+            
+            # Update state if it changed
+            if asset.breakout_state != new_state:
+                old_state = asset.breakout_state
+                asset.breakout_state = new_state
+                asset.save()
+                
                 logger.info(
-                    "Price returned to range - resetting breakout state from %s to IN_RANGE",
-                    asset.breakout_state,
+                    "Breakout state updated from %s to %s",
+                    old_state,
+                    new_state,
                     extra={
                         "strategy_data": {
                             "asset": asset.symbol,
-                            "previous_state": asset.breakout_state,
+                            "previous_state": old_state,
+                            "new_state": new_state,
                             "current_price": price_to_check,
                             "range_high": range_high,
                             "range_low": range_low,
@@ -1464,9 +1481,12 @@ class Command(BaseCommand):
                         }
                     },
                 )
-                asset.breakout_state = 'IN_RANGE'
-                asset.save()
-                self.stdout.write(self.style.SUCCESS(f"     ✓ Breakout state reset to IN_RANGE (price back in range)"))
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f"     ✓ Breakout state updated: {old_state} → {new_state} "
+                        f"(price: {price_to_check:.4f}, range: {range_low:.4f}-{range_high:.4f})"
+                    )
+                )
         
         except Exception as e:
             # Don't fail the worker cycle if breakout state check fails
