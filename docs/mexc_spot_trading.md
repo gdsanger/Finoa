@@ -37,7 +37,7 @@ Da SPOT Trading ohne Hebel (Leverage) erfolgt, muss die Risk Engine entsprechend
    # Leverage für SPOT Trading (kein Hebel)
    leverage: 1.0
    ```
-3. **Wichtig**: Bei FUTURES Trading würde hier z.B. `leverage: 20.0` für 20:1 Hebel stehen
+3. **Wichtig**: Bei Futures Trading würde hier z.B. `leverage: 20.0` für 20:1 Hebel stehen
 
 ### 4. Trading Asset für MEXC konfigurieren
 
