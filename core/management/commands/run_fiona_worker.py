@@ -702,8 +702,8 @@ class Command(BaseCommand):
                     asset, epic, phase, phase_configs_by_phase, current_price, now
                 )
             
-            # 5. Check and update breakout state if price returned to range
-            # This runs on every cycle to ensure timely state updates
+            # 5. Check and update breakout state based on current price position
+            # This runs on every cycle to ensure the state is always accurate before strategy evaluation
             self._check_and_update_breakout_state(asset, current_price, phase)
             
             # 6. Skip if not in tradeable phase - check using is_trading_phase flag
