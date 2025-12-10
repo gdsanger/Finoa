@@ -2890,17 +2890,17 @@ def api_sidebar_assets(request):
 def htmx_open_positions(request):
     """
     HTMX endpoint for open positions table.
-    Returns HTML partial with open positions from Kraken broker.
+    Returns HTML partial with open positions from MEXC SPOT broker.
     Auto-refreshes every 5 seconds via HTMX.
     """
     try:
-        # Get Kraken broker service
+        # Get MEXC broker service
         registry = BrokerRegistry()
-        broker_service = registry.get_kraken_broker()
+        broker_service = registry.get_mexc_broker()
         
         if not broker_service:
             return render(request, 'trading/partials/open_positions.html', {
-                'error': 'Kraken Broker nicht konfiguriert',
+                'error': 'MEXC Broker nicht konfiguriert',
                 'positions': []
             })
         
