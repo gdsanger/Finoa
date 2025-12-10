@@ -204,6 +204,7 @@ class BaseMarketStateProvider(ABC):
         tradeable_phases = {
             SessionPhase.LONDON_CORE,
             SessionPhase.US_CORE_TRADING,
+            SessionPhase.PRE_US_RANGE,
             SessionPhase.US_CORE,
             SessionPhase.EIA_POST,
         }

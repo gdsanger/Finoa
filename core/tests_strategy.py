@@ -373,6 +373,7 @@ class DummyMarketStateProvider(BaseMarketStateProvider):
         tradeable_phases = {
             SessionPhase.LONDON_CORE,
             SessionPhase.US_CORE_TRADING,
+            SessionPhase.PRE_US_RANGE,
             SessionPhase.US_CORE,
             SessionPhase.EIA_POST,
         }
@@ -1141,36 +1142,9 @@ class StrategyEngineDiagnosticsTest(TestCase):
 
 class UsCoreTradinSessionTest(TestCase):
     """Tests for the new US Core Trading session feature (PRE_US_RANGE and US_CORE_TRADING)."""
-    
-    def test_pre_us_range_is_not_tradeable(self):
-        """Test that PRE_US_RANGE phase does not generate setups."""
-        ts = datetime(2025, 1, 15, 13, 30, tzinfo=timezone.utc)
-        
-        # Create a valid breakout candle
-        candle = Candle(
-            timestamp=ts,
-            open=75.15,
-            high=75.35,
-            low=75.10,
-            close=75.30,  # Above range high
-        )
-        
-        # PRE_US_RANGE should NOT generate setups
-        provider = DummyMarketStateProvider(
-            phase=SessionPhase.PRE_US_RANGE,
-            candles=[candle],
-            pre_us_range=(75.20, 75.00),  # 0.20 range = 20 ticks
-            atr=0.50,
-        )
-        engine = StrategyEngine(provider)
-        
-        candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
 
-        # No setups in PRE_US_RANGE phase - it's range formation only
-        self.assertEqual(len(candidates), 0)
-
-    def test_pre_us_range_can_be_tradeable_via_config(self):
-        """PRE_US_RANGE should generate setups when explicitly marked tradeable."""
+    def test_pre_us_range_generates_setups_by_default(self):
+        """PRE_US_RANGE should be tradeable by default using London Core range."""
         ts = datetime(2025, 1, 15, 13, 30, tzinfo=timezone.utc)
 
         candle = Candle(
@@ -1184,9 +1158,8 @@ class UsCoreTradinSessionTest(TestCase):
         provider = DummyMarketStateProvider(
             phase=SessionPhase.PRE_US_RANGE,
             candles=[candle],
-            london_core_range=(75.20, 75.00),  # PRE_US_RANGE evaluates against london_core_range
+            london_core_range=(75.20, 75.00),  # PRE_US_RANGE evaluates against London Core range
             atr=0.50,
-            tradeable=True,
         )
 
         engine = StrategyEngine(provider)
@@ -1196,25 +1169,53 @@ class UsCoreTradinSessionTest(TestCase):
         for candidate in candidates:
             self.assertEqual(candidate.phase, SessionPhase.PRE_US_RANGE)
     
+    def test_pre_us_range_can_be_disabled_via_config(self):
+        """Asset-specific tradeability should be able to disable PRE_US_RANGE setups."""
+        ts = datetime(2025, 1, 15, 13, 30, tzinfo=timezone.utc)
+
+        candle = Candle(
+            timestamp=ts,
+            open=75.18,
+            high=75.55,
+            low=75.12,
+            close=75.42,
+        )
+
+        provider = DummyMarketStateProvider(
+            phase=SessionPhase.PRE_US_RANGE,
+            candles=[candle],
+            london_core_range=(75.20, 75.00),
+            atr=0.50,
+            tradeable=False,
+        )
+
+        engine = StrategyEngine(provider)
+        candidates = engine.evaluate("CC.D.CL.UNC.IP", ts)
+
+        self.assertEqual(len(candidates), 0)
+
     def test_pre_us_range_diagnostics(self):
         """Test that PRE_US_RANGE phase shows informative diagnostics."""
         ts = datetime(2025, 1, 15, 13, 30, tzinfo=timezone.utc)
-        
+
         provider = DummyMarketStateProvider(
             phase=SessionPhase.PRE_US_RANGE,
             candles=[],
-            pre_us_range=(75.20, 75.00),
+            london_core_range=(75.20, 75.00),
         )
         engine = StrategyEngine(provider)
         
         result = engine.evaluate_with_diagnostics("CC.D.CL.UNC.IP", ts)
-        
+
         # No setups in PRE_US_RANGE
         self.assertEqual(len(result.setups), 0)
-        
-        # Summary should indicate range collection
-        self.assertIn("PRE_US_RANGE", result.summary)
-        self.assertIn("range", result.summary.lower())
+
+        # Summary should indicate missing price data, not a non-tradeable phase
+        self.assertEqual(result.summary, "No setups: Price data available")
+
+        # Ensure diagnostics reflect the London Core range usage
+        criterion_names = [c.name for c in result.criteria]
+        self.assertIn("London Core Range available", criterion_names)
     
     def test_us_core_trading_generates_setups(self):
         """Test that US_CORE_TRADING phase generates setups correctly."""

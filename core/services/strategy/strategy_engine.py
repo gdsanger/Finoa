@@ -101,6 +101,7 @@ class StrategyEngine:
         tradeable_phases = [
             SessionPhase.LONDON_CORE,
             SessionPhase.US_CORE_TRADING,
+            SessionPhase.PRE_US_RANGE,
             SessionPhase.US_CORE,
             SessionPhase.EIA_POST,
         ]
@@ -552,23 +553,27 @@ class StrategyEngine:
         result: EvaluationResult,
     ) -> None:
         """Evaluate Pre-US Range breakout with diagnostic criteria."""
-        # Get pre-US range
-        pre_us_range = self.market_state.get_pre_us_range(epic)
-        has_range = pre_us_range is not None
-        
+        range_source = "Pre-US"
+        reference_range = self.market_state.get_pre_us_range(epic)
+        if phase == SessionPhase.PRE_US_RANGE:
+            range_source = "London Core"
+            reference_range = self.market_state.get_london_core_range(epic)
+
+        has_range = reference_range is not None
+
         if not has_range:
             result.criteria.append(DiagnosticCriterion(
-                name="Pre-US Range available",
+                name=f"{range_source} Range available",
                 passed=False,
-                detail="No Pre-US Range data available",
+                detail=f"No {range_source} Range data available",
             ))
             return
-        
-        range_high, range_low = pre_us_range
+
+        range_high, range_low = reference_range
         range_height = range_high - range_low
-        
+
         result.criteria.append(DiagnosticCriterion(
-            name="Pre-US Range available",
+            name=f"{range_source} Range available",
             passed=True,
             detail=f"Range: {range_low:.4f} - {range_high:.4f}",
         ))
