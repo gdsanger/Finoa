@@ -810,6 +810,11 @@ class MexcBrokerService(BrokerService):
         
         Returns:
             OrderResult with deal reference and status.
+            
+        Note:
+            - Currently supports MARKET orders only
+            - Uses ISOLATED margin mode for risk management
+            - Limit order support can be added in future versions
         """
         # Determine order side based on direction
         # For opening positions:
@@ -820,8 +825,9 @@ class MexcBrokerService(BrokerService):
         else:
             order_side = self.ORDER_SIDE_OPEN_SHORT
         
-        # Only support market orders for now (type=5)
-        # TODO: Add limit order support for futures if needed
+        # Market orders for immediate execution (type=5)
+        # This is appropriate for automated trading where speed is important
+        # Limit orders could be added if precise entry prices are required
         order_type = self.ORDER_TYPE_MARKET
         
         params = {
@@ -829,7 +835,9 @@ class MexcBrokerService(BrokerService):
             "vol": str(order.size),
             "side": order_side,
             "type": order_type,
-            "openType": self.MARGIN_TYPE_ISOLATED,  # Use isolated margin
+            # Use isolated margin for risk isolation per position
+            # This prevents one position from affecting others
+            "openType": self.MARGIN_TYPE_ISOLATED,
         }
         
         # Place the order via Futures API

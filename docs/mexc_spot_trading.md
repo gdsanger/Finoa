@@ -38,6 +38,10 @@ Das Fiona Trading System unterstützt jetzt vollständigen Live-Handel auf dem M
    - **Quote Currency**: USDT
    - **Is Active**: ✓ Häkchen setzen
    - **Auto Trade**: ⚠️ **NUR aktivieren wenn Sie Live-Trading wünschen!**
+     - **WARNUNG**: Wenn aktiviert, werden ALLE qualifizierenden Trades automatisch ausgeführt
+     - Dies bedeutet echte Orders an MEXC mit echtem Geld
+     - Es besteht finanzielles Risiko bei Verlusten
+     - Stellen Sie sicher dass Risk Engine korrekt konfiguriert ist
 
 ## Funktionsweise
 
