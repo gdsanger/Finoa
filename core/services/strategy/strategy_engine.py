@@ -101,6 +101,7 @@ class StrategyEngine:
         tradeable_phases = [
             SessionPhase.LONDON_CORE,
             SessionPhase.US_CORE_TRADING,
+            SessionPhase.PRE_US_RANGE,
             SessionPhase.US_CORE,
             SessionPhase.EIA_POST,
         ]
@@ -552,23 +553,27 @@ class StrategyEngine:
         result: EvaluationResult,
     ) -> None:
         """Evaluate Pre-US Range breakout with diagnostic criteria."""
-        # Get pre-US range
-        pre_us_range = self.market_state.get_pre_us_range(epic)
-        has_range = pre_us_range is not None
-        
+        range_source = "Pre-US"
+        reference_range = self.market_state.get_pre_us_range(epic)
+        if phase == SessionPhase.PRE_US_RANGE:
+            range_source = "London Core"
+            reference_range = self.market_state.get_london_core_range(epic)
+
+        has_range = reference_range is not None
+
         if not has_range:
             result.criteria.append(DiagnosticCriterion(
-                name="Pre-US Range available",
+                name=f"{range_source} Range available",
                 passed=False,
-                detail="No Pre-US Range data available",
+                detail=f"No {range_source} Range data available",
             ))
             return
-        
-        range_high, range_low = pre_us_range
+
+        range_high, range_low = reference_range
         range_height = range_high - range_low
-        
+
         result.criteria.append(DiagnosticCriterion(
-            name="Pre-US Range available",
+            name=f"{range_source} Range available",
             passed=True,
             detail=f"Range: {range_low:.4f} - {range_high:.4f}",
         ))
@@ -1787,26 +1792,9 @@ class StrategyEngine:
                 return BreakoutSignal.SHORT_BREAKOUT
             return BreakoutSignal.FAILED_SHORT_BREAKOUT
 
-        # Check if price has returned to range and reset breakout state if needed
-        if self.trading_asset and self.trading_asset.breakout_state != 'IN_RANGE':
-            # Price is inside range, reset breakout state
-            if range_low <= candle.close <= range_high:
-                logger.info(
-                    "Price returned to range - resetting breakout state from %s to IN_RANGE",
-                    self.trading_asset.breakout_state,
-                    extra={
-                        "strategy_data": {
-                            "asset": self.trading_asset.symbol,
-                            "previous_state": self.trading_asset.breakout_state,
-                            "candle_close": candle.close,
-                            "range_high": range_high,
-                            "range_low": range_low,
-                        }
-                    },
-                )
-                self.trading_asset.breakout_state = 'IN_RANGE'
-                self.trading_asset.save()
-        
+        # No breakout detected - candle remained inside range
+        # Note: Breakout state is managed by the worker's _check_and_update_breakout_state()
+        # which runs before strategy evaluation, so we don't update it here.
         logger.debug(
             "Breakout signal not generated%s: candle remained inside range",
             context_suffix,

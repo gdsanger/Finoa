@@ -1607,3 +1607,159 @@ class WorkerProcessSetupTest(TestCase):
         # Verify that execution service was NOT called to execute trades
         cmd.execution_service.confirm_live_trade.assert_not_called()
         cmd.execution_service.confirm_shadow_trade.assert_not_called()
+
+
+class WorkerBreakoutStateTest(TestCase):
+    """Tests for the _check_and_update_breakout_state method."""
+    
+    def setUp(self):
+        """Set up test fixtures."""
+        from trading.models import TradingAsset, BreakoutRange
+        from core.management.commands.run_fiona_worker import Command
+        from io import StringIO
+        
+        # Create a test trading asset with initial IN_RANGE state
+        self.asset = TradingAsset.objects.create(
+            name="Test Crude Oil",
+            symbol="CL",
+            epic="CC.D.CL.UNC.IP",
+            broker="IG",
+            is_active=True,
+            trading_mode="LIVE",
+            breakout_state='IN_RANGE',
+            tick_size=Decimal("0.01"),
+        )
+        
+        # Create a test range
+        self.range_data = BreakoutRange.objects.create(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time=datetime(2024, 1, 9, 0, 0, 0, tzinfo=timezone.utc),
+            end_time=datetime(2024, 1, 9, 8, 0, 0, tzinfo=timezone.utc),
+            effective_high=Decimal("76.00"),
+            effective_low=Decimal("75.00"),
+        )
+        
+        # Create command instance for all tests
+        self.cmd = Command()
+        self.cmd.stdout = StringIO()
+        self.cmd.style = MagicMock()
+        self.cmd.style.SUCCESS = lambda x: x
+    
+    def test_breakout_state_updates_to_broken_long(self):
+        """Test that breakout state updates to BROKEN_LONG when price is above range."""
+        from core.services.broker.models import SymbolPrice
+        
+        # Price above range high
+        current_price = SymbolPrice(
+            epic="CC.D.CL.UNC.IP",
+            market_name="WTI Crude",
+            bid=Decimal("76.50"),
+            ask=Decimal("76.55"),
+        )
+        
+        # Initial state should be IN_RANGE
+        self.assertEqual(self.asset.breakout_state, 'IN_RANGE')
+        
+        # Call the method
+        self.cmd._check_and_update_breakout_state(
+            asset=self.asset,
+            current_price=current_price,
+            phase=SessionPhase.LONDON_CORE,
+        )
+        
+        # Reload asset from database
+        self.asset.refresh_from_db()
+        
+        # State should now be BROKEN_LONG
+        self.assertEqual(self.asset.breakout_state, 'BROKEN_LONG')
+    
+    def test_breakout_state_updates_to_broken_short(self):
+        """Test that breakout state updates to BROKEN_SHORT when price is below range."""
+        from core.services.broker.models import SymbolPrice
+        
+        # Price below range low
+        current_price = SymbolPrice(
+            epic="CC.D.CL.UNC.IP",
+            market_name="WTI Crude",
+            bid=Decimal("74.50"),
+            ask=Decimal("74.55"),
+        )
+        
+        # Initial state should be IN_RANGE
+        self.assertEqual(self.asset.breakout_state, 'IN_RANGE')
+        
+        # Call the method
+        self.cmd._check_and_update_breakout_state(
+            asset=self.asset,
+            current_price=current_price,
+            phase=SessionPhase.LONDON_CORE,
+        )
+        
+        # Reload asset from database
+        self.asset.refresh_from_db()
+        
+        # State should now be BROKEN_SHORT
+        self.assertEqual(self.asset.breakout_state, 'BROKEN_SHORT')
+    
+    def test_breakout_state_updates_to_in_range(self):
+        """Test that breakout state updates to IN_RANGE when price returns to range."""
+        from core.services.broker.models import SymbolPrice
+        
+        # Set initial state to BROKEN_LONG
+        self.asset.breakout_state = 'BROKEN_LONG'
+        self.asset.save()
+        
+        # Price within range
+        current_price = SymbolPrice(
+            epic="CC.D.CL.UNC.IP",
+            market_name="WTI Crude",
+            bid=Decimal("75.50"),
+            ask=Decimal("75.55"),
+        )
+        
+        # Initial state should be BROKEN_LONG
+        self.assertEqual(self.asset.breakout_state, 'BROKEN_LONG')
+        
+        # Call the method
+        self.cmd._check_and_update_breakout_state(
+            asset=self.asset,
+            current_price=current_price,
+            phase=SessionPhase.LONDON_CORE,
+        )
+        
+        # Reload asset from database
+        self.asset.refresh_from_db()
+        
+        # State should now be IN_RANGE
+        self.assertEqual(self.asset.breakout_state, 'IN_RANGE')
+    
+    def test_breakout_state_no_change_when_same(self):
+        """Test that breakout state doesn't update unnecessarily when it's already correct."""
+    def test_breakout_state_no_change_when_same(self):
+        """Test that breakout state doesn't update unnecessarily when it's already correct."""
+        from core.services.broker.models import SymbolPrice
+        
+        # Price within range (state should remain IN_RANGE)
+        current_price = SymbolPrice(
+            epic="CC.D.CL.UNC.IP",
+            market_name="WTI Crude",
+            bid=Decimal("75.50"),
+            ask=Decimal("75.55"),
+        )
+        
+        # Initial state is IN_RANGE
+        self.assertEqual(self.asset.breakout_state, 'IN_RANGE')
+        
+        # Call the method
+        self.cmd._check_and_update_breakout_state(
+            asset=self.asset,
+            current_price=current_price,
+            phase=SessionPhase.LONDON_CORE,
+        )
+        
+        # Reload asset from database
+        self.asset.refresh_from_db()
+        
+        # State should still be IN_RANGE
+        self.assertEqual(self.asset.breakout_state, 'IN_RANGE')
