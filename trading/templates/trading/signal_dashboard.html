@@ -17,7 +17,81 @@
     .fiona-header {
         display: flex;
         justify-content: space-between;
-        align-items: center;      
+        align-items: flex-start;
+        flex-wrap: wrap;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    /* Status Row - Responsive Design */
+    .fiona-header .status-row {
+        flex: 1 1 auto;
+        gap: 0.5rem;
+        margin-bottom: 0;
+    }
+    
+    .status-item {
+        flex: 0 1 auto;
+        min-width: 120px;
+        padding: 0.75rem 1rem;
+        border: 1px solid var(--fiona-border) !important;
+    }
+    
+    .status-item .lead {
+        font-size: 1.1rem;
+        display: block;
+        margin-bottom: 0.25rem;
+    }
+    
+    .status-item .small {
+        font-size: 0.75rem;
+        display: block;
+    }
+    
+    /* Responsive breakpoints for status row */
+    @media (max-width: 1400px) {
+        .status-item {
+            min-width: 100px;
+            padding: 0.6rem 0.8rem;
+        }
+        .status-item .lead {
+            font-size: 1rem;
+        }
+        .status-item .small {
+            font-size: 0.7rem;
+        }
+    }
+    
+    @media (max-width: 992px) {
+        .fiona-header {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        .fiona-header .status-row {
+            order: 2;
+            justify-content: flex-start;
+        }
+        .fiona-header > .d-flex {
+            order: 1;
+            justify-content: flex-end;
+        }
+        .status-item {
+            flex: 1 1 calc(33.333% - 0.5rem);
+            min-width: 0;
+        }
+    }
+    
+    @media (max-width: 576px) {
+        .status-item {
+            flex: 1 1 calc(50% - 0.5rem);
+            padding: 0.5rem 0.6rem;
+        }
+        .status-item .lead {
+            font-size: 0.95rem;
+        }
+        .status-item .small {
+            font-size: 0.65rem;
+        }
     }
     
     .fiona-header h1 {
@@ -2005,47 +2079,47 @@
 <div class="fiona-dashboard" data-signals-api-base="{% url 'api_signals_since' 'TIMESTAMP' %}">
     <div class="container-fluid">
         <div class="fiona-header">            
-            <ul class="list-group list-group-horizontal">
-                 <li class="list-group-item text-center"  style="background-color: #2e3440">
+            <ul class="list-group list-group-horizontal flex-wrap status-row">
+                 <li class="list-group-item text-center status-item" style="background-color: #2e3440">
                     <span class="lead text-white" id="worker-last-activity">--</span><br>
-                    <span class="small text-warning" >Worker last run</span>
+                    <span class="small text-warning">Worker last run</span>
                  </li>
-                  <li class="list-group-item text-center"  style="background-color: #2e3440">
-                    <span class="lead text-white" id="worker-status-indicator">--</span>
-                    <span class="small text-warning" >Worker Status</span>
+                  <li class="list-group-item text-center status-item" style="background-color: #2e3440">
+                    <span class="lead text-white" id="worker-status-indicator">--</span><br>
+                    <span class="small text-warning">Worker Status</span>
                  </li>
-                 <li class="list-group-item text-center"  style="background-color: #2e3440">
+                 <li class="list-group-item text-center status-item" style="background-color: #2e3440">
                     <span class="lead text-white" id="worker-phase">--</span><br>
-                    <span class="small text-warning" >Phase</span>
+                    <span class="small text-warning">Phase</span>
                  </li>
-                  <li class="list-group-item text-center"  style="background-color: #2e3440">
+                  <li class="list-group-item text-center status-item" style="background-color: #2e3440">
                     <span class="lead text-white">{{ active_count }}</span><br>
                     <span class="small text-warning">aktive Signale</span>
                  </li>
             
-                 <li class="list-group-item text-center"  style="background-color: #2e3440">
+                 <li class="list-group-item text-center status-item" style="background-color: #2e3440">
                     <span class="lead text-white" id="ig-balance">--</span><br>
                     <span class="small text-danger">IG Kontostand</span>
                  </li>
-                 <li class="list-group-item text-center"  style="background-color: #2e3440">
+                 <li class="list-group-item text-center status-item" style="background-color: #2e3440">
                     <span class="lead text-white" id="ig-margin-available">--</span><br>
                     <span class="small text-danger">IG Margin</span>
                  </li>
-                   <li class="list-group-item text-center"  style="background-color: #2e3440">
+                   <li class="list-group-item text-center status-item" style="background-color: #2e3440">
                     <span class="lead text-white" id="ig-pnl">--</span><br>
-                    <span class="small text-danger">P/L</span>
+                    <span class="small text-danger">IG P/L</span>
                  </li>
-                  <li class="list-group-item text-center"  style="background-color: #2e3440">
-                    <span class="lead text-white" id="kraken-balance">--</span><br>
-                    <span class="small text-info">Kraken Kontostand</span>
+                  <li class="list-group-item text-center status-item" style="background-color: #2e3440">
+                    <span class="lead text-white" id="mexc-balance">--</span><br>
+                    <span class="small text-success">MEXC SPOT Kontostand</span>
                  </li>
-                 <li class="list-group-item text-center"  style="background-color: #2e3440">
-                    <span class="lead text-white" id="kraken-margin-available">--</span><br>
-                    <span class="small text-info">Kraken Margin</span>
+                 <li class="list-group-item text-center status-item" style="background-color: #2e3440">
+                    <span class="lead text-white" id="mexc-available">--</span><br>
+                    <span class="small text-success">MEXC SPOT Verfügbar</span>
                  </li>
-                  <li class="list-group-item text-center"  style="background-color: #2e3440">
-                    <span class="lead text-white" id="kraken-pnl">--</span><br>
-                    <span class="small text-info">P/L</span>
+                  <li class="list-group-item text-center status-item" style="background-color: #2e3440">
+                    <span class="lead text-white" id="mexc-pnl">--</span><br>
+                    <span class="small text-success">MEXC SPOT P/L</span>
                  </li>
                 </ul>
 
@@ -2561,7 +2635,7 @@
     }
     
     function updateBrokerAccountInfo(broker, data) {
-        const currency = data.currency || (broker === 'kraken' ? 'USD' : 'EUR');
+        const currency = data.currency || (broker === 'mexc' ? 'USDT' : 'EUR');
         const prefix = broker + '-';
         
         // Update balance
@@ -2645,9 +2719,9 @@
     function refreshAllBrokersAccountState() {
         setRefreshButtonLoading(true);
         updateBrokerStatusDot('ig', 'loading');
-        updateBrokerStatusDot('kraken', 'loading');
+        updateBrokerStatusDot('mexc', 'loading');
         resetBrokerAccountGrid('ig');
-        resetBrokerAccountGrid('kraken');
+        resetBrokerAccountGrid('mexc');
         
         fetch('/fiona/api/all-brokers-account-state/', {
             method: 'GET',
@@ -2669,23 +2743,23 @@
                 showBrokerError('ig', data.ig.error || 'Nicht verbunden');
             }
             
-            // Update Kraken broker
-            if (data.kraken.connected) {
-                updateBrokerStatusDot('kraken', 'connected');
-                resetBrokerAccountGrid('kraken');
-                updateBrokerAccountInfo('kraken', data.kraken.data);
+            // Update MEXC SPOT broker
+            if (data.mexc.connected) {
+                updateBrokerStatusDot('mexc', 'connected');
+                resetBrokerAccountGrid('mexc');
+                updateBrokerAccountInfo('mexc', data.mexc.data);
             } else {
-                updateBrokerStatusDot('kraken', 'disconnected');
-                showBrokerError('kraken', data.kraken.error || 'Nicht verbunden');
+                updateBrokerStatusDot('mexc', 'disconnected');
+                showBrokerError('mexc', data.mexc.error || 'Nicht verbunden');
             }
         })
         .catch(error => {
             console.error('All brokers account state error:', error);
             setRefreshButtonLoading(false);
             updateBrokerStatusDot('ig', 'disconnected');
-            updateBrokerStatusDot('kraken', 'disconnected');
+            updateBrokerStatusDot('mexc', 'disconnected');
             showBrokerError('ig', 'Verbindungsfehler');
-            showBrokerError('kraken', 'Verbindungsfehler');
+            showBrokerError('mexc', 'Verbindungsfehler');
         });
     }
     
