@@ -1787,26 +1787,9 @@ class StrategyEngine:
                 return BreakoutSignal.SHORT_BREAKOUT
             return BreakoutSignal.FAILED_SHORT_BREAKOUT
 
-        # Check if price has returned to range and reset breakout state if needed
-        if self.trading_asset and self.trading_asset.breakout_state != 'IN_RANGE':
-            # Price is inside range, reset breakout state
-            if range_low <= candle.close <= range_high:
-                logger.info(
-                    "Price returned to range - resetting breakout state from %s to IN_RANGE",
-                    self.trading_asset.breakout_state,
-                    extra={
-                        "strategy_data": {
-                            "asset": self.trading_asset.symbol,
-                            "previous_state": self.trading_asset.breakout_state,
-                            "candle_close": candle.close,
-                            "range_high": range_high,
-                            "range_low": range_low,
-                        }
-                    },
-                )
-                self.trading_asset.breakout_state = 'IN_RANGE'
-                self.trading_asset.save()
-        
+        # No breakout detected - candle remained inside range
+        # Note: Breakout state is managed by the worker's _check_and_update_breakout_state()
+        # which runs before strategy evaluation, so we don't update it here.
         logger.debug(
             "Breakout signal not generated%s: candle remained inside range",
             context_suffix,
