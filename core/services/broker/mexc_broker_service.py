@@ -721,6 +721,10 @@ class MexcBrokerService(BrokerService):
         """
         Place a new order.
         
+        Routes to appropriate API based on account type:
+        - SPOT accounts use Spot API (/api/v3/order)
+        - FUTURES accounts use Futures API (/api/v1/private/order/submit)
+        
         Args:
             order: OrderRequest with order details.
         
@@ -730,57 +734,117 @@ class MexcBrokerService(BrokerService):
         self._ensure_connected()
         
         try:
-            # Map order direction
-            side = "BUY" if order.direction == OrderDirection.BUY else "SELL"
-            
-            # Map order type
-            if order.order_type == OrderType.MARKET:
-                order_type = "MARKET"
-            elif order.order_type in [OrderType.LIMIT, OrderType.BUY_LIMIT, OrderType.SELL_LIMIT]:
-                order_type = "LIMIT"
+            if self._is_futures_account():
+                return self._place_futures_order(order)
             else:
-                order_type = "MARKET"
-            
-            params = {
-                "symbol": order.epic,
-                "side": side,
-                "type": order_type,
-                "quantity": str(order.size),
-            }
-            
-            # Add price for limit orders
-            if order_type == "LIMIT" and order.limit_price:
-                params["price"] = str(order.limit_price)
-                params["timeInForce"] = "GTC"
-            
-            # Place the order
-            response = self._request("POST", "/api/v3/order", params=params, signed=True)
-            
-            order_id = str(response.get('orderId', ''))
-            status_str = response.get('status', '')
-            
-            # Map MEXC status to our status
-            if status_str in ['FILLED', 'PARTIALLY_FILLED']:
-                status = OrderStatus.OPEN
-            elif status_str == 'NEW':
-                status = OrderStatus.PENDING
-            elif status_str in ['CANCELED', 'REJECTED', 'EXPIRED']:
-                status = OrderStatus.REJECTED
-            else:
-                status = OrderStatus.PENDING
-            
-            return OrderResult(
-                success=status_str in ['NEW', 'FILLED', 'PARTIALLY_FILLED'],
-                deal_id=order_id,
-                deal_reference=order_id,
-                status=status,
-                reason=None if status != OrderStatus.REJECTED else f"Order {status_str}",
-            )
+                return self._place_spot_order(order)
             
         except BrokerError:
             raise
         except Exception as e:
             raise BrokerError(f"Failed to place order: {e}")
+    
+    def _place_spot_order(self, order: OrderRequest) -> OrderResult:
+        """
+        Place an order in the SPOT market.
+        
+        Args:
+            order: OrderRequest with order details.
+        
+        Returns:
+            OrderResult with deal reference and status.
+        """
+        # Map order direction
+        side = "BUY" if order.direction == OrderDirection.BUY else "SELL"
+        
+        # Map order type
+        if order.order_type == OrderType.MARKET:
+            order_type = "MARKET"
+        elif order.order_type in [OrderType.LIMIT, OrderType.BUY_LIMIT, OrderType.SELL_LIMIT]:
+            order_type = "LIMIT"
+        else:
+            order_type = "MARKET"
+        
+        params = {
+            "symbol": order.epic,
+            "side": side,
+            "type": order_type,
+            "quantity": str(order.size),
+        }
+        
+        # Add price for limit orders
+        if order_type == "LIMIT" and order.limit_price:
+            params["price"] = str(order.limit_price)
+            params["timeInForce"] = "GTC"
+        
+        # Place the order via SPOT API
+        response = self._request("POST", "/api/v3/order", params=params, signed=True)
+        
+        order_id = str(response.get('orderId', ''))
+        status_str = response.get('status', '')
+        
+        # Map MEXC status to our status
+        if status_str in ['FILLED', 'PARTIALLY_FILLED']:
+            status = OrderStatus.OPEN
+        elif status_str == 'NEW':
+            status = OrderStatus.PENDING
+        elif status_str in ['CANCELED', 'REJECTED', 'EXPIRED']:
+            status = OrderStatus.REJECTED
+        else:
+            status = OrderStatus.PENDING
+        
+        return OrderResult(
+            success=status_str in ['NEW', 'FILLED', 'PARTIALLY_FILLED'],
+            deal_id=order_id,
+            deal_reference=order_id,
+            status=status,
+            reason=None if status != OrderStatus.REJECTED else f"Order {status_str}",
+        )
+    
+    def _place_futures_order(self, order: OrderRequest) -> OrderResult:
+        """
+        Place an order in the FUTURES market.
+        
+        Args:
+            order: OrderRequest with order details.
+        
+        Returns:
+            OrderResult with deal reference and status.
+        """
+        # Determine order side based on direction
+        # For opening positions:
+        # - BUY direction = Open Long (side=1)
+        # - SELL direction = Open Short (side=3)
+        if order.direction == OrderDirection.BUY:
+            order_side = self.ORDER_SIDE_OPEN_LONG
+        else:
+            order_side = self.ORDER_SIDE_OPEN_SHORT
+        
+        # Only support market orders for now (type=5)
+        # TODO: Add limit order support for futures if needed
+        order_type = self.ORDER_TYPE_MARKET
+        
+        params = {
+            "symbol": order.epic,
+            "vol": str(order.size),
+            "side": order_side,
+            "type": order_type,
+            "openType": self.MARGIN_TYPE_ISOLATED,  # Use isolated margin
+        }
+        
+        # Place the order via Futures API
+        response = self._futures_request("POST", "/api/v1/private/order/submit", params=params)
+        
+        order_id = str(response.get('orderId', '')) if response else ''
+        
+        # Futures API returns success in the wrapper, order is pending execution
+        return OrderResult(
+            success=True,
+            deal_id=order_id,
+            deal_reference=order_id,
+            status=OrderStatus.PENDING,
+            reason=None,
+        )
     
     def close_position(self, position_id: str) -> OrderResult:
         """
