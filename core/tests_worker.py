@@ -1615,6 +1615,8 @@ class WorkerBreakoutStateTest(TestCase):
     def setUp(self):
         """Set up test fixtures."""
         from trading.models import TradingAsset, BreakoutRange
+        from core.management.commands.run_fiona_worker import Command
+        from io import StringIO
         
         # Create a test trading asset with initial IN_RANGE state
         self.asset = TradingAsset.objects.create(
@@ -1637,18 +1639,16 @@ class WorkerBreakoutStateTest(TestCase):
             effective_high=Decimal("76.00"),
             effective_low=Decimal("75.00"),
         )
+        
+        # Create command instance for all tests
+        self.cmd = Command()
+        self.cmd.stdout = StringIO()
+        self.cmd.style = MagicMock()
+        self.cmd.style.SUCCESS = lambda x: x
     
     def test_breakout_state_updates_to_broken_long(self):
         """Test that breakout state updates to BROKEN_LONG when price is above range."""
-        from core.management.commands.run_fiona_worker import Command
         from core.services.broker.models import SymbolPrice
-        from io import StringIO
-        
-        # Create command instance
-        cmd = Command()
-        cmd.stdout = StringIO()
-        cmd.style = MagicMock()
-        cmd.style.SUCCESS = lambda x: x
         
         # Price above range high
         current_price = SymbolPrice(
@@ -1662,7 +1662,7 @@ class WorkerBreakoutStateTest(TestCase):
         self.assertEqual(self.asset.breakout_state, 'IN_RANGE')
         
         # Call the method
-        cmd._check_and_update_breakout_state(
+        self.cmd._check_and_update_breakout_state(
             asset=self.asset,
             current_price=current_price,
             phase=SessionPhase.LONDON_CORE,
@@ -1676,15 +1676,7 @@ class WorkerBreakoutStateTest(TestCase):
     
     def test_breakout_state_updates_to_broken_short(self):
         """Test that breakout state updates to BROKEN_SHORT when price is below range."""
-        from core.management.commands.run_fiona_worker import Command
         from core.services.broker.models import SymbolPrice
-        from io import StringIO
-        
-        # Create command instance
-        cmd = Command()
-        cmd.stdout = StringIO()
-        cmd.style = MagicMock()
-        cmd.style.SUCCESS = lambda x: x
         
         # Price below range low
         current_price = SymbolPrice(
@@ -1698,7 +1690,7 @@ class WorkerBreakoutStateTest(TestCase):
         self.assertEqual(self.asset.breakout_state, 'IN_RANGE')
         
         # Call the method
-        cmd._check_and_update_breakout_state(
+        self.cmd._check_and_update_breakout_state(
             asset=self.asset,
             current_price=current_price,
             phase=SessionPhase.LONDON_CORE,
@@ -1712,19 +1704,11 @@ class WorkerBreakoutStateTest(TestCase):
     
     def test_breakout_state_updates_to_in_range(self):
         """Test that breakout state updates to IN_RANGE when price returns to range."""
-        from core.management.commands.run_fiona_worker import Command
         from core.services.broker.models import SymbolPrice
-        from io import StringIO
         
         # Set initial state to BROKEN_LONG
         self.asset.breakout_state = 'BROKEN_LONG'
         self.asset.save()
-        
-        # Create command instance
-        cmd = Command()
-        cmd.stdout = StringIO()
-        cmd.style = MagicMock()
-        cmd.style.SUCCESS = lambda x: x
         
         # Price within range
         current_price = SymbolPrice(
@@ -1738,7 +1722,7 @@ class WorkerBreakoutStateTest(TestCase):
         self.assertEqual(self.asset.breakout_state, 'BROKEN_LONG')
         
         # Call the method
-        cmd._check_and_update_breakout_state(
+        self.cmd._check_and_update_breakout_state(
             asset=self.asset,
             current_price=current_price,
             phase=SessionPhase.LONDON_CORE,
@@ -1752,15 +1736,9 @@ class WorkerBreakoutStateTest(TestCase):
     
     def test_breakout_state_no_change_when_same(self):
         """Test that breakout state doesn't update unnecessarily when it's already correct."""
-        from core.management.commands.run_fiona_worker import Command
+    def test_breakout_state_no_change_when_same(self):
+        """Test that breakout state doesn't update unnecessarily when it's already correct."""
         from core.services.broker.models import SymbolPrice
-        from io import StringIO
-        
-        # Create command instance
-        cmd = Command()
-        cmd.stdout = StringIO()
-        cmd.style = MagicMock()
-        cmd.style.SUCCESS = lambda x: x
         
         # Price within range (state should remain IN_RANGE)
         current_price = SymbolPrice(
@@ -1774,7 +1752,7 @@ class WorkerBreakoutStateTest(TestCase):
         self.assertEqual(self.asset.breakout_state, 'IN_RANGE')
         
         # Call the method
-        cmd._check_and_update_breakout_state(
+        self.cmd._check_and_update_breakout_state(
             asset=self.asset,
             current_price=current_price,
             phase=SessionPhase.LONDON_CORE,

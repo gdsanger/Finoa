@@ -1450,7 +1450,6 @@ class Command(BaseCommand):
                 price_to_check = float(current_price.bid)
             
             # Determine correct breakout state based on current price position
-            new_state = None
             if price_to_check > range_high:
                 new_state = 'BROKEN_LONG'
             elif price_to_check < range_low:
