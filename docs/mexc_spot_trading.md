@@ -27,7 +27,19 @@ Das Fiona Trading System unterstützt jetzt vollständigen Live-Handel auf dem M
    - **Is Active**: ✓ Häkchen setzen
 4. Speichern
 
-### 3. Trading Asset für MEXC konfigurieren
+### 3. Risk Engine für SPOT Trading konfigurieren
+
+Da SPOT Trading ohne Hebel (Leverage) erfolgt, muss die Risk Engine entsprechend konfiguriert werden:
+
+1. Öffnen Sie `core/services/risk/risk_config.yaml`
+2. Setzen Sie `leverage: 1.0` (für SPOT Trading ohne Hebel)
+   ```yaml
+   # Leverage für SPOT Trading (kein Hebel)
+   leverage: 1.0
+   ```
+3. **Wichtig**: Bei Futures Trading würde hier z.B. `leverage: 20.0` für 20:1 Hebel stehen
+
+### 4. Trading Asset für MEXC konfigurieren
 
 1. Django Admin Panel → "Trading Assets"
 2. Neues Asset erstellen oder bestehendes bearbeiten:
@@ -69,13 +81,16 @@ Das System unterstützt beide MEXC Account-Typen:
   - Verwendet API: `https://api.mexc.com/api/v3/order`
   - BUY/SELL Orders
   - Direkte Asset-Käufe (z.B. BTC kaufen mit USDT)
+  - **Kein Leverage**: SPOT Trading erfolgt ohne Hebel (1:1)
+  - **Risk Config**: Leverage sollte auf 1.0 gesetzt sein in `risk_config.yaml`
 
 - **FUTURES Account**:
   - Verwendet API: `https://contract.mexc.com/api/v1/private/order/submit`
   - Open Long/Short Positionen
-  - Leverage Trading
+  - Leverage Trading (z.B. 20:1)
+  - **Risk Config**: Leverage kann auf 20.0 oder höher gesetzt sein
 
-**Für diese Anpassung: Nur SPOT wird verwendet!**
+**Für diese Anpassung: Nur SPOT wird verwendet mit leverage=1.0!**
 
 ## Sicherheitshinweise
 
