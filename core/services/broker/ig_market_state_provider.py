@@ -196,7 +196,6 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         session_times: Optional[SessionTimesConfig] = None,
         broker_registry: Optional['BrokerRegistry'] = None,
         mexc_market_data: Optional[MexcMarketDataFetcher] = None,
-        redis_candle_store: Optional['RedisCandleStore'] = None,
     ):
         """
         Initialize the IG Market State Provider.
@@ -210,16 +209,12 @@ class IGMarketStateProvider(BaseMarketStateProvider):
                             When provided and a current_asset is set, the registry
                             will be used to get the correct broker for the asset.
             mexc_market_data: Optional MEXC market data fetcher for real klines.
-            redis_candle_store: Optional RedisCandleStore for loading persisted candles (Kraken assets).
         """
         self._broker = broker_service
         self._eia_timestamp = eia_timestamp
         self._session_times = session_times or SessionTimesConfig()
         self._broker_registry = broker_registry
         self._mexc_market_data = mexc_market_data or MexcMarketDataFetcher()
-        
-        # Redis candle store for Kraken assets (lazy init if not provided)
-        self._redis_candle_store = redis_candle_store
         
         # Cache for session ranges
         self._asia_range_cache: dict[str, tuple[float, float]] = {}
@@ -522,10 +517,7 @@ class IGMarketStateProvider(BaseMarketStateProvider):
         
         When a current_asset is set and a broker_registry is available, this method
         automatically uses the correct broker for the asset (e.g., MEXC for crypto,
-        IG for CFDs, Kraken for futures).
-        
-        For Kraken assets, candles are loaded from Redis where they are stored by
-        the run_kraken_market_data_worker.
+        IG for CFDs).
         
         Logging (Acceptance Criteria #1):
         - Logs EPIC, time window, candle count, first/last timestamps
@@ -545,53 +537,13 @@ class IGMarketStateProvider(BaseMarketStateProvider):
             symbol = epic
             
             # If we have a current asset and broker registry, use them
-            # This ensures we use the correct broker (IG, MEXC, or Kraken) for the asset
+            # This ensures we use the correct broker service (IG or MEXC) based on the asset type
             if self._current_asset and self._broker_registry:
                 broker_service = self._broker_registry.get_broker_for_asset(self._current_asset)
                 symbol = self._current_asset.effective_broker_symbol
             
             cache_key = f"{symbol}_{timeframe}"
             candles: list[Candle] = []
-
-            # Check if this is a Kraken asset - load from Redis
-            from core.services.broker.kraken_broker_service import KrakenBrokerService
-            if isinstance(broker_service, KrakenBrokerService) and timeframe == "1m":
-                # Initialize Redis candle store if not already done
-                if self._redis_candle_store is None:
-                    try:
-                        from core.services.market_data.redis_candle_store import get_candle_store
-                        self._redis_candle_store = get_candle_store()
-                        logger.debug(f"Initialized Redis candle store for Kraken asset {symbol}")
-                    except Exception as exc:
-                        logger.warning(f"Failed to initialize Redis candle store: {exc}")
-                
-                # Load candles from Redis
-                if self._redis_candle_store is not None:
-                    try:
-                        from core.services.market_data.candle_models import Candle as RedisCandle
-                        redis_candles = self._redis_candle_store.load_candles(
-                            asset_id=symbol,
-                            timeframe=timeframe,
-                            count=limit,
-                        )
-                        # Convert Redis candles to strategy Candle format
-                        candles = [
-                            Candle(
-                                timestamp=datetime.fromtimestamp(c.timestamp, tz=timezone.utc),
-                                open=float(c.open),
-                                high=float(c.high),
-                                low=float(c.low),
-                                close=float(c.close),
-                                volume=float(c.volume) if c.volume else None,
-                            )
-                            for c in redis_candles
-                        ]
-                        if candles:
-                            logger.debug(
-                                f"Loaded {len(candles)} candles from Redis for Kraken asset {symbol}"
-                            )
-                    except Exception as exc:
-                        logger.warning(f"Failed to load candles from Redis for {symbol}: {exc}")
 
             # MEXC candles from market data API
             if not candles and isinstance(broker_service, MexcBrokerService) and timeframe == "1m":
@@ -707,7 +659,7 @@ class IGMarketStateProvider(BaseMarketStateProvider):
             broker_service = self._broker
             
             # If we have a current asset and broker registry, use them
-            # This ensures we use the correct broker (IG or MEXC) for the asset
+            # This ensures we use the correct broker service (IG or MEXC) based on the asset type
             if self._current_asset and self._broker_registry:
                 broker_service = self._broker_registry.get_broker_for_asset(self._current_asset)
                 symbol = self._current_asset.effective_broker_symbol
@@ -774,7 +726,7 @@ class IGMarketStateProvider(BaseMarketStateProvider):
             symbol = epic
             
             # If we have a current asset and broker registry, use them
-            # This ensures we use the correct broker (IG or MEXC) for the asset
+            # This ensures we use the correct broker service (IG or MEXC) based on the asset type
             if self._current_asset and self._broker_registry:
                 broker_service = self._broker_registry.get_broker_for_asset(self._current_asset)
                 symbol = self._current_asset.effective_broker_symbol
