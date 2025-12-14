@@ -263,21 +263,10 @@ class Command(BaseCommand):
         # 4. Create Market State Provider (with broker registry for multi-broker support)
         self.stdout.write("  → Creating Market State Provider...")
         
-        # Initialize Redis candle store for Kraken assets
-        redis_candle_store = None
-        try:
-            from core.services.market_data.redis_candle_store import get_candle_store
-            redis_candle_store = get_candle_store()
-            self.stdout.write("    Redis candle store initialized")
-        except Exception as e:
-            logger.warning(f"Failed to initialize Redis candle store: {e}")
-            self.stdout.write(self.style.WARNING(f"    ⚠ Redis candle store not available: {e}"))
-        
         self.market_state_provider = IGMarketStateProvider(
             broker_service=default_broker,
             eia_timestamp=None,  # Can be set later if needed
             broker_registry=self.broker_registry,
-            redis_candle_store=redis_candle_store,
         )
         self.stdout.write(self.style.SUCCESS("    ✓ Market State Provider created"))
         
