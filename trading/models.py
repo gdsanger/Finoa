@@ -1492,7 +1492,7 @@ class BreakoutRange(models.Model):
             BreakoutRange instance
         """
         from decimal import Decimal, ROUND_HALF_UP
-        from django.utils import timezone as django_timezone
+        from datetime import timezone as dt_timezone
         
         height_points = Decimal(str(high)) - Decimal(str(low))
         tick_size_decimal = Decimal(str(tick_size)) if tick_size > 0 else Decimal('0.01')
@@ -1501,9 +1501,9 @@ class BreakoutRange(models.Model):
         
         # Extract the trading date from start_time
         if start_time.tzinfo is None:
-            start_time_utc = start_time.replace(tzinfo=django_timezone.utc)
+            start_time_utc = start_time.replace(tzinfo=dt_timezone.utc)
         else:
-            start_time_utc = start_time.astimezone(django_timezone.utc)
+            start_time_utc = start_time.astimezone(dt_timezone.utc)
         trading_date = start_time_utc.date()
         
         # Use update_or_create to ensure only one record per asset/phase/date
