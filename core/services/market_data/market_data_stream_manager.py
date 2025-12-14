@@ -523,11 +523,9 @@ class MarketDataStreamManager:
             return broker.get_historical_prices(symbol=symbol, interval=interval, limit=limit)
 
         # IG uses epic/resolution/num_points
-        # IG has strict weekly allowance limits (~10,000 data points for demo accounts)
-        # Cap at 50 points to conserve allowance while still providing useful chart data
         if isinstance(broker, IgBrokerService):
             resolution = self._timeframe_to_ig_resolution(timeframe)
-            capped_points = min(num_points, 50)  # Strict cap to conserve IG allowance
+            capped_points = min(num_points, 720)  # Default to 720 candles (12 hours of 1m data)
             return broker.get_historical_prices(epic=epic, resolution=resolution, num_points=capped_points)
 
         # Kraken uses symbol/interval/num_points
