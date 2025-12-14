@@ -697,8 +697,8 @@ class IgApiClient:
     def get_prices(
         self,
         epic: str,
-        resolution: str = "MINUTE_5",
-        num_points: int = 144,
+        resolution: str = "MINUTE",
+        num_points: int = 720,
     ) -> Dict[str, Any]:
         """
         Get historical price data (candles) for a market.
@@ -708,14 +708,14 @@ class IgApiClient:
         
         Args:
             epic: Market EPIC code (e.g., 'CC.D.CL.UNC.IP').
-            resolution: Price resolution. One of:
+            resolution: Price resolution (default: 'MINUTE' for 1m candles). One of:
                 - 'SECOND' (not recommended)
                 - 'MINUTE', 'MINUTE_2', 'MINUTE_3', 'MINUTE_5', 
                   'MINUTE_10', 'MINUTE_15', 'MINUTE_30'
                 - 'HOUR', 'HOUR_2', 'HOUR_3', 'HOUR_4'
                 - 'DAY', 'WEEK', 'MONTH'
-            num_points: Number of data points to retrieve (max varies by resolution).
-                For MINUTE_5: max ~10000 points (about 35 days).
+            num_points: Number of data points to retrieve (default: 720 = 12 hours of 1m candles).
+                Max varies by resolution. For MINUTE: max ~10000 points.
         
         Returns:
             Dictionary containing:

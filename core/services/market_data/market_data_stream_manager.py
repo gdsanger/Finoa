@@ -477,7 +477,7 @@ class MarketDataStreamManager:
             '1M': 'MONTH',
         }
 
-        return mapping.get(timeframe, 'MINUTE_5')
+        return mapping.get(timeframe, 'MINUTE')
 
     def _timeframe_to_mexc_interval(self, timeframe: str) -> str:
         """Convert timeframe to MEXC API interval format."""
@@ -489,14 +489,14 @@ class MarketDataStreamManager:
             return timeframe
 
         mapping = {
-            '2m': '5m',
-            '3m': '5m',
+            '2m': '1m',
+            '3m': '1m',
             '10m': '15m',
             '2h': '4h',
             '3h': '4h',
         }
 
-        return mapping.get(timeframe, '5m')
+        return mapping.get(timeframe, '1m')
 
     def _fetch_historical_prices(
         self,
