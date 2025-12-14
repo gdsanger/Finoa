@@ -196,9 +196,14 @@ class KrakenMarketDataWorker:
                 
                 if existing_range:
                     # Update existing record with optimized query
+                    # Build list of fields that changed
+                    update_fields = []
+                    
                     # Only update start_time if the new one is earlier (phase started earlier today)
                     if state.start_time < existing_range.start_time:
                         existing_range.start_time = state.start_time
+                        update_fields.append('start_time')
+                    
                     existing_range.end_time = end_time
                     existing_range.high = Decimal(str(state.high))
                     existing_range.low = Decimal(str(state.low))
@@ -206,10 +211,13 @@ class KrakenMarketDataWorker:
                     existing_range.height_points = height_points
                     existing_range.candle_count = state.candle_count
                     existing_range.is_valid = True
-                    existing_range.save(update_fields=[
-                        'start_time', 'end_time', 'high', 'low', 'height_ticks',
+                    
+                    update_fields.extend([
+                        'end_time', 'high', 'low', 'height_ticks',
                         'height_points', 'candle_count', 'is_valid'
                     ])
+                    
+                    existing_range.save(update_fields=update_fields)
                     logger.debug(
                         "Updated %s range for %s (date=%s): high=%.5f low=%.5f candles=%s",
                         state.phase.value,
