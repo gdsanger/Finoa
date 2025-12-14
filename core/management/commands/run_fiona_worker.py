@@ -18,7 +18,7 @@ import sys
 import time
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, Any
 
 from django.core.management.base import BaseCommand
 
@@ -98,7 +98,9 @@ class Command(BaseCommand):
         # Track intra-phase highs/lows per epic using observed mid prices.
         # Broker-provided daily low values would otherwise bleed into later phases
         # (e.g., using the Asia low for London or US ranges).
-        self._phase_range_tracker: dict[str, dict[str, float]] = {}
+        # Structure: {epic: {"phase": SessionPhase, "high": float, "low": float, "start_time": datetime}}
+        # The start_time is preserved throughout the phase to ensure accurate range recording.
+        self._phase_range_tracker: dict[str, dict[str, Any]] = {}
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -816,8 +818,15 @@ class Command(BaseCommand):
         If the current phase is a range-building phase (ASIA_RANGE, LONDON_CORE, PRE_US_RANGE),
         this method will update the range high/low from the current price and persist it.
         
-        This ensures ranges are captured even during the range-building period,
-        not just at the end.
+        Range Persistence:
+        - Uses update_or_create pattern based on (asset, phase, date) unique key
+        - Only one record exists per asset/phase/day (enforced by database constraint)
+        - Record is updated each cycle with latest high/low values
+        - start_time is preserved from when the phase first began
+        - end_time is updated to current time
+        
+        This ensures ranges are captured during the range-building period and updated
+        minute-by-minute without creating duplicate records.
         
         Args:
             asset: TradingAsset instance
@@ -914,14 +923,17 @@ class Command(BaseCommand):
 
         tracker = self._phase_range_tracker.get(epic, {})
         if tracker.get("phase") != phase:
-            tracker = {"phase": phase, "high": mid_price, "low": mid_price}
+            # Phase changed - reset tracker and record start time
+            tracker = {"phase": phase, "high": mid_price, "low": mid_price, "start_time": now}
         else:
+            # Same phase - update high/low but preserve start_time
             tracker["high"] = max(tracker.get("high", mid_price), mid_price)
             tracker["low"] = min(tracker.get("low", mid_price), mid_price)
 
         self._phase_range_tracker[epic] = tracker
         high = tracker["high"]
         low = tracker["low"]
+        start_time = tracker.get("start_time", now)
         
         # Get ATR for context
         atr = self.market_state_provider.get_atr(epic, '1h', 14)
@@ -930,13 +942,14 @@ class Command(BaseCommand):
         candle_count = self.market_state_provider.get_candle_count_for_epic(epic)
         
         # Set the range based on current phase
-        # Note: The set_*_range methods will persist to database
+        # Note: The set_*_range methods will persist to database using update_or_create
+        # to ensure only one record per (asset, phase, date) combination
         if phase == SessionPhase.ASIA_RANGE:
             self.market_state_provider.set_asia_range(
                 epic=epic,
                 high=high,
                 low=low,
-                start_time=None,  # Will use now
+                start_time=start_time,
                 end_time=now,
                 candle_count=candle_count,
                 atr=atr,
@@ -947,7 +960,7 @@ class Command(BaseCommand):
                 epic=epic,
                 high=high,
                 low=low,
-                start_time=None,
+                start_time=start_time,
                 end_time=now,
                 candle_count=candle_count,
                 atr=atr,
@@ -958,7 +971,7 @@ class Command(BaseCommand):
                 epic=epic,
                 high=high,
                 low=low,
-                start_time=None,
+                start_time=start_time,
                 end_time=now,
                 candle_count=candle_count,
                 atr=atr,

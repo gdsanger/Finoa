@@ -1645,6 +1645,74 @@ class BreakoutRangeModelTest(TestCase):
         self.assertEqual(br.height_ticks, 100)
         self.assertEqual(br.atr, Decimal('0.45'))
     
+    def test_breakout_range_update_same_day(self):
+        """Test that save_range_snapshot updates the same record when called multiple times on the same day."""
+        from .models import BreakoutRange
+        
+        now = timezone.now()
+        start_time = now - timedelta(hours=4)
+        
+        # Extract trading date consistently with how save_range_snapshot does it
+        if start_time.tzinfo is None:
+            start_time_utc = start_time.replace(tzinfo=timezone.utc)
+        else:
+            start_time_utc = start_time.astimezone(timezone.utc)
+        trading_date = start_time_utc.date()
+        
+        # First call - creates a new record
+        br1 = BreakoutRange.save_range_snapshot(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time=start_time,
+            end_time=now,
+            high=75.00,
+            low=74.00,
+            tick_size=0.01,
+            candle_count=100,
+        )
+        
+        # Verify only one record exists
+        count_after_first = BreakoutRange.objects.filter(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            date=trading_date
+        ).count()
+        self.assertEqual(count_after_first, 1)
+        
+        # Second call on same day - should UPDATE the existing record
+        br2 = BreakoutRange.save_range_snapshot(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            start_time=start_time,  # Same date
+            end_time=now + timedelta(minutes=30),
+            high=76.00,  # Updated high
+            low=73.50,  # Updated low
+            tick_size=0.01,
+            candle_count=150,  # Updated count
+        )
+        
+        # Verify still only one record exists (not two)
+        count_after_second = BreakoutRange.objects.filter(
+            asset=self.asset,
+            phase='ASIA_RANGE',
+            date=trading_date
+        ).count()
+        self.assertEqual(count_after_second, 1)
+        
+        # Verify it's the same record (same ID)
+        self.assertEqual(br1.id, br2.id)
+        
+        # Verify values were updated
+        self.assertEqual(br2.high, Decimal('76.00'))
+        self.assertEqual(br2.low, Decimal('73.50'))
+        self.assertEqual(br2.candle_count, 150)
+        
+        # Verify database has the updated values
+        br_from_db = BreakoutRange.objects.get(id=br1.id)
+        self.assertEqual(br_from_db.high, Decimal('76.00'))
+        self.assertEqual(br_from_db.low, Decimal('73.50'))
+        self.assertEqual(br_from_db.candle_count, 150)
+    
     def test_get_latest_for_asset_phase(self):
         """Test getting latest range for asset and phase."""
         from .models import BreakoutRange
