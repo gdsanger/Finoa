@@ -152,7 +152,6 @@ class TradingAsset(models.Model):
     class BrokerKind(models.TextChoices):
         IG = "IG", "IG"
         MEXC = "MEXC", "MEXC"
-        KRAKEN = "KRAKEN", "Kraken"
     
     # Basic identification
     name = models.CharField(
