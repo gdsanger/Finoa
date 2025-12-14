@@ -1470,7 +1470,10 @@ class BreakoutRange(models.Model):
         reference_range=None,
     ):
         """
-        Save a new range snapshot.
+        Save or update a range snapshot.
+        
+        Uses update-or-create pattern based on (asset, phase, date) to ensure
+        only one record exists per phase/asset/day.
         
         Args:
             asset: TradingAsset instance
@@ -1490,27 +1493,41 @@ class BreakoutRange(models.Model):
             BreakoutRange instance
         """
         from decimal import Decimal, ROUND_HALF_UP
+        from django.utils import timezone as django_timezone
         
         height_points = Decimal(str(high)) - Decimal(str(low))
         tick_size_decimal = Decimal(str(tick_size)) if tick_size > 0 else Decimal('0.01')
         # Use proper rounding instead of truncation for accurate tick calculations
         height_ticks = int((height_points / tick_size_decimal).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
         
-        return cls.objects.create(
+        # Extract the trading date from start_time
+        if start_time.tzinfo is None:
+            start_time_utc = start_time.replace(tzinfo=django_timezone.utc)
+        else:
+            start_time_utc = start_time.astimezone(django_timezone.utc)
+        trading_date = start_time_utc.date()
+        
+        # Use update_or_create to ensure only one record per asset/phase/date
+        breakout_range, created = cls.objects.update_or_create(
             asset=asset,
             phase=phase,
-            start_time=start_time,
-            end_time=end_time,
-            high=Decimal(str(high)),
-            low=Decimal(str(low)),
-            height_ticks=height_ticks,
-            height_points=height_points,
-            candle_count=candle_count,
-            atr=Decimal(str(atr)) if atr is not None else None,
-            valid_flags=valid_flags or {},
-            is_valid=is_valid,
-            reference_range=reference_range,
+            date=trading_date,
+            defaults={
+                'start_time': start_time,
+                'end_time': end_time,
+                'high': Decimal(str(high)),
+                'low': Decimal(str(low)),
+                'height_ticks': height_ticks,
+                'height_points': height_points,
+                'candle_count': candle_count,
+                'atr': Decimal(str(atr)) if atr is not None else None,
+                'valid_flags': valid_flags or {},
+                'is_valid': is_valid,
+                'reference_range': reference_range,
+            }
         )
+        
+        return breakout_range
     
     def to_dict(self):
         """Convert to dictionary for API responses."""
@@ -1519,6 +1536,7 @@ class BreakoutRange(models.Model):
             'asset_id': self.asset_id,
             'asset_symbol': self.asset.symbol if self.asset else None,
             'phase': self.phase,
+            'date': self.date.isoformat() if self.date else None,
             'start_time': self.start_time.isoformat() if self.start_time else None,
             'end_time': self.end_time.isoformat() if self.end_time else None,
             'high': str(self.high),
