@@ -1652,6 +1652,13 @@ class BreakoutRangeModelTest(TestCase):
         now = timezone.now()
         start_time = now - timedelta(hours=4)
         
+        # Extract trading date consistently with how save_range_snapshot does it
+        if start_time.tzinfo is None:
+            start_time_utc = start_time.replace(tzinfo=timezone.utc)
+        else:
+            start_time_utc = start_time.astimezone(timezone.utc)
+        trading_date = start_time_utc.date()
+        
         # First call - creates a new record
         br1 = BreakoutRange.save_range_snapshot(
             asset=self.asset,
@@ -1668,7 +1675,7 @@ class BreakoutRangeModelTest(TestCase):
         count_after_first = BreakoutRange.objects.filter(
             asset=self.asset,
             phase='ASIA_RANGE',
-            date=start_time.date()
+            date=trading_date
         ).count()
         self.assertEqual(count_after_first, 1)
         
@@ -1688,7 +1695,7 @@ class BreakoutRangeModelTest(TestCase):
         count_after_second = BreakoutRange.objects.filter(
             asset=self.asset,
             phase='ASIA_RANGE',
-            date=start_time.date()
+            date=trading_date
         ).count()
         self.assertEqual(count_after_second, 1)
         
