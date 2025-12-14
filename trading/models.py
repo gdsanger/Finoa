@@ -4,7 +4,7 @@ from django.conf import settings
 from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.utils import timezone
-from datetime import timedelta
+from datetime import timedelta, timezone as dt_timezone
 from decimal import Decimal
 import uuid
 
@@ -1492,7 +1492,6 @@ class BreakoutRange(models.Model):
             BreakoutRange instance
         """
         from decimal import Decimal, ROUND_HALF_UP
-        from datetime import timezone as dt_timezone
         
         height_points = Decimal(str(high)) - Decimal(str(low))
         tick_size_decimal = Decimal(str(tick_size)) if tick_size > 0 else Decimal('0.01')

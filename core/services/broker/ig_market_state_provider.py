@@ -537,7 +537,7 @@ class IGMarketStateProvider(BaseMarketStateProvider):
             symbol = epic
             
             # If we have a current asset and broker registry, use them
-            # This ensures we use the correct broker (IG or MEXC) for the asset
+            # This ensures we use the correct broker service (IG or MEXC) based on the asset type
             if self._current_asset and self._broker_registry:
                 broker_service = self._broker_registry.get_broker_for_asset(self._current_asset)
                 symbol = self._current_asset.effective_broker_symbol
@@ -659,7 +659,7 @@ class IGMarketStateProvider(BaseMarketStateProvider):
             broker_service = self._broker
             
             # If we have a current asset and broker registry, use them
-            # This ensures we use the correct broker (IG or MEXC) for the asset
+            # This ensures we use the correct broker service (IG or MEXC) based on the asset type
             if self._current_asset and self._broker_registry:
                 broker_service = self._broker_registry.get_broker_for_asset(self._current_asset)
                 symbol = self._current_asset.effective_broker_symbol
@@ -726,7 +726,7 @@ class IGMarketStateProvider(BaseMarketStateProvider):
             symbol = epic
             
             # If we have a current asset and broker registry, use them
-            # This ensures we use the correct broker (IG or MEXC) for the asset
+            # This ensures we use the correct broker service (IG or MEXC) based on the asset type
             if self._current_asset and self._broker_registry:
                 broker_service = self._broker_registry.get_broker_for_asset(self._current_asset)
                 symbol = self._current_asset.effective_broker_symbol
