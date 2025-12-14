@@ -1,6 +1,7 @@
 # Generated manually for issue: Erfassung Breakout Range
 # Add date field and unique constraint to ensure one record per asset/phase/day
 
+from datetime import timezone as dt_timezone
 from django.db import migrations, models
 from django.utils import timezone
 
@@ -17,9 +18,9 @@ def populate_date_field(apps, schema_editor):
         if breakout_range.start_time:
             # Convert to UTC if needed and extract date
             if breakout_range.start_time.tzinfo is None:
-                dt = timezone.make_aware(breakout_range.start_time, timezone.utc)
+                dt = timezone.make_aware(breakout_range.start_time, dt_timezone.utc)
             else:
-                dt = breakout_range.start_time.astimezone(timezone.utc)
+                dt = breakout_range.start_time.astimezone(dt_timezone.utc)
             breakout_range.date = dt.date()
             breakout_range.save(update_fields=['date'])
 
