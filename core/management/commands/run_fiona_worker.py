@@ -696,13 +696,9 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.WARNING(f"     Could not get price: {e}"))
                 result.status_message = f"Could not get price: {e}"
             
-            range_built_phase = None
-            if asset.broker != getattr(asset.BrokerKind, 'KRAKEN', 'KRAKEN'):
-                # For Kraken assets the dedicated market data worker builds ranges
-                # from the trade feed. Avoid duplicating range logic here.
-                range_built_phase = self._build_range_for_phase(
-                    asset, epic, phase, phase_configs_by_phase, current_price, now
-                )
+            range_built_phase = None         
+            range_built_phase = self._build_range_for_phase(asset, epic, phase, phase_configs_by_phase, current_price, now)
+         
             
             # 5. Check and update breakout state based on current price position
             # This runs on every cycle to ensure the state is always accurate before strategy evaluation
