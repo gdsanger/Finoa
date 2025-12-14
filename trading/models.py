@@ -1281,6 +1281,12 @@ class BreakoutRange(models.Model):
         help_text='Session phase when this range was recorded'
     )
     
+    # Date for this range (used for uniqueness constraint)
+    date = models.DateField(
+        help_text='Trading date (UTC) for this range',
+        db_index=True
+    )
+    
     # Time window
     start_time = models.DateTimeField(
         help_text='Start time of the range period'
@@ -1389,6 +1395,12 @@ class BreakoutRange(models.Model):
         indexes = [
             models.Index(fields=['asset', 'phase', '-end_time']),
             models.Index(fields=['-end_time']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['asset', 'phase', 'date'],
+                name='unique_asset_phase_date'
+            )
         ]
     
     def __str__(self):

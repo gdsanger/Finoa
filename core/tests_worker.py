@@ -638,6 +638,7 @@ class IGMarketStateProviderDbFallbackTest(TestCase):
         BreakoutRange.objects.create(
             asset=self.asset,
             phase='ASIA_RANGE',
+            date=now.date(),
             start_time=now - timedelta(hours=6),
             end_time=now - timedelta(hours=2),
             high=Decimal("75.50"),
@@ -674,6 +675,7 @@ class IGMarketStateProviderDbFallbackTest(TestCase):
         BreakoutRange.objects.create(
             asset=self.asset,
             phase='PRE_US_RANGE',
+            date=now.date(),
             start_time=now - timedelta(hours=4),
             end_time=now - timedelta(hours=2),
             high=Decimal("76.00"),
@@ -710,6 +712,7 @@ class IGMarketStateProviderDbFallbackTest(TestCase):
         BreakoutRange.objects.create(
             asset=self.asset,
             phase='LONDON_CORE',
+            date=now.date(),
             start_time=now - timedelta(hours=5),
             end_time=now - timedelta(hours=2),
             high=Decimal("75.80"),
@@ -738,9 +741,11 @@ class IGMarketStateProviderDbFallbackTest(TestCase):
         
         # Create an old range in the database (25 hours ago)
         now = datetime.now(timezone.utc)
+        old_date = (now - timedelta(hours=30)).date()
         BreakoutRange.objects.create(
             asset=self.asset,
             phase='ASIA_RANGE',
+            date=old_date,
             start_time=now - timedelta(hours=30),
             end_time=now - timedelta(hours=25),  # Ended 25 hours ago
             high=Decimal("75.50"),
@@ -768,6 +773,7 @@ class IGMarketStateProviderDbFallbackTest(TestCase):
         BreakoutRange.objects.create(
             asset=self.asset,
             phase='ASIA_RANGE',
+            date=now.date(),
             start_time=now - timedelta(hours=6),
             end_time=now - timedelta(hours=2),
             high=Decimal("75.50"),
@@ -796,6 +802,7 @@ class IGMarketStateProviderDbFallbackTest(TestCase):
         BreakoutRange.objects.create(
             asset=self.asset,
             phase='ASIA_RANGE',
+            date=now.date(),
             start_time=now - timedelta(hours=6),
             end_time=now - timedelta(hours=2),
             high=Decimal("75.50"),
@@ -826,6 +833,7 @@ class IGMarketStateProviderDbFallbackTest(TestCase):
         BreakoutRange.objects.create(
             asset=self.asset,
             phase='ASIA_RANGE',
+            date=now.date(),
             start_time=now - timedelta(hours=6),
             end_time=now - timedelta(hours=2),
             high=Decimal("75.50"),
@@ -1634,10 +1642,14 @@ class WorkerBreakoutStateTest(TestCase):
         self.range_data = BreakoutRange.objects.create(
             asset=self.asset,
             phase='ASIA_RANGE',
+            date=datetime(2024, 1, 9, 0, 0, 0, tzinfo=timezone.utc).date(),
             start_time=datetime(2024, 1, 9, 0, 0, 0, tzinfo=timezone.utc),
             end_time=datetime(2024, 1, 9, 8, 0, 0, tzinfo=timezone.utc),
-            effective_high=Decimal("76.00"),
-            effective_low=Decimal("75.00"),
+            high=Decimal("76.00"),
+            low=Decimal("75.00"),
+            height_ticks=100,
+            height_points=Decimal("1.00"),
+            is_valid=True,
         )
         
         # Create command instance for all tests

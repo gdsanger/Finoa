@@ -1598,6 +1598,7 @@ class BreakoutRangeModelTest(TestCase):
         br = BreakoutRange.objects.create(
             asset=self.asset,
             phase='ASIA_RANGE',
+            date=start_time.date(),
             start_time=start_time,
             end_time=now,
             high=Decimal('75.50'),
@@ -3203,6 +3204,7 @@ class PriceRangeStatusServiceTest(TestCase):
         BreakoutRange.objects.create(
             asset=self.asset,
             phase='ASIA_RANGE',
+            date=(now - timedelta(hours=8)).date(),
             start_time=now - timedelta(hours=8),
             end_time=now,
             high=Decimal('75.50'),
@@ -3231,6 +3233,7 @@ class PriceRangeStatusServiceTest(TestCase):
         BreakoutRange.objects.create(
             asset=self.asset,
             phase='ASIA_RANGE',
+            date=(now - timedelta(hours=8)).date(),
             start_time=now - timedelta(hours=8),
             end_time=now,
             high=Decimal('75.50'),
@@ -3262,6 +3265,7 @@ class PriceRangeStatusServiceTest(TestCase):
         BreakoutRange.objects.create(
             asset=self.asset,
             phase='ASIA_RANGE',
+            date=(now - timedelta(hours=8)).date(),
             start_time=now - timedelta(hours=8),
             end_time=now,
             high=Decimal('75.50'),
@@ -3289,6 +3293,7 @@ class PriceRangeStatusServiceTest(TestCase):
         BreakoutRange.objects.create(
             asset=self.asset,
             phase='ASIA_RANGE',
+            date=(now - timedelta(hours=8)).date(),
             start_time=now - timedelta(hours=8),
             end_time=now,
             high=Decimal('75.50'),
@@ -3653,6 +3658,7 @@ class BreakoutDistanceChartServiceTest(TestCase):
         BreakoutRange.objects.create(
             asset=self.asset,
             phase='ASIA_RANGE',
+            date=(now - timedelta(hours=8)).date(),
             start_time=now - timedelta(hours=8),
             end_time=now - timedelta(hours=1),
             high=Decimal('75.50'),
@@ -3783,6 +3789,7 @@ class BreakoutDistanceChartAPITest(TestCase):
         BreakoutRange.objects.create(
             asset=self.asset,
             phase='ASIA_RANGE',
+            date=(now - timedelta(hours=8)).date(),
             start_time=now - timedelta(hours=8),
             end_time=now - timedelta(hours=1),
             high=Decimal('75.50'),
@@ -3923,6 +3930,7 @@ class ChartBreakoutContextAPITest(TestCase):
         BreakoutRange.objects.create(
             asset=self.asset,
             phase='ASIA_RANGE',
+            date=(now - timedelta(hours=8)).date(),
             start_time=now - timedelta(hours=8),
             end_time=now - timedelta(hours=1),
             high=Decimal('75.50'),
@@ -3977,6 +3985,7 @@ class ChartSessionRangesAPITest(TestCase):
         BreakoutRange.objects.create(
             asset=self.asset,
             phase='ASIA_RANGE',
+            date=(now - timedelta(hours=8)).date(),
             start_time=now - timedelta(hours=8),
             end_time=now - timedelta(hours=1),
             high=Decimal('75.50'),
@@ -3986,6 +3995,7 @@ class ChartSessionRangesAPITest(TestCase):
         BreakoutRange.objects.create(
             asset=self.asset,
             phase='LONDON_CORE',
+            date=(now - timedelta(hours=6)).date(),
             start_time=now - timedelta(hours=6),
             end_time=now - timedelta(hours=2),
             high=Decimal('76.00'),
@@ -4083,6 +4093,7 @@ class ChartServiceTest(TestCase):
         BreakoutRange.objects.create(
             asset=self.asset,
             phase='ASIA_RANGE',
+            date=(now - timedelta(hours=8)).date(),
             start_time=now - timedelta(hours=8),
             end_time=now - timedelta(hours=1),
             high=Decimal('75.50'),
