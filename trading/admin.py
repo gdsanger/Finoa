@@ -75,6 +75,7 @@ class BreakoutRangeAdmin(admin.ModelAdmin):
     list_display = [
         'asset',
         'phase',
+        'date',
         'start_time',
         'end_time',
         'high',
@@ -98,7 +99,7 @@ class BreakoutRangeAdmin(admin.ModelAdmin):
             'Range Window',
             {
                 'fields': (
-                    ('asset', 'phase'),
+                    ('asset', 'phase', 'date'),
                     ('start_time', 'end_time'),
                 )
             },

@@ -164,13 +164,20 @@ class KrakenMarketDataWorker:
         Persist or update the range snapshot in the database.
         
         Updates the existing range record for the current phase if it exists
-        (same phase, same start_time), otherwise creates a new one.
-        This ensures we have only one record per phase per session, updated each minute.
+        (same phase, same date), otherwise creates a new one.
+        This ensures we have only one record per phase per day, updated each minute.
         """
         if state.candle_count == 0:
             return
 
         end_time = state.last_candle_end or state.start_time
+        
+        # Extract the trading date (UTC) from start_time
+        if state.start_time.tzinfo is None:
+            start_time_utc = state.start_time.replace(tzinfo=timezone.utc)
+        else:
+            start_time_utc = state.start_time.astimezone(timezone.utc)
+        trading_date = start_time_utc.date()
         
         # Calculate range metrics
         height_points = Decimal(str(state.high)) - Decimal(str(state.low))
@@ -179,16 +186,24 @@ class KrakenMarketDataWorker:
         
         try:
             with transaction.atomic():
-                # Try to find an existing range for this phase that started at the same time
-                # This ensures we update the same record during the session
+                # Try to find an existing range for this phase and date
+                # This ensures we update the same record throughout the day
                 existing_range = BreakoutRange.objects.filter(
                     asset=asset,
                     phase=state.phase.value,
-                    start_time=state.start_time,
+                    date=trading_date,
                 ).first()
                 
                 if existing_range:
                     # Update existing record with optimized query
+                    # Build list of fields that changed
+                    update_fields = []
+                    
+                    # Only update start_time if the new one is earlier (phase started earlier today)
+                    if state.start_time < existing_range.start_time:
+                        existing_range.start_time = state.start_time
+                        update_fields.append('start_time')
+                    
                     existing_range.end_time = end_time
                     existing_range.high = Decimal(str(state.high))
                     existing_range.low = Decimal(str(state.low))
@@ -196,23 +211,28 @@ class KrakenMarketDataWorker:
                     existing_range.height_points = height_points
                     existing_range.candle_count = state.candle_count
                     existing_range.is_valid = True
-                    existing_range.save(update_fields=[
+                    
+                    update_fields.extend([
                         'end_time', 'high', 'low', 'height_ticks',
                         'height_points', 'candle_count', 'is_valid'
                     ])
+                    
+                    existing_range.save(update_fields=update_fields)
                     logger.debug(
-                        "Updated %s range for %s: high=%.5f low=%.5f candles=%s",
+                        "Updated %s range for %s (date=%s): high=%.5f low=%.5f candles=%s",
                         state.phase.value,
                         asset.symbol,
+                        trading_date,
                         state.high,
                         state.low,
                         state.candle_count,
                     )
                 else:
-                    # Create new record for new phase/session
+                    # Create new record for new phase/date
                     BreakoutRange.objects.create(
                         asset=asset,
                         phase=state.phase.value,
+                        date=trading_date,
                         start_time=state.start_time,
                         end_time=end_time,
                         high=Decimal(str(state.high)),
@@ -225,9 +245,10 @@ class KrakenMarketDataWorker:
                         is_valid=True,
                     )
                     logger.info(
-                        "Created new %s range for %s: high=%.5f low=%.5f candles=%s",
+                        "Created new %s range for %s (date=%s): high=%.5f low=%.5f candles=%s",
                         state.phase.value,
                         asset.symbol,
+                        trading_date,
                         state.high,
                         state.low,
                         state.candle_count,
