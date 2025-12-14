@@ -4612,25 +4612,25 @@ class MarketDataStreamManagerTest(TestCase):
         )
 
     def test_ig_historical_prices_caps_data_points(self):
-        """Test that IG historical prices are capped to 50 points to conserve allowance."""
+        """Test that IG historical prices are capped at 720 candles maximum."""
         from core.services.broker.ig_broker_service import IgBrokerService
 
         mock_broker = MagicMock(spec=IgBrokerService)
         mock_broker.get_historical_prices.return_value = []
 
-        # Request 360 points (6 hours * 60 minutes for 1m timeframe)
+        # Request 1000 points to test the cap
         self.manager._fetch_historical_prices(
             broker=mock_broker,
             symbol='TEST_OIL',
             epic='CC.D.CL.UNC.IP',
             timeframe='1m',
-            num_points=360,
+            num_points=1000,
         )
 
-        # Verify that the broker was called with max 50 points
+        # Verify that the broker was called with max 720 points
         mock_broker.get_historical_prices.assert_called_once()
         call_kwargs = mock_broker.get_historical_prices.call_args[1]
-        self.assertEqual(call_kwargs['num_points'], 50)
+        self.assertEqual(call_kwargs['num_points'], 720)
         self.assertEqual(call_kwargs['resolution'], 'MINUTE')
         self.assertEqual(call_kwargs['epic'], 'CC.D.CL.UNC.IP')
 
