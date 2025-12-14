@@ -18,7 +18,7 @@ import sys
 import time
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, Any
 
 from django.core.management.base import BaseCommand
 
@@ -100,7 +100,7 @@ class Command(BaseCommand):
         # (e.g., using the Asia low for London or US ranges).
         # Structure: {epic: {"phase": SessionPhase, "high": float, "low": float, "start_time": datetime}}
         # The start_time is preserved throughout the phase to ensure accurate range recording.
-        self._phase_range_tracker: dict[str, dict[str, float]] = {}
+        self._phase_range_tracker: dict[str, dict[str, Any]] = {}
 
     def add_arguments(self, parser):
         parser.add_argument(
