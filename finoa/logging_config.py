@@ -34,7 +34,7 @@ def get_log_level() -> str:
     level = os.environ.get('FIONA_LOG_LEVEL', 'INFO').upper()
     valid_levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
     if level not in valid_levels:
-        level = 'INFO'
+        level = 'DEBUG'
     return level
 
 
