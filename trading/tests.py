@@ -4612,7 +4612,7 @@ class MarketDataStreamManagerTest(TestCase):
         )
 
     def test_ig_historical_prices_caps_data_points(self):
-        """Test that IG historical prices are capped to 720 points (12 hours of 1m data)."""
+        """Test that IG historical prices are capped at 720 candles maximum."""
         from core.services.broker.ig_broker_service import IgBrokerService
 
         mock_broker = MagicMock(spec=IgBrokerService)

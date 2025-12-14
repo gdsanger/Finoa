@@ -525,7 +525,7 @@ class MarketDataStreamManager:
         # IG uses epic/resolution/num_points
         if isinstance(broker, IgBrokerService):
             resolution = self._timeframe_to_ig_resolution(timeframe)
-            capped_points = min(num_points, 720)  # Default to 720 candles (12 hours of 1m data)
+            capped_points = min(num_points, 720)  # Cap at 720 candles to balance data needs with API allowance
             return broker.get_historical_prices(epic=epic, resolution=resolution, num_points=capped_points)
 
         # Kraken uses symbol/interval/num_points
