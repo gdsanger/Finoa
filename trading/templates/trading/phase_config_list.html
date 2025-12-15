@@ -142,7 +142,7 @@
         <div class="col-lg-8">
             {% if phase_configs %}
                 {% for config in phase_configs %}
-                <div class="card phase-card mb-3 {% if config.is_range_build_phase %}range-phase{% endif %}{% if config.is_trading_phase %}trading-phase{% endif %}{% if config.requires_event %}event-phase{% endif %}{% if not config.enabled %}disabled{% endif %}">
+                <div class="card phase-card mb-3 {% if config.is_range_build_phase %}range-phase{% endif %} {% if config.is_trading_phase %}trading-phase{% endif %} {% if config.requires_event %}event-phase{% endif %} {% if not config.enabled %}disabled{% endif %}">
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-start">
                             <div>
