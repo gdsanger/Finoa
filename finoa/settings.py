@@ -36,6 +36,7 @@ CSRF_TRUSTED_ORIGINS = [
 # Application definition
 
 INSTALLED_APPS = [
+    'core',  # Must be before jazzmin to override template tags for Django 6.0 compatibility
     'jazzmin',
     'django.contrib.admin',
     'django.contrib.auth',
@@ -43,7 +44,6 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'core',
     'trading',
 ]
 
